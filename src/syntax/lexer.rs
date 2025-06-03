@@ -3,8 +3,8 @@ use std::fmt;
 use std::iter::Peekable;
 use std::str::CharIndices;
 
-#[derive(Debug, PartialEq)]
-pub enum Token {
+#[derive(Debug, Clone, PartialEq)]
+pub enum Token<'a> {
     Make,
     Get,
     Shout,
@@ -20,7 +20,7 @@ pub enum Token {
     Na,
     Pass,
     SmallPass,
-    Identifier(Cow<'static, str>),
+    Identifier(Cow<'a, str>),
     Number(f64),
     LeftParen,
     RightParen,
@@ -28,7 +28,55 @@ pub enum Token {
     Eof,
 }
 
-#[derive(Debug, PartialEq)]
+impl<'a> From<&'a str> for Token<'a> {
+    fn from(ident: &'a str) -> Self {
+        match ident {
+            "make" => Token::Make,
+            "get" => Token::Get,
+            "shout" => Token::Shout,
+            "jasi" => Token::Jasi,
+            "start" => Token::Start,
+            "end" => Token::End,
+            "add" => Token::Add,
+            "minus" => Token::Minus,
+            "times" => Token::Times,
+            "divide" => Token::Divide,
+            "na" => Token::Na,
+            "pass" => Token::Pass,
+            _ => Token::Identifier(Cow::Borrowed(ident)),
+        }
+    }
+}
+
+impl<'a> fmt::Display for Token<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Token::Make => write!(f, "make"),
+            Token::Get => write!(f, "get"),
+            Token::Shout => write!(f, "shout"),
+            Token::IfToSay => write!(f, "if to say"),
+            Token::IfNotSo => write!(f, "if not so"),
+            Token::Jasi => write!(f, "jasi"),
+            Token::Start => write!(f, "start"),
+            Token::End => write!(f, "end"),
+            Token::Add => write!(f, "add"),
+            Token::Minus => write!(f, "minus"),
+            Token::Times => write!(f, "times"),
+            Token::Divide => write!(f, "divide"),
+            Token::Na => write!(f, "na"),
+            Token::Pass => write!(f, "pass"),
+            Token::SmallPass => write!(f, "small pass"),
+            Token::Identifier(ident) => write!(f, "identifier({ident})"),
+            Token::Number(n) => write!(f, "number({n})"),
+            Token::LeftParen => write!(f, "("),
+            Token::RightParen => write!(f, ")"),
+            Token::Newline => write!(f, "newline"),
+            Token::Eof => write!(f, "eof"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum LexErrorKind {
     UnexpectedCharacter(char),
     InvalidNumber(String),
@@ -36,7 +84,7 @@ pub enum LexErrorKind {
     InvalidEscapeSequence(char),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LexError {
     pub kind: LexErrorKind,
     pub line: usize,
@@ -67,7 +115,7 @@ impl fmt::Display for LexError {
 
 impl std::error::Error for LexError {}
 
-pub type LexResult<T> = Result<T, LexError>;
+type LexResult<T> = Result<T, LexError>;
 
 pub struct Lexer<'a> {
     chars: Peekable<CharIndices<'a>>,
@@ -205,7 +253,7 @@ impl<'a> Lexer<'a> {
         true
     }
 
-    fn read_keyword_or_identifier(&mut self) -> Token {
+    fn read_keyword_or_identifier(&mut self) -> Token<'a> {
         if self.match_phrase(&["if", "to", "say"]) {
             return Token::IfToSay;
         }
@@ -215,13 +263,14 @@ impl<'a> Lexer<'a> {
         if self.match_phrase(&["small", "pass"]) {
             return Token::SmallPass;
         }
-        let ident = self.read_identifier_slice();
+        let ident: &'a str =
+            unsafe { std::mem::transmute::<&str, &'a str>(self.read_identifier_slice()) };
         Token::from(ident)
     }
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = LexResult<Token>;
+    type Item = LexResult<Token<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -259,26 +308,6 @@ impl<'a> Iterator for Lexer<'a> {
                     return Some(Err(self.error(LexErrorKind::UnexpectedCharacter(ch))));
                 }
             }
-        }
-    }
-}
-
-impl From<&str> for Token {
-    fn from(ident: &str) -> Self {
-        match ident {
-            "make" => Token::Make,
-            "get" => Token::Get,
-            "shout" => Token::Shout,
-            "jasi" => Token::Jasi,
-            "start" => Token::Start,
-            "end" => Token::End,
-            "add" => Token::Add,
-            "minus" => Token::Minus,
-            "times" => Token::Times,
-            "divide" => Token::Divide,
-            "na" => Token::Na,
-            "pass" => Token::Pass,
-            _ => Token::Identifier(Cow::Owned(ident.to_owned())),
         }
     }
 }
