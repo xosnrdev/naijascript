@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::fmt;
 use std::iter::Peekable;
 use std::str::CharIndices;
@@ -20,7 +19,7 @@ pub enum Token<'a> {
     Na,
     Pass,
     SmallPass,
-    Identifier(Cow<'a, str>),
+    Identifier(&'a str),
     Number(f64),
     LeftParen,
     RightParen,
@@ -43,7 +42,7 @@ impl<'a> From<&'a str> for Token<'a> {
             "divide" => Token::Divide,
             "na" => Token::Na,
             "pass" => Token::Pass,
-            _ => Token::Identifier(Cow::Borrowed(ident)),
+            _ => Token::Identifier(ident),
         }
     }
 }
@@ -143,6 +142,7 @@ impl<'a> Lexer<'a> {
         self.chars.peek().map(|&(_, ch)| ch)
     }
 
+    // Intent: Advance the iterator and update position, line, and column counters
     #[inline]
     fn advance(&mut self) {
         if let Some((idx, ch)) = self.chars.next() {
@@ -158,6 +158,7 @@ impl<'a> Lexer<'a> {
 
     #[inline]
     fn skip_whitespace(&mut self) {
+        // Intent: Skip whitespace except for newlines
         while let Some(&(_, ch)) = self.chars.peek() {
             if ch.is_whitespace() && ch != '\n' {
                 self.advance();
@@ -171,6 +172,7 @@ impl<'a> Lexer<'a> {
         LexError::new(kind, self.line, self.column)
     }
 
+    // Intent: Parse a number literal, supporting floating-point values
     fn read_number(&mut self) -> LexResult<f64> {
         let start = self.position;
         let mut seen_dot = false;
@@ -192,6 +194,7 @@ impl<'a> Lexer<'a> {
             .map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str.to_string())))
     }
 
+    // Intent: Parse an identifier as a slice of the input
     fn read_identifier_slice(&mut self) -> &str {
         let start = self.position;
         while let Some(ch) = self.current_char() {
@@ -205,8 +208,8 @@ impl<'a> Lexer<'a> {
         unsafe { self.input.get_unchecked(start..self.position) }
     }
 
+    // Intent: Use iterator clone for lookahead to match multi-word keywords without mutating the main lexer state unless a match is found.
     fn match_phrase(&mut self, words: &[&str]) -> bool {
-        // Intent: Use iterator clone for lookahead to match multi-word keywords without mutating the main lexer state unless a match is found.
         let mut chars_clone = self.chars.clone();
         let mut pos = self.position;
         let mut line = self.line;
@@ -253,6 +256,7 @@ impl<'a> Lexer<'a> {
         true
     }
 
+    // Intent: Recognize multi-word keywords first, then fall back to single-word keywords or identifiers
     fn read_keyword_or_identifier(&mut self) -> Token<'a> {
         if self.match_phrase(&["if", "to", "say"]) {
             return Token::IfToSay;
@@ -263,6 +267,7 @@ impl<'a> Lexer<'a> {
         if self.match_phrase(&["small", "pass"]) {
             return Token::SmallPass;
         }
+        // SAFETY: The returned &str is always a valid slice of self.input, which lives at least as long as 'a.
         let ident: &'a str =
             unsafe { std::mem::transmute::<&str, &'a str>(self.read_identifier_slice()) };
         Token::from(ident)
@@ -324,7 +329,7 @@ mod tests {
             tokens,
             vec![
                 Token::Make,
-                Token::Identifier("x".to_string().into()),
+                Token::Identifier("x"),
                 Token::Get,
                 Token::Number(5.0),
                 Token::Eof
@@ -339,7 +344,7 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::Identifier("x".to_string().into()),
+                Token::Identifier("x"),
                 Token::Add,
                 Token::Number(3.0),
                 Token::Times,
@@ -358,7 +363,7 @@ mod tests {
             vec![
                 Token::IfToSay,
                 Token::LeftParen,
-                Token::Identifier("x".to_string().into()),
+                Token::Identifier("x"),
                 Token::Na,
                 Token::Number(5.0),
                 Token::RightParen,
