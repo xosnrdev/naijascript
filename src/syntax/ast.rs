@@ -1,86 +1,80 @@
-use std::borrow::Cow;
 use std::fmt;
 
-/// The root node of a parsed program. Holds all top-level statements.
+// Intent: Represents a parsed program as a list of statements
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program<'a> {
     pub statements: Vec<Statement<'a>>,
 }
 
 impl<'a> Program<'a> {
-    /// Ergonomic, inlinable constructor for a program node.
     #[inline]
     pub fn new(statements: Vec<Statement<'a>>) -> Self {
         Self { statements }
     }
 }
 
-/// All possible statement forms in the language.
+// Intent: All possible statement forms in the language
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement<'a> {
-    /// Variable assignment: `make x get expr`
+    // Intent: Variable assignment, e.g. make x get expr
     Assignment {
-        variable: Cow<'a, str>,
+        variable: &'a str,
         value: Expression<'a>,
     },
-    /// Output statement: `shout (expr)`
+    // Intent: Output statement, e.g. shout (expr)
     Output(Expression<'a>),
-    /// Conditional: `if to say (cond) start ... end [if not so start ... end]`
+    // Intent: Conditional statement, e.g. if to say (cond) start ... end [if not so start ... end]
     If {
         condition: Condition<'a>,
         then_block: Block<'a>,
         else_block: Option<Block<'a>>,
     },
-    /// Loop: `jasi (cond) start ... end`
+    // Intent: Loop statement, e.g. jasi (cond) start ... end
     Loop {
         condition: Condition<'a>,
         body: Block<'a>,
     },
 }
 
-/// A block of statements, e.g. the body of an if or loop.
+// Intent: Sequence of statements, e.g. the body of an if or loop
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block<'a> {
     pub statements: Vec<Statement<'a>>,
 }
 
 impl<'a> Block<'a> {
-    /// Ergonomic, inlinable constructor for a block node.
     #[inline]
     pub fn new(statements: Vec<Statement<'a>>) -> Self {
         Self { statements }
     }
 }
 
-/// All possible expressions in the language.
+// Intent: All possible expressions in the language
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'a> {
-    /// Numeric literal.
+    // Intent: Numeric literal
     Number(f64),
-    /// Variable reference.
-    Variable(Cow<'a, str>),
-    /// Binary operation (e.g. add, minus, times, divide).
+    // Intent: Variable reference
+    Variable(&'a str),
+    // Intent: Binary operation (e.g. add, minus, times, divide)
     Binary {
         left: Box<Expression<'a>>,
         op: BinaryOp,
         right: Box<Expression<'a>>,
     },
-    /// Parenthesized expression.
+    // Intent: Parenthesized expression
     Grouping(Box<Expression<'a>>),
 }
 
 impl<'a> Expression<'a> {
-    /// Inlinable constructor for a numeric literal.
     #[inline]
     pub fn number(n: f64) -> Self {
         Expression::Number(n)
     }
-    /// Inlinable constructor for a variable reference.
     #[inline]
-    pub fn variable(name: Cow<'a, str>) -> Self {
+    pub fn variable(name: &'a str) -> Self {
         Expression::Variable(name)
     }
-    /// Inlinable constructor for a binary operation.
     #[inline]
     pub fn binary(left: Expression<'a>, op: BinaryOp, right: Expression<'a>) -> Self {
         Expression::Binary {
@@ -89,14 +83,13 @@ impl<'a> Expression<'a> {
             right: Box::new(right),
         }
     }
-    /// Inlinable constructor for a parenthesized expression.
     #[inline]
     pub fn grouping(expr: Expression<'a>) -> Self {
         Expression::Grouping(Box::new(expr))
     }
 }
 
-/// Supported binary operators for expressions.
+// Intent: Supported binary operators for expressions
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Add,
@@ -105,14 +98,11 @@ pub enum BinaryOp {
     Divide,
 }
 
-/// All supported condition forms for if/loop.
+// Intent: Supported condition forms for if/loop
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition<'a> {
-    /// Equality: `x na y`
     Na(Expression<'a>, Expression<'a>),
-    /// Greater-than: `x pass y`
     Pass(Expression<'a>, Expression<'a>),
-    /// Less-than: `x small pass y`
     SmallPass(Expression<'a>, Expression<'a>),
 }
 
