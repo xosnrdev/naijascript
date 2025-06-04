@@ -14,7 +14,9 @@ pub enum ParseError<'a> {
 impl<'a> std::fmt::Display for ParseError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            ParseError::UnexpectedEof => write!(f, "Unexpected end of input"),
+            ParseError::UnexpectedEof => {
+                write!(f, "Omo! Your code finish for middle, e never complete")
+            }
             ParseError::UnexpectedToken(tok) => write!(f, "Wetin be dis token: {tok}"),
             ParseError::LexerError(e) => write!(f, "{e}"),
         }
