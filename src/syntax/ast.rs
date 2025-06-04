@@ -17,23 +17,13 @@ impl<'a> Program<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement<'a> {
     // Intent: Variable assignment, e.g. make x get expr
-    Assignment {
-        variable: &'a str,
-        value: Expression<'a>,
-    },
+    Assignment { variable: &'a str, value: Expression<'a> },
     // Intent: Output statement, e.g. shout (expr)
     Output(Expression<'a>),
     // Intent: Conditional statement, e.g. if to say (cond) start ... end [if not so start ... end]
-    If {
-        condition: Condition<'a>,
-        then_block: Block<'a>,
-        else_block: Option<Block<'a>>,
-    },
+    If { condition: Condition<'a>, then_block: Block<'a>, else_block: Option<Block<'a>> },
     // Intent: Loop statement, e.g. jasi (cond) start ... end
-    Loop {
-        condition: Condition<'a>,
-        body: Block<'a>,
-    },
+    Loop { condition: Condition<'a>, body: Block<'a> },
 }
 
 // Intent: Sequence of statements, e.g. the body of an if or loop
@@ -57,11 +47,7 @@ pub enum Expression<'a> {
     // Intent: Variable reference
     Variable(&'a str),
     // Intent: Binary operation (e.g. add, minus, times, divide)
-    Binary {
-        left: Box<Expression<'a>>,
-        op: BinaryOp,
-        right: Box<Expression<'a>>,
-    },
+    Binary { left: Box<Expression<'a>>, op: BinaryOp, right: Box<Expression<'a>> },
     // Intent: Parenthesized expression
     Grouping(Box<Expression<'a>>),
 }
@@ -77,11 +63,7 @@ impl<'a> Expression<'a> {
     }
     #[inline]
     pub fn binary(left: Expression<'a>, op: BinaryOp, right: Expression<'a>) -> Self {
-        Expression::Binary {
-            left: Box::new(left),
-            op,
-            right: Box::new(right),
-        }
+        Expression::Binary { left: Box::new(left), op, right: Box::new(right) }
     }
     #[inline]
     pub fn grouping(expr: Expression<'a>) -> Self {
@@ -125,11 +107,7 @@ impl<'a> fmt::Display for Statement<'a> {
             Statement::Output(expr) => {
                 write!(f, "Output({expr})")
             }
-            Statement::If {
-                condition,
-                then_block,
-                else_block,
-            } => {
+            Statement::If { condition, then_block, else_block } => {
                 write!(f, "If(condition: {condition}, then: {then_block}")?;
                 if let Some(else_block) = else_block {
                     write!(f, ", else: {else_block}")?;

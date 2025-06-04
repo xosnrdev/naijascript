@@ -104,11 +104,7 @@ impl fmt::Display for LexError {
             LexErrorKind::UnterminatedString => "You no close dis string".to_string(),
             LexErrorKind::InvalidEscapeSequence(ch) => format!("Wetin be dis escape: '\\{ch}'"),
         };
-        write!(
-            f,
-            "{} (line {}, column {})",
-            message, self.line, self.column
-        )
+        write!(f, "{} (line {}, column {})", message, self.line, self.column)
     }
 }
 
@@ -189,9 +185,7 @@ impl<'a> Lexer<'a> {
         }
 
         let num_str = &self.input[start..self.position];
-        num_str
-            .parse()
-            .map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str.to_string())))
+        num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str.to_string())))
     }
 
     // Intent: Parse an identifier as a slice of the input
@@ -327,13 +321,7 @@ mod tests {
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(
             tokens,
-            vec![
-                Token::Make,
-                Token::Identifier("x"),
-                Token::Get,
-                Token::Number(5.0),
-                Token::Eof
-            ]
+            vec![Token::Make, Token::Identifier("x"), Token::Get, Token::Number(5.0), Token::Eof]
         );
     }
 
