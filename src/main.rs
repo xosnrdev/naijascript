@@ -1,5 +1,4 @@
-use std::env;
-use std::fs;
+use std::{env, fs};
 
 use naijascript::syntax::Lexer;
 use naijascript::syntax::parser::Parser;
@@ -11,9 +10,7 @@ fn main() {
     } else {
         use std::io::Read;
         let mut buf = String::new();
-        std::io::stdin()
-            .read_to_string(&mut buf)
-            .expect("Failed to read stdin");
+        std::io::stdin().read_to_string(&mut buf).expect("Failed to read stdin");
         buf
     };
     let mut parser = Parser::new(Lexer::new(&input));

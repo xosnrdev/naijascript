@@ -1,6 +1,6 @@
-mod ast;
 mod lexer;
+
+pub mod ast;
 pub mod parser;
 
-pub use ast::*;
 pub use lexer::*;

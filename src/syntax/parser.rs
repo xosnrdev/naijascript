@@ -34,9 +34,7 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     #[inline]
     pub fn new(lexer: Lexer<'a>) -> Self {
-        Parser {
-            tokens: lexer.peekable(),
-        }
+        Parser { tokens: lexer.peekable() }
     }
 
     // Intent: Expect and consume a specific token, or return a parse error if the next token does not match.
@@ -133,11 +131,7 @@ impl<'a> Parser<'a> {
             }
             _ => None,
         };
-        Ok(Statement::If {
-            condition,
-            then_block,
-            else_block,
-        })
+        Ok(Statement::If { condition, then_block, else_block })
     }
 
     // Intent: Parse a block: statements until 'end'.
@@ -294,11 +288,7 @@ mod tests {
         let src = "if to say ( x na 5 ) start make y get 1 end";
         let prog = parse_ok(src);
         match &prog.statements[0] {
-            Statement::If {
-                condition,
-                then_block,
-                else_block,
-            } => {
+            Statement::If { condition, then_block, else_block } => {
                 match condition {
                     Condition::Na(l, r) => {
                         assert!(matches!(l, Expression::Variable(_)));
@@ -318,11 +308,7 @@ mod tests {
         let src = "if to say ( x pass 2 ) start make y get 1 end if not so start make y get 0 end";
         let prog = parse_ok(src);
         match &prog.statements[0] {
-            Statement::If {
-                then_block,
-                else_block,
-                ..
-            } => {
+            Statement::If { then_block, else_block, .. } => {
                 assert!(else_block.is_some());
                 assert_eq!(then_block.statements.len(), 1);
                 assert_eq!(else_block.as_ref().unwrap().statements.len(), 1);
@@ -352,18 +338,10 @@ mod tests {
         let prog = parse_ok("make x get 2 add 3 times 4");
         match &prog.statements[0] {
             Statement::Assignment { value, .. } => match value {
-                Expression::Binary {
-                    op: BinaryOp::Add,
-                    left,
-                    right,
-                } => {
+                Expression::Binary { op: BinaryOp::Add, left, right } => {
                     assert!(matches!(&**left, Expression::Number(2.0)));
                     match &**right {
-                        Expression::Binary {
-                            op: BinaryOp::Times,
-                            left: l,
-                            right: r,
-                        } => {
+                        Expression::Binary { op: BinaryOp::Times, left: l, right: r } => {
                             assert!(matches!(&**l, Expression::Number(3.0)));
                             assert!(matches!(&**r, Expression::Number(4.0)));
                         }
