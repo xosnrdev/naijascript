@@ -1,6 +1,7 @@
 use std::fmt;
 
-// Intent: Represents a parsed program as a list of statements
+/// The root node of a parsed NaijaScript program.
+/// Holds a list of statements to be executed in order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program<'a> {
     pub statements: Vec<Statement<'a>>,
@@ -13,20 +14,21 @@ impl<'a> Program<'a> {
     }
 }
 
-// Intent: All possible statement forms in the language
+/// All possible statement forms in NaijaScript.
+/// Each variant represents a top-level action or control flow construct.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement<'a> {
-    // Intent: Variable assignment, e.g. make x get expr
+    /// Variable assignment, e.g. `make x get expr`
     Assignment { variable: &'a str, value: Expression<'a> },
-    // Intent: Output statement, e.g. shout (expr)
+    /// Output statement, e.g. `shout (expr)`
     Output(Expression<'a>),
-    // Intent: Conditional statement, e.g. if to say (cond) start ... end [if not so start ... end]
+    /// Conditional statement, e.g. `if to say (cond) start ... end [if not so start ... end]`
     If { condition: Condition<'a>, then_block: Block<'a>, else_block: Option<Block<'a>> },
-    // Intent: Loop statement, e.g. jasi (cond) start ... end
+    /// Loop statement, e.g. `jasi (cond) start ... end`
     Loop { condition: Condition<'a>, body: Block<'a> },
 }
 
-// Intent: Sequence of statements, e.g. the body of an if or loop
+/// Sequence of statements, used for block bodies in if/loop.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block<'a> {
     pub statements: Vec<Statement<'a>>,
@@ -39,16 +41,17 @@ impl<'a> Block<'a> {
     }
 }
 
-// Intent: All possible expressions in the language
+/// All possible expressions in NaijaScript.
+/// Expressions produce values and can be nested.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'a> {
-    // Intent: Numeric literal
+    /// Numeric literal
     Number(f64),
-    // Intent: Variable reference
+    /// Variable reference
     Variable(&'a str),
-    // Intent: Binary operation (e.g. add, minus, times, divide)
+    /// Binary operation (e.g. add, minus, times, divide)
     Binary { left: Box<Expression<'a>>, op: BinaryOp, right: Box<Expression<'a>> },
-    // Intent: Parenthesized expression
+    /// Parenthesized expression
     Grouping(Box<Expression<'a>>),
 }
 
@@ -71,7 +74,7 @@ impl<'a> Expression<'a> {
     }
 }
 
-// Intent: Supported binary operators for expressions
+/// Supported binary operators for expressions.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Add,
@@ -80,11 +83,15 @@ pub enum BinaryOp {
     Divide,
 }
 
-// Intent: Supported condition forms for if/loop
+/// Supported condition forms for if/loop constructs.
+/// Each variant represents a comparison between two expressions.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition<'a> {
+    /// Equality: `na` (==)
     Na(Expression<'a>, Expression<'a>),
+    /// Greater than: `pass` (>)
     Pass(Expression<'a>, Expression<'a>),
+    /// Less than: `small pass` (<)
     SmallPass(Expression<'a>, Expression<'a>),
 }
 
