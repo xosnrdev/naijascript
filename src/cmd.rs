@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 
 use clap::Parser as ClapParser;
 use clap_cargo::style::CLAP_STYLING;
@@ -85,7 +85,7 @@ pub fn run() {
             Ok(()) => 0,
             Err(_) => 1,
         }
-    } else if !atty::is(atty::Stream::Stdin) {
+    } else if !io::stdin().is_terminal() {
         match run_stdin() {
             Ok(()) => 0,
             Err(e) => {
