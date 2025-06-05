@@ -6,7 +6,6 @@ authors = ["Success Kingsley <xosnrdev@gmail.com>"]
 description = "A scripting language inspired by Naija (Nigerian) lingo — for learning, automation, and fun."
 
 [dependencies]
-atty = "0.2.14"
 clap = { version = "4.5.39", features = ["derive"] }
 clap-cargo = { version = "0.15.2", features = ["clap"] }
 
