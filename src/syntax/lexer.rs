@@ -2,6 +2,8 @@ use std::fmt;
 use std::iter::Peekable;
 use std::str::CharIndices;
 
+/// All possible token types in NaijaScript.
+/// Each variant represents a keyword, operator, literal, or punctuation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'a> {
     Make,
@@ -75,6 +77,7 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
+/// All possible error kinds that can occur during lexing.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LexErrorKind {
     UnexpectedCharacter(char),
@@ -83,6 +86,7 @@ pub enum LexErrorKind {
     InvalidEscapeSequence(char),
 }
 
+/// Error type for lexer errors, including line and column for diagnostics.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LexError {
     pub kind: LexErrorKind,
@@ -112,6 +116,8 @@ impl std::error::Error for LexError {}
 
 type LexResult<T> = Result<T, LexError>;
 
+/// The main lexer struct for NaijaScript.
+/// Implements Iterator to produce tokens from source code.
 pub struct Lexer<'a> {
     chars: Peekable<CharIndices<'a>>,
     input: &'a str,
@@ -122,6 +128,7 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    /// Create a new lexer from an input string.
     pub fn new(input: &'a str) -> Self {
         Lexer {
             chars: input.char_indices().peekable(),
@@ -133,12 +140,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Get the current character without advancing the iterator.
     #[inline]
     fn current_char(&mut self) -> Option<char> {
         self.chars.peek().map(|&(_, ch)| ch)
     }
 
-    // Intent: Advance the iterator and update position, line, and column counters
+    /// Advance the iterator and update position, line, and column counters.
     #[inline]
     fn advance(&mut self) {
         if let Some((idx, ch)) = self.chars.next() {
@@ -152,6 +160,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Skip whitespace except for newlines.
     #[inline]
     fn skip_whitespace(&mut self) {
         // Intent: Skip whitespace except for newlines
@@ -164,11 +173,12 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Helper to create a lexer error at the current position.
     fn error(&self, kind: LexErrorKind) -> LexError {
         LexError::new(kind, self.line, self.column)
     }
 
-    // Intent: Parse a number literal, supporting floating-point values
+    /// Parse a number literal, supporting floating-point values.
     fn read_number(&mut self) -> LexResult<f64> {
         let start = self.position;
         let mut seen_dot = false;
@@ -188,7 +198,7 @@ impl<'a> Lexer<'a> {
         num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str.to_string())))
     }
 
-    // Intent: Parse an identifier as a slice of the input
+    /// Parse an identifier as a slice of the input.
     fn read_identifier_slice(&mut self) -> &str {
         let start = self.position;
         while let Some(ch) = self.current_char() {
@@ -202,7 +212,7 @@ impl<'a> Lexer<'a> {
         unsafe { self.input.get_unchecked(start..self.position) }
     }
 
-    // Intent: Use iterator clone for lookahead to match multi-word keywords without mutating the main lexer state unless a match is found.
+    /// Use iterator clone for lookahead to match multi-word keywords without mutating the main lexer state unless a match is found.
     fn match_phrase(&mut self, words: &[&str]) -> bool {
         let mut chars_clone = self.chars.clone();
         let mut pos = self.position;
@@ -250,7 +260,7 @@ impl<'a> Lexer<'a> {
         true
     }
 
-    // Intent: Recognize multi-word keywords first, then fall back to single-word keywords or identifiers
+    /// Recognize multi-word keywords first, then fall back to single-word keywords or identifiers.
     fn read_keyword_or_identifier(&mut self) -> Token<'a> {
         if self.match_phrase(&["if", "to", "say"]) {
             return Token::IfToSay;
@@ -268,6 +278,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
+/// Implements Iterator to produce tokens from source code, handling all lexing logic and errors.
 impl<'a> Iterator for Lexer<'a> {
     type Item = LexResult<Token<'a>>;
 

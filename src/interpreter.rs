@@ -17,6 +17,32 @@ impl std::fmt::Display for Value {
     }
 }
 
+/// Interpreter error type, with Pidgin-style user messages.
+#[derive(Debug, PartialEq)]
+pub enum InterpreterError<'a> {
+    UndefinedVariable(&'a str),
+    DivisionByZero,
+    TypeError(&'static str),
+    ScopeError,
+    Other(String),
+}
+
+impl<'a> std::fmt::Display for InterpreterError<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InterpreterError::UndefinedVariable(name) => {
+                write!(f, "Abeg, variable '{name}' no dey defined for here o")
+            }
+            InterpreterError::DivisionByZero => write!(f, "Kai! You wan divide by zero? Wahala o!"),
+            InterpreterError::TypeError(msg) => write!(f, "Omo! Type wahala: {msg}"),
+            InterpreterError::ScopeError => write!(f, "No environment scope found (this na bug)"),
+            InterpreterError::Other(msg) => write!(f, "Interpreter wahala: {msg}"),
+        }
+    }
+}
+
+impl<'a> std::error::Error for InterpreterError<'a> {}
+
 /// Type alias for interpreter results, using custom error type.
 pub type InterpreterResult<'a, T> = Result<T, InterpreterError<'a>>;
 
@@ -174,32 +200,6 @@ impl<'a> Interpreter<'a> {
         Err(InterpreterError::UndefinedVariable(name))
     }
 }
-
-/// Interpreter error type, with Pidgin-style user messages.
-#[derive(Debug, PartialEq)]
-pub enum InterpreterError<'a> {
-    UndefinedVariable(&'a str),
-    DivisionByZero,
-    TypeError(&'static str),
-    ScopeError,
-    Other(String),
-}
-
-impl<'a> std::fmt::Display for InterpreterError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InterpreterError::UndefinedVariable(name) => {
-                write!(f, "Abeg, variable '{name}' no dey defined for here o")
-            }
-            InterpreterError::DivisionByZero => write!(f, "Kai! You wan divide by zero? Wahala o!"),
-            InterpreterError::TypeError(msg) => write!(f, "Omo! Type wahala: {msg}"),
-            InterpreterError::ScopeError => write!(f, "No environment scope found (this na bug)"),
-            InterpreterError::Other(msg) => write!(f, "Interpreter wahala: {msg}"),
-        }
-    }
-}
-
-impl<'a> std::error::Error for InterpreterError<'a> {}
 
 #[cfg(test)]
 mod tests {

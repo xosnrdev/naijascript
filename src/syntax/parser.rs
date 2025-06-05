@@ -3,7 +3,8 @@ use std::iter::Peekable;
 use super::ast::*;
 use super::lexer::{self, Lexer, Token};
 
-// Intent: Represents all possible errors that can occur during parsing, including unexpected tokens and lexer errors.
+/// All possible errors that can occur during parsing.
+/// Includes unexpected tokens, unexpected EOF, and lexer errors.
 #[derive(Debug, PartialEq)]
 pub enum ParseError<'a> {
     UnexpectedEof,
@@ -12,7 +13,7 @@ pub enum ParseError<'a> {
 }
 
 impl<'a> std::fmt::Display for ParseError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ParseError::UnexpectedEof => {
                 write!(f, "Omo! Your code finish for middle, e never complete")
@@ -25,21 +26,23 @@ impl<'a> std::fmt::Display for ParseError<'a> {
 
 impl<'a> std::error::Error for ParseError<'a> {}
 
-// Intent: Alias for parser result type, used throughout the parser for error handling.
+/// Alias for parser result type, used throughout the parser for ergonomic error handling.
 pub type ParseResult<'a, T> = Result<T, ParseError<'a>>;
 
-// Intent: Recursive descent parser for NaijaScript, using a Peekable lexer for lookahead.
+/// Recursive descent parser for NaijaScript.
+/// Uses a Peekable lexer for lookahead and implements Pratt parsing for expressions.
 pub struct Parser<'a> {
     tokens: Peekable<Lexer<'a>>,
 }
 
 impl<'a> Parser<'a> {
+    /// Create a new parser from a lexer.
     #[inline]
     pub fn new(lexer: Lexer<'a>) -> Self {
         Parser { tokens: lexer.peekable() }
     }
 
-    // Intent: Expect and consume a specific token, or return a parse error if the next token does not match.
+    /// Expect and consume a specific token, or return a parse error if the next token does not match.
     #[inline]
     fn expect_token(&mut self, expected: Token<'a>) -> ParseResult<'a, ()> {
         match self.tokens.next() {
@@ -50,13 +53,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // Intent: Parse a full program (entry point), collecting all top-level statements.
+    /// Parse a full program (entry point), collecting all top-level statements.
     pub fn parse_program(&mut self) -> ParseResult<'a, Program<'a>> {
         let statements = self.parse_statement_list()?;
         Ok(Program::new(statements))
     }
 
-    // Intent: Parse a list of statements until EOF or block end, skipping newlines.
+    /// Parse a list of statements until EOF or block end, skipping newlines.
     fn parse_statement_list(&mut self) -> ParseResult<'a, Vec<Statement<'a>>> {
         let mut statements = Vec::new();
         while self.skip_newlines() {
@@ -69,7 +72,7 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
-    // Intent: Try to parse a statement, returning None if EOF is reached.
+    /// Try to parse a statement, returning None if EOF is reached.
     fn parse_statement_opt(&mut self) -> ParseResult<'a, Option<Statement<'a>>> {
         self.skip_newlines();
         match self.tokens.peek() {
@@ -78,7 +81,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // Intent: Dispatch to the correct statement parser based on the next token.
+    /// Dispatch to the correct statement parser based on the next token.
     fn parse_statement(&mut self) -> ParseResult<'a, Statement<'a>> {
         let token = self.tokens.peek().ok_or(ParseError::UnexpectedEof)?;
         let token = match token {
@@ -94,7 +97,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // Intent: Parse an assignment statement: make x get expr
+    /// Parse an assignment statement: make x get expr
     fn parse_assignment(&mut self) -> ParseResult<'a, Statement<'a>> {
         self.expect_token(Token::Make)?;
         let variable = match self.tokens.next() {
@@ -108,7 +111,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::Assignment { variable, value })
     }
 
-    // Intent: Parse an output statement: shout (expr)
+    /// Parse an output statement: shout (expr)
     fn parse_output(&mut self) -> ParseResult<'a, Statement<'a>> {
         self.expect_token(Token::Shout)?;
         self.expect_token(Token::LeftParen)?;
@@ -117,7 +120,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::Output(expr))
     }
 
-    // Intent: Parse an if statement, with optional else block.
+    /// Parse an if statement, with optional else block.
     fn parse_if(&mut self) -> ParseResult<'a, Statement<'a>> {
         self.expect_token(Token::IfToSay)?;
         self.expect_token(Token::LeftParen)?;
@@ -136,7 +139,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::If { condition, then_block, else_block })
     }
 
-    // Intent: Parse a block: statements until 'end'.
+    /// Parse a block: statements until 'end'.
     fn parse_block(&mut self) -> ParseResult<'a, Block<'a>> {
         let mut statements = Vec::new();
         loop {
@@ -153,7 +156,7 @@ impl<'a> Parser<'a> {
         Ok(Block::new(statements))
     }
 
-    // Intent: Parse a condition: e.g. x na 5, x pass 3, x small pass 2
+    /// Parse a condition: e.g. x na 5, x pass 3, x small pass 2
     fn parse_condition(&mut self) -> ParseResult<'a, Condition<'a>> {
         let left = self.parse_expression()?;
         let op = match self.tokens.next() {
@@ -174,7 +177,7 @@ impl<'a> Parser<'a> {
         Ok(cond)
     }
 
-    // Intent: Parse a loop statement: jasi (cond) start ... end
+    /// Parse a loop statement: jasi (cond) start ... end
     fn parse_loop(&mut self) -> ParseResult<'a, Statement<'a>> {
         self.expect_token(Token::Jasi)?;
         self.expect_token(Token::LeftParen)?;
@@ -185,13 +188,13 @@ impl<'a> Parser<'a> {
         Ok(Statement::Loop { condition, body })
     }
 
-    // Intent: Parse an expression using Pratt parsing (precedence climbing).
+    /// Parse an expression using Pratt parsing (precedence climbing).
     #[inline]
     pub fn parse_expression(&mut self) -> ParseResult<'a, Expression<'a>> {
         self.parse_expr_bp(0)
     }
 
-    // Intent: Pratt parser core: parse expression with minimum binding power.
+    /// Pratt parser core: parse expression with minimum binding power.
     #[inline]
     fn parse_expr_bp(&mut self, min_bp: u8) -> ParseResult<'a, Expression<'a>> {
         let mut lhs = match self.tokens.next() {
@@ -212,7 +215,7 @@ impl<'a> Parser<'a> {
             None => return Err(ParseError::UnexpectedEof),
         };
 
-        // Intent: Loop to parse left-associative binary operators with correct precedence.
+        // Loop to parse left-associative binary operators with correct precedence.
         loop {
             let op = match self.tokens.peek() {
                 Some(Ok(Token::Add)) => BinaryOp::Add,
@@ -232,7 +235,7 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    // Intent: Skip over any Newline tokens, returning true if any were skipped or if more tokens remain.
+    /// Skip over any Newline tokens, returning true if any were skipped or if more tokens remain.
     fn skip_newlines(&mut self) -> bool {
         let mut skipped = false;
         while let Some(Ok(Token::Newline)) = self.tokens.peek() {
@@ -243,7 +246,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-// Intent: Get binding power for each binary operator (Pratt parsing)
+/// Get binding power for each binary operator (Pratt parsing).
 fn infix_binding_power(op: &BinaryOp) -> (u8, u8) {
     match op {
         BinaryOp::Add | BinaryOp::Minus => (1, 2),
