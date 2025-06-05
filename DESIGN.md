@@ -1,22 +1,49 @@
-# NaijaScript Interpreter Design Document
+# NaijaScript Interpreter
 
-This document provides a technical overview of the NaijaScript interpreter’s architecture, design decisions, and implementation details. It is intended for developers and maintainers working on the codebase. It is not an official user manual or README, but an internal reference to guide development, maintenance, and future enhancements.
+> **For contributors and maintainers.** This is a technical design summary, not a user manual or README. For usage, see [README](./README.md).
 
-## System Overview
+## Quick Overview
 
-NaijaScript is a tree-walking interpreter for a simple scripting language. Its primary goal is to provide an approachable, expressive scripting environment for learning and automation, with a focus on Nigerian developers. The interpreter is implemented in Rust and uses Pidgin English for error messages.
+- **Goal:** Simple, expressive scripting for learning and automation, with a Naija (Nigerian) flavor.
+- **Audience:** Rust developers, language hackers, and contributors.
+- **Philosophy:** Approachable, experimental, and open to breaking changes.
 
-## Architecture
+## Architecture (How it Works)
 
 ```
 Source Code → Lexer → Parser → AST → Interpreter → Output
 ```
 
-- **Lexer**: Tokenizes input, supports multi-word keywords, and provides error diagnostics.
-- **Parser**: Builds an AST using recursive descent and Pratt parsing for expressions.
-- **Interpreter**: Walks the AST, manages variable scopes, and executes statements.
+- **Lexer:** Tokenizes input, supports multi-word keywords, gives Pidgin-English errors.
+- **Parser:** Builds AST with recursive descent and Pratt parsing for expressions.
+- **AST:** Strongly-typed Rust enums/structs for statements, expressions, and conditions.
+- **Interpreter:** Walks the AST, manages stack-based variable scopes, prints output.
 
-### Visual Overview
+## Key Design Points
+
+| Area          | Approach/Notes                                         |
+| ------------- | ------------------------------------------------------ |
+| Variables     | Stack of hashmaps (block scoping)                      |
+| Values        | Only `Number (f64)` for now; extensible for more types |
+| Error Msgs    | Pidgin English, with line/column context everywhere    |
+| Security      | No file/system access from scripts                     |
+| Testing       | Unit/integration/error-injection tests in codebase     |
+| Extensibility | AST/interpreter designed for new types and features    |
+
+## What’s Not Here (Yet)
+
+- Strings, booleans, arrays (planned)
+- User-defined functions
+- Advanced diagnostics
+- Optimizations for heavy computation
+
+## Contributing & Maintenance
+
+- This doc is version-controlled with the codebase.
+- Update it with any major design/code changes.
+- For deep rationale, see code comments and commit messages.
+
+## Visual: Data Flow
 
 ```mermaid
 graph TD;
@@ -29,50 +56,4 @@ graph TD;
     SourceCode --> Lexer --> Parser --> AST --> Interpreter --> Output
 ```
 
-## Design Considerations
-
-- **Simplicity**: Minimal features for easy onboarding and maintenance.
-- **Error Friendliness**: Pidgin English errors with line/column context.
-- **Extensibility**: AST and interpreter are designed for future data types and features.
-- **Startup Speed**: Prioritized over runtime performance.
-
-## Data Models
-
-- **Variables**: Stack-based scoping (vector of hashmaps).
-- **Values**: Only `Number (f64)` for now; future support for `String`, `Boolean`, `Array`.
-- **AST Nodes**: Strongly-typed Rust enums and structs.
-
-## Error Handling
-
-- **Contextual Messages**: All errors include line/column and are phrased in Pidgin English.
-- **Graceful Degradation**: Interpreter attempts to continue or provide actionable suggestions where possible.
-- **Edge Cases**: Handles division by zero, undefined variables, and invalid syntax robustly.
-
-## Security Considerations
-
-- **Sandboxing**: No file or system access from scripts.
-- **Input Validation**: Lexer and parser reject invalid or malicious input early.
-
-## Testing Approach
-
-- **Unit Tests**: For lexer, parser, and interpreter.
-- **Integration Tests**: End-to-end validation.
-- **Error Injection**: Ensures user-friendly error reporting.
-
-## Design Rationale
-
-- **Stack-Based Scoping**: Simplicity and block-structured language compatibility.
-- **Reference Counting**: Planned for future shared values.
-- **Pidgin English Errors**: Lowers intimidation for new programmers.
-- **Extensible AST**: Enables future language growth.
-
-## Limitations and Future Work
-
-- **Performance**: Not for compute-intensive workloads.
-- **Data Types**: Only numbers implemented; others planned.
-- **Diagnostics**: Advanced error reporting is a future goal.
-
-## Versioning and Maintenance
-
-- This document is version-controlled with the codebase.
-- Contributors must update it with significant design/code changes.
+_For details, see the code. For user docs, see [README](./README.md). For questions, open an issue or ask in discussions._
