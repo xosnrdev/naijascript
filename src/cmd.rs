@@ -34,13 +34,13 @@ pub enum CmdError<'a> {
 impl<'a> std::fmt::Display for CmdError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CmdError::Io(e) => write!(f, "Chai! I/O wahala: {e}"),
+            CmdError::Io(_) => write!(f, "I no see the file you wan run"),
             CmdError::Parse(e) => write!(f, "{e}"),
             CmdError::Interpreter(e) => write!(f, "{e}"),
             CmdError::InvalidScriptExtension(s) => {
                 write!(f, "Omo! Only .ns or .naija files dey allowed as script. You give me: {s}")
             }
-            CmdError::Other(msg) => write!(f, "Cmd wahala: {msg}"),
+            CmdError::Other(msg) => write!(f, "{msg}"),
         }
     }
 }
@@ -57,18 +57,27 @@ pub fn run() {
     let exit_code = if let Some(code) = cli.eval {
         match run_eval(&code) {
             Ok(()) => 0,
-            Err(_) => 1,
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
         }
     } else if let Some(script) = cli.script {
         if script == "-" {
             match run_stdin() {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => {
+                    eprintln!("{e}");
+                    1
+                }
             }
         } else {
             match run_script(&script) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => {
+                    eprintln!("{e}");
+                    1
+                }
             }
         }
     } else if cli.interactive {
@@ -77,10 +86,12 @@ pub fn run() {
             Err(_) => 1,
         }
     } else if !atty::is(atty::Stream::Stdin) {
-        // If stdin is not a tty, read from stdin
         match run_stdin() {
             Ok(()) => 0,
-            Err(_) => 1,
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
         }
     } else {
         println!("No input provided. Use --help for usage.");
