@@ -8,7 +8,7 @@ use crate::syntax::Lexer;
 use crate::syntax::parser::{ParseError, Parser};
 
 #[derive(Debug, ClapParser)]
-#[command(about, version, styles = CLAP_STYLING)]
+#[command(about, version, styles = CLAP_STYLING, arg_required_else_help = true)]
 struct Cli {
     /// Script file to run
     pub script: Option<String>,
@@ -94,7 +94,6 @@ pub fn run() {
             }
         }
     } else {
-        println!("No input provided. Use --help for usage.");
         1
     };
     std::process::exit(exit_code);
@@ -198,4 +197,10 @@ fn run_stdin() -> CmdResult<'static, ()> {
         }
         Err(e) => Err(CmdError::Other(e.to_string())),
     }
+}
+
+#[test]
+fn verify_cli() {
+    use clap::CommandFactory;
+    Cli::command().debug_assert();
 }
