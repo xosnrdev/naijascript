@@ -132,26 +132,40 @@ fn run_repl<'a>() -> CmdResult<'a, ()> {
         print!("> ");
         stdout.flush().ok();
         let mut line = String::new();
-        if stdin.read_line(&mut line).is_err() || line.trim() == "exit" {
-            println!("Oya, bye bye!");
-            break;
-        }
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        // Box::leak is used here to give the input a 'static lifetime for the parser.
-        // This is safe in a REPL since the process is short-lived and input is small.
-        let input = trimmed.to_owned().into_boxed_str();
-        let static_input: &'static str = Box::leak(input);
-        let mut parser = Parser::new(Lexer::new(static_input));
-        match parser.parse_program() {
-            Ok(program) => {
-                if let Err(e) = interpreter.eval_program(&program) {
-                    eprintln!("{e}");
+        // Fix: handle EOF (Ctrl+D) by checking if read_line returns 0
+        let n = stdin.read_line(&mut line);
+        match n {
+            Ok(0) => {
+                println!("Oya, bye bye!");
+                break;
+            }
+            Ok(_) if line.trim() == "exit" => {
+                println!("Oya, bye bye!");
+                break;
+            }
+            Ok(_) => {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                // Box::leak is used here to give the input a 'static lifetime for the parser.
+                // This is safe in a REPL since the process is short-lived and input is small.
+                let input = trimmed.to_owned().into_boxed_str();
+                let static_input: &'static str = Box::leak(input);
+                let mut parser = Parser::new(Lexer::new(static_input));
+                match parser.parse_program() {
+                    Ok(program) => {
+                        if let Err(e) = interpreter.eval_program(&program) {
+                            eprintln!("{e}");
+                        }
+                    }
+                    Err(e) => eprintln!("{e}"),
                 }
             }
-            Err(e) => eprintln!("{e}"),
+            Err(_) => {
+                println!("Oya, bye bye!");
+                break;
+            }
         }
     }
     Ok(())
