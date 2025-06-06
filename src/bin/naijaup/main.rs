@@ -69,7 +69,7 @@ fn run() -> Result<(), String> {
         Commands::Install { version } => {
             let vdir = versions_dir().join(version);
             if vdir.exists() {
-                // Avoid redundant downloads; user already has this version.
+                // We avoid redundant downloads here to save bandwidth and time for the user, and to ensure idempotency of repeated install commands.
                 println!("Version {version} don already dey your system.");
             } else {
                 fs::create_dir_all(&vdir).map_err(|e| e.to_string())?;
@@ -81,7 +81,7 @@ fn run() -> Result<(), String> {
         Commands::Default { version } => {
             let vdir = versions_dir().join(version);
             if !vdir.exists() {
-                // Prevent user from setting a default to a non-installed version.
+                // This check prevents the user from setting a default to a version that isn't installed, which would break determinism and could cause confusing errors later.
                 return Err(format!(
                     "Oga, you never install version {version} yet. Run 'naijaup install {version}' first."
                 ));
@@ -90,12 +90,13 @@ fn run() -> Result<(), String> {
             if let Some(parent) = conf.parent() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
-            // Overwrite config with new default; only one default is supported.
+            // We overwrite the config here because only one default version is ever supported
+            // This avoids ambiguity and ensures deterministic toolchain selection for the user.
             fs::write(&conf, format!("default = \"{version}\"\n")).map_err(|e| e.to_string())?;
             println!("I don set {version} as your default NaijaScript version");
         }
         Commands::Run { script, args } => {
-            // Always resolve the toolchain version before running.
+            // Resolving the toolchain version here ensures deterministic execution and prevents accidental use of the wrong version, especially in CI or scripting scenarios where implicit defaults could cause subtle, hard-to-debug issues.
             let version = find_toolchain_version().ok_or_else(||
                 "Oga, I no sabi which NaijaScript version to use. Set default or add .naijascript-toolchain.".to_string()
             )?;
@@ -105,7 +106,7 @@ fn run() -> Result<(), String> {
                 "naija"
             });
             if !bin.exists() {
-                // User may have deleted the version manually; prompt to reinstall.
+                // This handles the edge case where a user manually deletes a version directory, ensuring we don't try to run a missing binary and instead provide a clear recovery path.
                 return Err(format!(
                     "Wahala! I no see NaijaScript version {version} for your system. Run 'naijaup install {version}' first."
                 ));
@@ -129,7 +130,7 @@ fn run() -> Result<(), String> {
         Commands::Uninstall { version } => {
             let vdir = versions_dir().join(version);
             if !vdir.exists() {
-                // Nothing to do if version is not installed.
+                // Early return here ensures idempotency: uninstalling a non-existent version is a no-op, not an error, which matches user expectations and avoids unnecessary failure states.
                 println!("Oga, version {version} no dey your system.");
                 return Ok(());
             }
@@ -137,7 +138,7 @@ fn run() -> Result<(), String> {
             if let Some(def) = default_version
                 && def == *version
             {
-                // Prevent user from uninstalling the default version, which would break 'run'.
+                // Preventing removal of the default version avoids breaking the user's workflow and ensures that 'run' always has a valid toolchain to use.
                 println!(
                     "You wan uninstall your default version ({version})? Set another default first."
                 );
@@ -226,15 +227,15 @@ fn config_file() -> PathBuf {
 
 // We use Cow here to allow for both borrowed and owned version strings, avoiding leaks and unnecessary allocations.
 fn find_toolchain_version() -> Option<Cow<'static, str>> {
-    // 1. Prefer project-local toolchain override if present.
+    // The project-local toolchain override is checked first to allow per-project version pinning, which is critical for reproducible builds and team consistency.
     if let Ok(ver) = std::fs::read(".naijascript-toolchain")
         && let Some((start, end)) = find_non_whitespace(&ver)
         && let Ok(s) = std::str::from_utf8(&ver[start..end])
     {
-        // Always own the string to ensure 'static lifetime for downstream use.
+        // We always own the string here to guarantee 'static lifetime for downstream consumers, avoiding lifetime headaches and accidental use-after-free bugs.
         return Some(Cow::Owned(s.to_string()));
     }
-    // 2. Fallback to user config file for default version.
+    // If no project override, fallback to user config file for the default version. This ensures a global default is always available if no local override is set.
     if let Ok(cfg) = std::fs::read(config_file())
         && let Ok(cfg_str) = std::str::from_utf8(&cfg)
     {
@@ -242,13 +243,13 @@ fn find_toolchain_version() -> Option<Cow<'static, str>> {
             if let Some(rest) = line.strip_prefix("default = ") {
                 let rest = rest.trim_matches(['"', '\'', ' '].as_ref());
                 if !rest.is_empty() {
-                    // Config may contain whitespace or quotes; we sanitize here.
+                    // We sanitize here to handle edge cases where config may contain whitespace or quotes, which could otherwise break version parsing.
                     return Some(Cow::Owned(rest.to_string()));
                 }
             }
         }
     }
-    // No version found; caller must handle this case.
+    // No version found; caller must handle this case. This design makes the absence of a version explicit and forces the caller to decide how to handle it.
     None
 }
 
@@ -297,6 +298,7 @@ fn print_removal_result(result: std::io::Result<()>, path: &Path) {
     match result {
         Ok(_) => println!("I don comot: {}", path.display()),
         Err(_) => {
+            // This message highlights the edge case where file or directory removal fails, which may require manual intervention due to permissions or OS locks.
             println!("Omo, I no fit comot {} (abeg try remove am by yourself)", path.display())
         }
     }
@@ -330,8 +332,8 @@ fn self_uninstall(yes: bool) -> Result<(), String> {
 }
 
 fn fetch_available_versions() -> Result<Vec<String>, String> {
-    // We parse the GitHub releases API response as plain text for performance and minimal dependencies.
-    // This is fragile if GitHub changes their API, but avoids pulling in serde_json for a single field.
+    // We parse the GitHub releases API response as plain text for performance and minimal dependencies, trading off robustness for startup speed and binary size.
+    // This is fragile if GitHub changes their API, but avoids pulling in serde_json for a single field, which would increase compile times and binary size for little gain.
     let url = "https://api.github.com/repos/xosnrdev/naijascript/releases";
     let client = reqwest::blocking::Client::new();
     let resp = client
@@ -346,12 +348,12 @@ fn fetch_available_versions() -> Result<Vec<String>, String> {
     let versions = text
         .lines()
         .filter_map(|line| {
-            // We look for lines containing the tag_name field, which is how GitHub encodes release versions.
+            // We look for lines containing the tag_name field because that's how GitHub encodes release versions; this is a brittle but dependency-free approach.
             let tag = line.find("\"tag_name\": ")?;
             let start = line[tag..].find('"')? + tag + 1;
             let end = line[start..].find('"')? + start;
             let v = &line[start..end];
-            // Remove leading 'v' for consistency with local version naming.
+            // Remove leading 'v' for consistency with local version naming, since some releases may be tagged with a 'v' prefix and others may not.
             Some(v.trim_start_matches('v').to_string())
         })
         .collect();
