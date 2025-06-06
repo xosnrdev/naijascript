@@ -8,6 +8,8 @@ description = "A scripting language inspired by Naija (Nigerian) lingo — for l
 [dependencies]
 clap = { version = "4.5.39", features = ["derive"] }
 clap-cargo = { version = "0.15.2", features = ["clap"] }
+dirs = "6.0.0"
+reqwest = { version = "0.12.19", features = ["blocking"] }
 
 # We use `opt-level = "s"` as it significantly reduces binary size.
 [profile.release]
