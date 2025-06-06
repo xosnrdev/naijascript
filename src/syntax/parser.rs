@@ -258,7 +258,7 @@ fn infix_binding_power(op: &BinaryOp) -> (u8, u8) {
 mod tests {
     use super::*;
 
-    fn parse_ok(input: &str) -> Program {
+    fn parse_ok(input: &str) -> Program<'_> {
         let mut parser = Parser::new(Lexer::new(input));
         parser.parse_program().expect("parse success")
     }
