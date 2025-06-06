@@ -94,10 +94,8 @@ jobs:
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             7z a ${{ steps.binname.outputs.bin_name }}.zip ${{ steps.binname.outputs.bin_name }}
-            7z a ${{ steps.binname.outputs.bin_name }}.sha256.zip ${{ steps.binname.outputs.bin_name }}.sha256
           else
             tar -czf ${{ steps.binname.outputs.bin_name }}.tar.gz ${{ steps.binname.outputs.bin_name }}
-            tar -czf ${{ steps.binname.outputs.bin_name }}.sha256.tar.gz ${{ steps.binname.outputs.bin_name }}.sha256
           fi
         shell: bash
       - name: Set versioned artifact names
@@ -112,29 +110,24 @@ jobs:
           mv ${{ steps.binname.outputs.bin_name }} ${{ steps.version.outputs.bin_name_versioned }}
           mv ${{ steps.binname.outputs.bin_name }}.sha256 ${{ steps.version.outputs.bin_name_versioned }}.sha256
           if [ -f ${{ steps.binname.outputs.bin_name }}.tar.gz ]; then mv ${{ steps.binname.outputs.bin_name }}.tar.gz ${{ steps.version.outputs.bin_name_versioned }}.tar.gz; fi
-          if [ -f ${{ steps.binname.outputs.bin_name }}.sha256.tar.gz ]; then mv ${{ steps.binname.outputs.bin_name }}.sha256.tar.gz ${{ steps.version.outputs.bin_name_versioned }}.sha256.tar.gz; fi
           if [ -f ${{ steps.binname.outputs.bin_name }}.zip ]; then mv ${{ steps.binname.outputs.bin_name }}.zip ${{ steps.version.outputs.bin_name_versioned }}.zip; fi
-          if [ -f ${{ steps.binname.outputs.bin_name }}.sha256.zip ]; then mv ${{ steps.binname.outputs.bin_name }}.sha256.zip ${{ steps.version.outputs.bin_name_versioned }}.sha256.zip; fi
         shell: bash
       - name: Upload artifact
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.version.outputs.bin_name_versioned }}
           path: |
-            ${{ steps.version.outputs.bin_name_versioned }}
-            ${{ steps.version.outputs.bin_name_versioned }}.sha256
-            ${{ steps.version.outputs.bin_name_versioned }}.tar.gz
-            ${{ steps.version.outputs.bin_name_versioned }}.sha256.tar.gz
             ${{ steps.version.outputs.bin_name_versioned }}.zip
-            ${{ steps.version.outputs.bin_name_versioned }}.sha256.zip
-      # Optionally check for and handle duplicate artifacts before upload
-      # - name: Check for duplicate artifacts
-      #   run: |
-      #     if [ -f ${{ steps.version.outputs.bin_name_versioned }} ]; then
-      #       echo "Duplicate artifact detected: ${{ steps.version.outputs.bin_name_versioned }}"
-      #       exit 1
-      #     fi
-      #   shell: bash
+            ${{ steps.version.outputs.bin_name_versioned }}.sha256
+      - name: Upload artifact (Unix)
+        if: matrix.os != 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.bin_name_versioned }}
+          path: |
+            ${{ steps.version.outputs.bin_name_versioned }}.tar.gz
+            ${{ steps.version.outputs.bin_name_versioned }}.sha256
   release:
     name: Create GitHub Release
     needs: build
