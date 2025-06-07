@@ -1,0 +1,6 @@
+make x get 1
+if to say (x na 1) start
+    make x get 2
+    shout (x)
+end
+shout (x)

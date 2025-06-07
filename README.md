@@ -1,55 +1,61 @@
 # NaijaScript
 
-A scripting language inspired by Naija (Nigerian) lingo — for learning, automation, and fun.
+A scripting language for learning, automation, and fun with Naija (Nigerian) lingo.
 
-## What is NaijaScript?
+## Install
 
-NaijaScript is an experimental, expressive scripting language designed for Nigerians and anyone who loves Pidgin English. It aims to make programming more relatable and less intimidating, especially for beginners and educators.
+**POSIX (Linux/macOS):**
 
-> ⚠️ This project is experimental and subject to breaking changes as we learn and grow.
+```sh
+curl -fsSL https://raw.githubusercontent.com/xosnrdev/naijascript/main/scripts/install.sh | sh
+```
 
-## Features
+**Windows (PowerShell):**
 
-- Pidgin-English-based syntax and error messages
-- REPL, script file, and eval modes
-- Stack-based variable scoping
-- Contextual error reporting (line/column)
-- Designed for easy extension (strings, arrays, booleans coming soon)
+```powershell
+irm https://raw.githubusercontent.com/xosnrdev/naijascript/main/scripts/install.ps1 | iex
+```
+
+Or build from source:
+
+```sh
+cargo build --release
+```
+
+## Interpreter Setup
+
+```sh
+naijaup install latest
+```
 
 ## Usage
 
-**Run a script:**
+Run a script:
 
 ```sh
-cargo run -- example.ns
+naija examples/variables.ns
 ```
 
-**Start the REPL:**
+Start the REPL:
 
 ```sh
-cargo run -- --interactive
+naija --interactive
 ```
 
-**Eval a code snippet:**
+Eval a code snippet:
 
 ```sh
-cargo run -- --eval "make x get 5; shout ( x add 2 )"
+naija --eval "make x get 5; shout ( x add 2 )"
 ```
 
-**Pipe from stdin:**
+Pipe from stdin:
 
 ```sh
-echo "make x get 1" | cargo run -- -
+echo "make x get 1" | naija -
 ```
 
-## Example
+## Examples
 
-```naijascript
-make x get 5
-shout ( x add 2 )
-if to say ( x na 5 ) start
-    shout ( 100 )
-end
-```
+See [examples/](./examples) for runnable scripts.
 
-_For technical details, see [DESIGN.md](./DESIGN.md)._
+For technical and contributor details, see [docs/DESIGN.md](./docs/DESIGN.md).

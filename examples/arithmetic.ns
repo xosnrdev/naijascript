@@ -1,0 +1,6 @@
+make a get 8
+make b get 2
+shout (a add b)
+shout (a minus b)
+shout (a times b)
+shout (a divide b)
