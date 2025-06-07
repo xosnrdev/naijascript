@@ -1,70 +1,34 @@
-# NaijaScript Interpreter – Design Document
+# NaijaScript Interpreter – Design Philosophy
 
-> **Audience:** Contributors and maintainers.  
-> **Purpose:** Technical design summary for NaijaScript’s interpreter and toolchain.  
-> **Scope:** Architecture, key decisions, extensibility, and maintenance.
+> **Audience:** Contributors and language designers.
+> **Purpose:** Explain the guiding philosophy and architectural principles behind NaijaScript.
 
-## 1. Architecture Overview
+## Philosophy
 
-```mermaid
-graph TD;
-    SourceCode[Source Code]
-    Lexer[Lexer]
-    Parser[Parser]
-    AST[AST]
-    Interpreter[Interpreter]
-    Output[Output]
-    SourceCode --> Lexer --> Parser --> AST --> Interpreter --> Output
-```
+NaijaScript is designed to make programming more accessible and relatable for Nigerians and Pidgin English speakers. The language and its interpreter are intentionally simple, prioritizing learnability, expressiveness, and cultural relevance.
 
-- **Lexer:** Tokenizes input, supports multi-word keywords, Pidgin-English errors.
-- **Parser:** Builds AST via recursive descent and Pratt parsing.
-- **AST:** Strongly-typed Rust enums/structs for statements, expressions, conditions.
-- **Interpreter:** Walks AST, manages stack-based variable scopes, prints output.
+- **Approachability:** Informed by research on the sociolinguistic status and educational impact of Pidgin English in Nigeria (see [Onyejelem, 2020](https://academicjournals.org/journal/IJEL/article-full-text/1F0EB5564993)), which highlights Pidgin's role as a lingua franca and its deep cultural roots. While Pidgin English can lower barriers to communication, its habitual use in education can affect mastery of standard English, suggesting the value of localized programming for engagement but also the need for careful curriculum design.
+- **Experimentation:** The project is open to breaking changes and rapid iteration, following the philosophy of “learning by doing.”
 
-## 2. Key Design Decisions
+## Interpreter Architecture
 
-| Area          | Approach/Notes                                         |
-| ------------- | ------------------------------------------------------ |
-| Variables     | Stack of hashmaps (block scoping)                      |
-| Values        | Only `Number (f64)` for now; extensible for more types |
-| Error Msgs    | Pidgin English, with line/column context everywhere    |
-| Security      | No file/system access from scripts                     |
-| Testing       | Unit/integration/error-injection tests in codebase     |
-| Extensibility | AST/interpreter designed for new types and features    |
+NaijaScript uses a **tree-walk interpreter** architecture, where source code is parsed into an Abstract Syntax Tree (AST), and the interpreter recursively evaluates the AST nodes.
 
-> **Why:** Simplicity, safety, and a fun, approachable learning tool.
+- **Recursive Evaluation:** Each AST node is visited and evaluated using a functional visitor pattern, as described in [Crafting Interpreters](https://craftinginterpreters.com/).
+- **Block Scoping:** Variable environments are managed as a stack of hashmaps, supporting block-local variables and shadowing.
+- **Error Reporting:** All errors are surfaced in Pidgin English, with contextual line/column information, inspired by user-first error design.
+- **Extensibility:** The AST and interpreter are designed to be easily extended with new value types and control flow constructs, following best practices from scripting language research.
 
-## 3. Extensibility & Limitations
+## Design Rationale
 
-**Not yet supported:**
+- **Why Tree-Walk?**  
+  Tree-walk interpreters are easy to implement, debug, and extend, making them ideal for experimental and educational languages ([Crafting Interpreters](https://craftinginterpreters.com/)).
+- **Why Pidgin English?**  
+  Pidgin English is the most widely spoken language code in Nigeria, serving as a lingua franca and a marker of identity and solidarity ([Onyejelem, 2020](https://academicjournals.org/journal/IJEL/article-full-text/1F0EB5564993)). Using local language lowers the barrier to entry and makes programming more inclusive, but must be balanced with educational outcomes.
+- **Why Block Scoping?**  
+  Block scoping is familiar from modern languages and supports safe, predictable variable lifetimes.
 
-- Strings, booleans, arrays
-- User-defined functions
-- Advanced diagnostics
-- Optimizations for heavy computation
+## Further Reading
 
-**Extending:**
-
-- To add a new value type or AST node, update `src/syntax/ast.rs` and extend the interpreter logic in `src/interpreter.rs`.
-
-## 4. Testing & Quality
-
-- Tests are in the codebase (see `src/` and `examples/`).
-- Run all tests with `cargo test`.
-- Example scripts can be run via the interpreter.
-
-## 5. Contribution & Maintenance
-
-- This doc is version-controlled with the codebase.
-- Update with any major design/code changes.
-- For deeper rationale, see code comments and commit messages.
-- For questions, open an issue or start a discussion.
-
-## 6. References
-
-- [src/syntax/ast.rs](../src/syntax/ast.rs) – AST definitions
-- [src/interpreter.rs](../src/interpreter.rs) – Interpreter logic
-- [examples/](../examples/) – Example scripts
-
-_For questions, open an issue or discussion._
+- [Crafting Interpreters by Bob Nystrom](https://craftinginterpreters.com/)
+- [Onyejelem, P. O. (2020). The influence of Pidgin English on educational outcomes among secondary school students in Nigeria. International Journal of English and Literature, 11(3), 46-52.](https://academicjournals.org/journal/IJEL/article-full-text/1F0EB5564993)
