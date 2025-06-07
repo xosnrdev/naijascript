@@ -16,12 +16,6 @@ curl -fsSL https://raw.githubusercontent.com/xosnrdev/naijascript/main/scripts/i
 irm https://raw.githubusercontent.com/xosnrdev/naijascript/main/scripts/install.ps1 | iex
 ```
 
-Or build from source:
-
-```sh
-cargo build --release
-```
-
 ## Interpreter Setup
 
 ```sh
@@ -33,7 +27,7 @@ naijaup install latest
 Run a script:
 
 ```sh
-naija examples/variables.ns
+naija example.ns
 ```
 
 Start the REPL:
