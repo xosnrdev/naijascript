@@ -16,7 +16,7 @@ NaijaScript uses a **tree-walk interpreter** architecture, where source code is 
 
 - **Recursive Evaluation:** Each AST node is visited and evaluated using a functional visitor pattern, as described in [Crafting Interpreters](https://craftinginterpreters.com/).
 - **Block Scoping:** Variable environments are managed as a stack of hashmaps, supporting block-local variables and shadowing.
-- **Error Reporting:** All errors are surfaced in Pidgin English, with contextual line/column information, inspired by user-first error design.
+- **Error Reporting:** All errors are surfaced in Pidgin English, with contextual line/column information, inspired by [rustc diagnostics infra](https://rustc-dev-guide.rust-lang.org/diagnostics.html).
 - **Extensibility:** The AST and interpreter are designed to be easily extended with new value types and control flow constructs, following best practices from scripting language research.
 
 ## Design Rationale
