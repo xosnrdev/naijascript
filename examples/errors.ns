@@ -1,0 +1,3 @@
+make x get 5
+shout (y)
+make z get x divide 0
