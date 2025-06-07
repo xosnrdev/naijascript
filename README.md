@@ -7,13 +7,13 @@ A scripting language for learning, automation, and fun with Naija (Nigerian) lin
 **POSIX (Linux/macOS):**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/xosnrdev/naijascript/main/scripts/install.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/xosnrdev/naijascript/main/scripts/install.sh | sh
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/xosnrdev/naijascript/main/scripts/install.ps1 | iex
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/xosnrdev/naijascript/main/scripts/install.ps1 | iex"
 ```
 
 ## Interpreter Setup
