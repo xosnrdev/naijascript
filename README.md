@@ -7,45 +7,47 @@ A scripting language for learning, automation, and fun with Naija (Nigerian) lin
 **POSIX (Linux/macOS):**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/xosnrdev/naijascript/main/scripts/install.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.sh | sh
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/xosnrdev/naijascript/main/scripts/install.ps1 | iex
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.ps1 | iex"
 ```
 
 ## Interpreter Setup
 
 ```sh
-naijaup install latest
+naijaup install 0.1.0
 ```
+
+You can also download binaries from [the Releases page](https://github.com/xosnrdev/naijascript/releases/latest).
 
 ## Usage
 
 Run a script:
 
 ```sh
-naija example.ns
+~/.naijaup/versions/0.1.0/naija your_script.ns
 ```
 
 Start the REPL:
 
 ```sh
-naija --interactive
+~/.naijaup/versions/0.1.0/naija --interactive
 ```
 
 Eval a code snippet:
 
 ```sh
-naija --eval "make x get 5; shout ( x add 2 )"
+~/.naijaup/versions/0.1.0/naija --eval "make x get 5; shout ( x add 2 )"
 ```
 
 Pipe from stdin:
 
 ```sh
-echo "make x get 1" | naija -
+echo "make x get 1" | ~/.naijaup/versions/0.1.0/naija -
 ```
 
 ## Examples

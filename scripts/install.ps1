@@ -36,15 +36,16 @@ Write-Host "I dey download $bin..."
 Invoke-WebRequest -Uri $assetUrl -OutFile "$bin-$tag.zip"
 Invoke-WebRequest -Uri $shaUrl -OutFile "$bin-$tag.sha256"
 
-# --- Verify Checksum ---
+# --- Extract Archive ---
+Expand-Archive "$bin-$tag.zip" -DestinationPath .
+
+# --- Verify Checksum of Extracted Binary ---
 Write-Host "I dey check say file correct..."
 $expected = (Get-Content "$bin-$tag.sha256").Split(' ')[0]
-$actual = (Get-FileHash "$bin-$tag.zip" -Algorithm SHA256).Hash.ToLower()
+$actual = (Get-FileHash naijaup.exe -Algorithm SHA256).Hash.ToLower()
 if ($expected -ne $actual) {
   Write-Error "Omo! Checksum no match. No try run am o."; exit 1
 }
-
-Expand-Archive "$bin-$tag.zip" -DestinationPath .
 
 # --- Install ---
 $installDir = "$env:USERPROFILE\.naijascript\bin"
@@ -60,8 +61,15 @@ try {
   Write-Error "E get as e be. Naijaup no run. Check your PATH or try again."; exit 1
 }
 
-if (-not ($env:PATH -split ';' | Where-Object { $_ -eq $installDir })) {
-  Write-Host "Oga, your PATH no get $installDir. Add am to your PATH to fit run 'naijaup' anywhere."
+# --- Ensure $installDir is in User PATH permanently ---
+$path = [System.Environment]::GetEnvironmentVariable("Path", "User")
+$paths = $path -split ';'
+if ($paths -notcontains $installDir) {
+  $newPath = if ($path -and $path.Trim() -ne "") { $path + ";" + $installDir } else { $installDir }
+  [System.Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+  Write-Host "Oga, I don add $installDir to your user PATH permanently. Restart your terminal to use 'naijaup' anywhere."
+} else {
+  Write-Host "$installDir already dey your PATH."
 }
 
 Write-Host "If you wan install NaijaScript interpreter, run: naijaup install latest"

@@ -6,113 +6,134 @@ on:
       - "v*"
   workflow_dispatch:
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   build:
-    name: Build and Release Binaries
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        bin_target: [naijaup, naija]
-        os: [ubuntu-latest, macos-latest, windows-latest]
         include:
-          - os: ubuntu-latest
+          # Linux
+          - bin_target: naijaup
+            os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
+          - bin_target: naijaup
+            os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-          - os: macos-latest
+          - bin_target: naija
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - bin_target: naija
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          # macOS
+          - bin_target: naijaup
+            os: macos-latest
             target: x86_64-apple-darwin
-          - os: macos-latest
+          - bin_target: naijaup
+            os: macos-latest
             target: aarch64-apple-darwin
-          - os: windows-latest
+          - bin_target: naija
+            os: macos-latest
+            target: x86_64-apple-darwin
+          - bin_target: naija
+            os: macos-latest
+            target: aarch64-apple-darwin
+          # Windows (x86_64 only)
+          - bin_target: naijaup
+            os: windows-latest
             target: x86_64-pc-windows-msvc
-        exclude:
-          - os: windows-latest
-            target: aarch64-unknown-linux-gnu
-          - os: macos-latest
-            target: aarch64-unknown-linux-gnu
+          - bin_target: naija
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install Rust toolchain
         run: |
-          rustup toolchain install stable --no-self-update --profile minimal --component rust-src
-          rustup default stable
+          rustup toolchain install nightly --no-self-update --profile minimal
           rustup target add ${{ matrix.target }}
-      - name: Install cross (for Linux aarch64)
+      - name: Install cross toolchain and sysroot for aarch64-unknown-linux-gnu
         if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
       - name: Build release binary
         run: |
-          export RUSTFLAGS="-D warnings"
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
-            cross build --release --target ${{ matrix.target }} --bin ${{ matrix.bin_target }}
-          else
-            cargo build --release --target ${{ matrix.target }} --bin ${{ matrix.bin_target }}
-          fi
+          cargo build --release --target ${{ matrix.target }} --bin ${{ matrix.bin_target }}
       - name: Set bin_name
         id: binname
+        shell: bash
         run: |
-          EXT=""
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then EXT=".exe"; fi
-          PLATFORM=""
           case "${{ matrix.os }}" in
-            ubuntu-latest) PLATFORM="linux";;
-            macos-latest) PLATFORM="macos";;
-            windows-latest) PLATFORM="windows";;
+            ubuntu-latest)   PLATFORM=linux ;;
+            macos-latest)    PLATFORM=macos ;;
+            windows-latest)  PLATFORM=windows ;;
+            *)               echo "Unknown OS"; exit 1 ;;
           esac
-          ARCH=""
+
           case "${{ matrix.target }}" in
-            x86_64-unknown-linux-gnu) ARCH="x86_64";;
-            aarch64-unknown-linux-gnu) ARCH="aarch64";;
-            x86_64-apple-darwin) ARCH="x86_64";;
-            aarch64-apple-darwin) ARCH="aarch64";;
-            x86_64-pc-windows-msvc) ARCH="x86_64";;
+            x86_64-unknown-linux-gnu|x86_64-apple-darwin|x86_64-pc-windows-msvc) ARCH=x86_64 ;;
+            aarch64-unknown-linux-gnu|aarch64-apple-darwin) ARCH=aarch64 ;;
+            *) echo "Unknown target"; exit 1 ;;
           esac
+
+          EXT=""
+          if [ "$PLATFORM" = "windows" ]; then EXT=".exe"; fi
+
           BIN_NAME="${{ matrix.bin_target }}-$PLATFORM-$ARCH$EXT"
           echo "bin_name=$BIN_NAME" >> $GITHUB_OUTPUT
-        shell: bash
       - name: Rename binary
-        run: |
-          BIN_NAME=${{ matrix.bin_target }}
-          BIN=$BIN_NAME
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            BIN="$BIN_NAME.exe"
-          fi
-          mv target/${{ matrix.target }}/release/$BIN ${{ steps.binname.outputs.bin_name }}
         shell: bash
-      - name: Generate checksum
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            certutil -hashfile ${{ steps.binname.outputs.bin_name }} SHA256 | findstr /v "hash" | findstr /r /v "^$" > ${{ steps.binname.outputs.bin_name }}.sha256
-          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
-            shasum -a 256 ${{ steps.binname.outputs.bin_name }} > ${{ steps.binname.outputs.bin_name }}.sha256
-          else
-            sha256sum ${{ steps.binname.outputs.bin_name }} > ${{ steps.binname.outputs.bin_name }}.sha256
-          fi
-        shell: bash
+          mv target/${{ matrix.target }}/release/${{ matrix.bin_target }}$(if [ "${{ matrix.os }}" = "windows-latest" ]; then echo ".exe"; fi) ${{ steps.binname.outputs.bin_name }}
       - name: Compress artifact
+        shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            7z a ${{ steps.binname.outputs.bin_name }}.zip ${{ steps.binname.outputs.bin_name }}
+            cp ${{ steps.binname.outputs.bin_name }} ${{ matrix.bin_target }}.exe
+            7z a ${{ steps.binname.outputs.bin_name }}.zip ${{ matrix.bin_target }}.exe
+            rm ${{ matrix.bin_target }}.exe
           else
-            tar -czf ${{ steps.binname.outputs.bin_name }}.tar.gz ${{ steps.binname.outputs.bin_name }}
+            cp ${{ steps.binname.outputs.bin_name }} ${{ matrix.bin_target }}
+            tar -czf ${{ steps.binname.outputs.bin_name }}.tar.gz ${{ matrix.bin_target }}
+            rm ${{ matrix.bin_target }}
           fi
-        shell: bash
+      - name: Generate checksum (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          7z x ${{ steps.binname.outputs.bin_name }}.zip
+          $hash = Get-FileHash .\${{ matrix.bin_target }}.exe -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+          "$hash  ${{ matrix.bin_target }}.exe" | Set-Content "${{ steps.binname.outputs.bin_name }}.sha256"
+          Remove-Item .\${{ matrix.bin_target }}.exe
+      - name: Generate checksum (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          tar -xzf ${{ steps.binname.outputs.bin_name }}.tar.gz
+          shasum -a 256 ${{ matrix.bin_target }} > ${{ steps.binname.outputs.bin_name }}.sha256
+          rm ${{ matrix.bin_target }}
+      - name: Generate checksum (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          tar -xzf ${{ steps.binname.outputs.bin_name }}.tar.gz
+          sha256sum ${{ matrix.bin_target }} > ${{ steps.binname.outputs.bin_name }}.sha256
+          rm ${{ matrix.bin_target }}
       - name: Set versioned artifact names
         id: version
+        shell: bash
         run: |
           VERSION=${GITHUB_REF##*/}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "bin_name_versioned=${{ steps.binname.outputs.bin_name }}-$VERSION" >> $GITHUB_OUTPUT
-        shell: bash
       - name: Rename versioned artifacts
+        shell: bash
         run: |
           mv ${{ steps.binname.outputs.bin_name }} ${{ steps.version.outputs.bin_name_versioned }}
           mv ${{ steps.binname.outputs.bin_name }}.sha256 ${{ steps.version.outputs.bin_name_versioned }}.sha256
           if [ -f ${{ steps.binname.outputs.bin_name }}.tar.gz ]; then mv ${{ steps.binname.outputs.bin_name }}.tar.gz ${{ steps.version.outputs.bin_name_versioned }}.tar.gz; fi
           if [ -f ${{ steps.binname.outputs.bin_name }}.zip ]; then mv ${{ steps.binname.outputs.bin_name }}.zip ${{ steps.version.outputs.bin_name_versioned }}.zip; fi
-        shell: bash
-      - name: Upload artifact
+      - name: Upload artifact (Windows)
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
@@ -129,16 +150,15 @@ jobs:
             ${{ steps.version.outputs.bin_name_versioned }}.tar.gz
             ${{ steps.version.outputs.bin_name_versioned }}.sha256
   release:
-    name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
-      - name: Display structure
-        run: ls -R dist
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:

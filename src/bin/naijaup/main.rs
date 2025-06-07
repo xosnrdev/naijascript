@@ -13,6 +13,7 @@ const REPO: &str = "xosnrdev/naijascript";
 #[command(
     version,
     about = "Toolchain manager for NaijaScript",
+    display_name = "naijaup",
     styles = CLAP_STYLING
 )]
 struct Cli {

@@ -13,8 +13,18 @@ env:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
     steps:
+      # The Windows runners have autocrlf enabled by default.
+      - name: Disable git autocrlf
+        run: git config --global core.autocrlf false
+        if: matrix.os == 'windows-latest'
       - name: Checkout
         uses: actions/checkout@v4
       # https://github.com/actions/cache/blob/main/examples.md#rust---cargo

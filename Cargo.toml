@@ -3,7 +3,7 @@ name = "naijascript"
 version = "0.1.0"
 edition = "2024"
 authors = ["Success Kingsley <xosnrdev@gmail.com>"]
-description = "A scripting language inspired by Naija (Nigerian) lingo — for learning, automation, and fun."
+description = "A scripting language for learning, automation, and fun with Naija (Nigerian) lingo."
 
 [dependencies]
 clap = { version = "4.5.39", features = ["derive"] }
@@ -13,6 +13,9 @@ flate2 = "1.1.1"
 reqwest = { version = "0.12.19", features = ["blocking"] }
 tar = "0.4.44"
 zip = "4.0.0"
+
+[target.aarch64-unknown-linux-gnu.dependencies]
+openssl = { version = "0.10.73", features = ["vendored"] }
 
 # We use `opt-level = "s"` as it significantly reduces binary size.
 [profile.release]
