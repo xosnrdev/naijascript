@@ -549,11 +549,9 @@ fn fetch_available_versions(client: &reqwest::blocking::Client) -> Result<Vec<St
 
 // Create a symlink for the default 'naija' binary to enable running 'naija' from anywhere in the shell.
 fn update_default_symlink(version: &str) -> Result<(), String> {
-    let (os, _arch) = get_platform();
-    let bin_name = if os == "windows" { "naija.exe" } else { "naija" };
     let norm_version = normalize_version(version);
     let vdir = versions_dir().join(&norm_version);
-    let bin_path = vdir.join(bin_name);
+    let bin_path = vdir.join(bin_name());
     if !bin_path.exists() {
         // Avoid creating a symlink to a missing binary, which would break the user's PATH and lead to hard-to-debug errors.
         return Err(format!("Wahala! I no see binary for version {norm_version}."));
