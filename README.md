@@ -19,7 +19,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/xos
 ## Interpreter Setup
 
 ```sh
-naijaup install 0.1.0
+naijaup install latest
 ```
 
 You can also download binaries from [the Releases page](https://github.com/xosnrdev/naijascript/releases/latest).
@@ -29,25 +29,25 @@ You can also download binaries from [the Releases page](https://github.com/xosnr
 Run a script:
 
 ```sh
-~/.naijaup/versions/0.1.0/naija your_script.ns
+naija your_script.ns
 ```
 
 Start the REPL:
 
 ```sh
-~/.naijaup/versions/0.1.0/naija --interactive
+naija --interactive
 ```
 
 Eval a code snippet:
 
 ```sh
-~/.naijaup/versions/0.1.0/naija --eval "make x get 5; shout ( x add 2 )"
+naija --eval "make x get 5; shout ( x add 2 )"
 ```
 
 Pipe from stdin:
 
 ```sh
-echo "make x get 1" | ~/.naijaup/versions/0.1.0/naija -
+echo "make x get 1" | naija -
 ```
 
 ## Examples
