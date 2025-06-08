@@ -111,7 +111,7 @@ fn installed_versions() -> Vec<String> {
         Ok(entries) => {
             entries.flatten().map(|entry| entry.file_name().to_string_lossy().to_string()).collect()
         }
-        Err(_) => vec![],
+        Err(_) => Vec::new(),
     }
 }
 
