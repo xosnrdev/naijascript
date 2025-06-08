@@ -87,7 +87,6 @@ fn main() {
     }
 }
 
-// --- Utility Helpers ---
 fn ensure_dir_exists(path: &Path) -> Result<(), String> {
     if !path.exists() {
         fs::create_dir_all(path).map_err(report_err!("Wahala! I no fit create directory"))?;
