@@ -96,12 +96,35 @@ fn ensure_dir_exists(path: &Path) -> Result<(), String> {
 }
 
 fn remove_if_exists(path: &Path) -> Result<(), String> {
-    if path.exists() {
-        if path.is_dir() {
-            fs::remove_dir_all(path).map_err(report_err!("Wahala! I no fit remove directory"))?;
+    // Strip trailing slashes to avoid ENOTDIR errors on symlink removal (Unix).
+    let path_buf;
+    let path = {
+        let s = path.as_os_str().to_string_lossy();
+        let trimmed = s.trim_end_matches(['/', '\\']);
+        if trimmed.len() == s.len() {
+            path
         } else {
-            fs::remove_file(path).map_err(report_err!("Wahala! I no fit remove file"))?;
+            path_buf = PathBuf::from(trimmed);
+            &path_buf
         }
+    };
+    // Use symlink_metadata, not exists(), so broken symlinks are not missed.
+    let meta = match fs::symlink_metadata(path) {
+        Ok(m) => m,
+        Err(_) => {
+            // If metadata fails, the path truly does not exist (not even as a broken symlink)
+            return Ok(());
+        }
+    };
+    let ft = meta.file_type();
+    // Always use remove_file for symlinks to avoid following the link.
+    if ft.is_symlink() {
+        fs::remove_file(path).map_err(report_err!("Wahala! I no fit remove symlink"))?;
+    } else if ft.is_dir() {
+        // Only use remove_dir_all for real directories, never for symlinks.
+        fs::remove_dir_all(path).map_err(report_err!("Wahala! I no fit remove directory"))?;
+    } else {
+        fs::remove_file(path).map_err(report_err!("Wahala! I no fit remove file"))?;
     }
     Ok(())
 }
@@ -526,6 +549,23 @@ fn self_uninstall(yes: bool) -> Result<(), String> {
         }
     }
     print_removal_result(fs::remove_dir_all(&home), &home);
+    // Drop dangling symlinks to `naija` binary BEFORE removing the executable.
+    #[cfg(unix)]
+    {
+        if let Some(home) = dirs::home_dir() {
+            let symlink_path = home.join(".local/bin/naija");
+            let result = remove_if_exists(&symlink_path).map_err(std::io::Error::other);
+            print_removal_result(result, &symlink_path);
+        }
+    }
+    #[cfg(windows)]
+    {
+        if let Some(home) = dirs::home_dir() {
+            let symlink_path = home.join(r".naijaup\bin\naija.exe");
+            let result = remove_if_exists(&symlink_path).map_err(std::io::Error::other);
+            print_removal_result(result, &symlink_path);
+        }
+    }
     print_removal_result(fs::remove_file(&exe), &exe);
     print_success!("E don finish! Naijaup and all NaijaScript don comot.");
     Ok(())
