@@ -18,11 +18,21 @@ powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/xos
 
 ## Interpreter Setup
 
-```sh
-naijaup install latest
-```
+To set up the NaijaScript interpreter:
 
-You can also download binaries from [the Releases page](https://github.com/xosnrdev/naijascript/releases/latest).
+1. **Install the latest version using `naijaup`:**
+
+   ```sh
+   naijaup install latest
+   ```
+
+2. **Set the latest version as the default:**
+
+   ```sh
+   naijaup default latest
+   ```
+
+Alternatively, you can manually download pre-built binaries from the [Releases page](https://github.com/xosnrdev/naijascript/releases/latest).
 
 ## Usage
 
@@ -41,13 +51,13 @@ naija --interactive
 Eval a code snippet:
 
 ```sh
-naija --eval "make x get 5; shout ( x add 2 )"
+naija --eval "make x get 5 shout ( x add 2 )"
 ```
 
 Pipe from stdin:
 
 ```sh
-echo "make x get 1" | naija -
+echo "make x get 5 shout ( x add 2 )" | naija -
 ```
 
 ## Examples
