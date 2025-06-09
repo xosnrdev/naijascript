@@ -8,14 +8,19 @@ use crate::syntax::Lexer;
 use crate::syntax::parser::{ParseError, Parser};
 
 #[derive(Debug, ClapParser)]
-#[command(about, version, styles = CLAP_STYLING, arg_required_else_help = true)]
+#[command(
+    about = "Scripting language wey you fit use learn, run things, and catch cruise.",
+    version,
+    styles = CLAP_STYLING,
+    arg_required_else_help = true
+)]
 struct Cli {
-    /// Script file to run
+    /// Script file wey you wan run, e.g. naija script.ns
     pub script: Option<String>,
-    /// Evaluate code passed as a string
+    /// Code wey you wan run sharp sharp, e.g. naija --eval "shout(1)"
     #[arg(short, long)]
     pub eval: Option<String>,
-    /// Start REPL
+    /// Enter REPL mode to dey run code one by one (naija --interactive)
     #[arg(short, long)]
     pub interactive: bool,
 }
