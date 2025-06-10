@@ -572,13 +572,13 @@ mod tests {
         for i in 0..100_000 {
             input.push_str("make x get ");
             input.push_str(&i.to_string());
-            input.push_str("\n");
+            input.push('\n');
         }
         let start = Instant::now();
         let lexer = Lexer::new(&input);
         let tokens: Result<Vec<_>, _> = lexer.collect();
         let elapsed = start.elapsed();
         assert!(tokens.is_ok());
-        println!("Lexed 100,000 lines in {:?}", elapsed);
+        println!("Lexed 100,000 lines in {elapsed:?}")
     }
 }
