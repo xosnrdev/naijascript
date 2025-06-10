@@ -9,7 +9,7 @@ use super::lexer::{self, Lexer, Token};
 pub enum ParseError<'a> {
     UnexpectedEof,
     UnexpectedToken(Token<'a>),
-    LexerError(lexer::LexError),
+    LexerError(lexer::LexError<'a>),
 }
 
 impl<'a> std::fmt::Display for ParseError<'a> {

@@ -79,28 +79,28 @@ impl<'a> fmt::Display for Token<'a> {
 
 /// All possible error kinds that can occur during lexing.
 #[derive(Debug, Clone, PartialEq)]
-pub enum LexErrorKind {
+pub enum LexErrorKind<'a> {
     UnexpectedCharacter(char),
-    InvalidNumber(String),
+    InvalidNumber(&'a str),
     UnterminatedString,
     InvalidEscapeSequence(char),
 }
 
 /// Error type for lexer errors, including line and column for diagnostics.
 #[derive(Debug, Clone, PartialEq)]
-pub struct LexError {
-    pub kind: LexErrorKind,
+pub struct LexError<'a> {
+    pub kind: LexErrorKind<'a>,
     pub line: usize,
     pub column: usize,
 }
 
-impl LexError {
-    fn new(kind: LexErrorKind, line: usize, column: usize) -> Self {
+impl<'a> LexError<'a> {
+    fn new(kind: LexErrorKind<'a>, line: usize, column: usize) -> Self {
         Self { kind, line, column }
     }
 }
 
-impl fmt::Display for LexError {
+impl<'a> fmt::Display for LexError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let message = match &self.kind {
             LexErrorKind::UnexpectedCharacter(ch) => format!("Wetin be dis character: '{ch}'"),
@@ -112,9 +112,9 @@ impl fmt::Display for LexError {
     }
 }
 
-impl std::error::Error for LexError {}
+impl<'a> std::error::Error for LexError<'a> {}
 
-type LexResult<T> = Result<T, LexError>;
+type LexResult<'a, T> = Result<T, LexError<'a>>;
 
 /// The main lexer struct for NaijaScript.
 /// Implements Iterator to produce tokens from source code.
@@ -174,12 +174,12 @@ impl<'a> Lexer<'a> {
     }
 
     /// Helper to create a lexer error at the current position.
-    fn error(&self, kind: LexErrorKind) -> LexError {
+    fn error(&self, kind: LexErrorKind<'a>) -> LexError<'a> {
         LexError::new(kind, self.line, self.column)
     }
 
     /// Parse a number literal, supporting floating-point values.
-    fn read_number(&mut self) -> LexResult<f64> {
+    fn read_number(&mut self) -> LexResult<'a, f64> {
         let start = self.position;
         let mut seen_dot = false;
 
@@ -194,8 +194,8 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        let num_str = &self.input[start..self.position];
-        num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str.to_string())))
+        let num_str: &'a str = &self.input[start..self.position];
+        num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str)))
     }
 
     /// Parse an identifier as a slice of the input.
@@ -280,7 +280,7 @@ impl<'a> Lexer<'a> {
 
 /// Implements Iterator to produce tokens from source code, handling all lexing logic and errors.
 impl<'a> Iterator for Lexer<'a> {
-    type Item = LexResult<Token<'a>>;
+    type Item = LexResult<'a, Token<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
