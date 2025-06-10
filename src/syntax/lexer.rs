@@ -1,6 +1,4 @@
 use std::fmt;
-use std::iter::Peekable;
-use std::str::CharIndices;
 
 /// All possible token types in NaijaScript.
 /// Each variant represents a keyword, operator, literal, or punctuation.
@@ -27,26 +25,6 @@ pub enum Token<'a> {
     RightParen,
     Newline,
     Eof,
-}
-
-impl<'a> From<&'a str> for Token<'a> {
-    fn from(ident: &'a str) -> Self {
-        match ident {
-            "make" => Token::Make,
-            "get" => Token::Get,
-            "shout" => Token::Shout,
-            "jasi" => Token::Jasi,
-            "start" => Token::Start,
-            "end" => Token::End,
-            "add" => Token::Add,
-            "minus" => Token::Minus,
-            "times" => Token::Times,
-            "divide" => Token::Divide,
-            "na" => Token::Na,
-            "pass" => Token::Pass,
-            _ => Token::Identifier(ident),
-        }
-    }
 }
 
 impl<'a> fmt::Display for Token<'a> {
@@ -79,28 +57,29 @@ impl<'a> fmt::Display for Token<'a> {
 
 /// All possible error kinds that can occur during lexing.
 #[derive(Debug, Clone, PartialEq)]
-pub enum LexErrorKind {
+pub enum LexErrorKind<'a> {
     UnexpectedCharacter(char),
-    InvalidNumber(String),
+    InvalidNumber(&'a str),
     UnterminatedString,
     InvalidEscapeSequence(char),
 }
 
 /// Error type for lexer errors, including line and column for diagnostics.
 #[derive(Debug, Clone, PartialEq)]
-pub struct LexError {
-    pub kind: LexErrorKind,
+pub struct LexError<'a> {
+    pub kind: LexErrorKind<'a>,
     pub line: usize,
     pub column: usize,
 }
 
-impl LexError {
-    fn new(kind: LexErrorKind, line: usize, column: usize) -> Self {
+impl<'a> LexError<'a> {
+    #[cold]
+    fn new(kind: LexErrorKind<'a>, line: usize, column: usize) -> Self {
         Self { kind, line, column }
     }
 }
 
-impl fmt::Display for LexError {
+impl<'a> fmt::Display for LexError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let message = match &self.kind {
             LexErrorKind::UnexpectedCharacter(ch) => format!("Wetin be dis character: '{ch}'"),
@@ -112,14 +91,13 @@ impl fmt::Display for LexError {
     }
 }
 
-impl std::error::Error for LexError {}
+impl<'a> std::error::Error for LexError<'a> {}
 
-type LexResult<T> = Result<T, LexError>;
+pub type LexResult<'a, T> = Result<T, LexError<'a>>;
 
 /// The main lexer struct for NaijaScript.
 /// Implements Iterator to produce tokens from source code.
 pub struct Lexer<'a> {
-    chars: Peekable<CharIndices<'a>>,
     input: &'a str,
     position: usize,
     line: usize,
@@ -130,43 +108,52 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     /// Create a new lexer from an input string.
     pub fn new(input: &'a str) -> Self {
-        Lexer {
-            chars: input.char_indices().peekable(),
-            input,
-            position: 0,
-            line: 1,
-            column: 1,
-            done: false,
-        }
+        Lexer { input, position: 0, line: 1, column: 1, done: false }
     }
 
-    /// Get the current character without advancing the iterator.
-    #[inline]
-    fn current_char(&mut self) -> Option<char> {
-        self.chars.peek().map(|&(_, ch)| ch)
+    /// Get the current byte at position, or None if at end.
+    #[inline(always)]
+    fn current_byte(&self) -> Option<u8> {
+        self.input.as_bytes().get(self.position).copied()
     }
 
-    /// Advance the iterator and update position, line, and column counters.
-    #[inline]
-    fn advance(&mut self) {
-        if let Some((idx, ch)) = self.chars.next() {
-            self.position = idx + ch.len_utf8();
-            if ch == '\n' {
-                self.line += 1;
-                self.column = 1;
-            } else {
-                self.column += 1;
+    /// Get the current character at position, None if at end.
+    #[inline(always)]
+    fn current_char(&self) -> Option<char> {
+        self.input[self.position..].chars().next()
+    }
+
+    /// Advance by n bytes, updating line/column.
+    #[inline(always)]
+    fn advance(&mut self, n: usize) {
+        for _ in 0..n {
+            if let Some(b) = self.current_byte() {
+                if b == b'\n' {
+                    self.line += 1;
+                    self.column = 1;
+                } else {
+                    self.column += 1;
+                }
+                self.position += 1;
             }
         }
     }
 
+    /// Advance by one character (may be multiple bytes).
+    #[inline(always)]
+    fn advance_char(&mut self) {
+        if let Some(ch) = self.current_char() {
+            let len = ch.len_utf8();
+            self.advance(len);
+        }
+    }
+
     /// Skip whitespace except for newlines.
-    #[inline]
+    #[inline(always)]
     fn skip_whitespace(&mut self) {
-        // Intent: Skip whitespace except for newlines
-        while let Some(&(_, ch)) = self.chars.peek() {
-            if ch.is_whitespace() && ch != '\n' {
-                self.advance();
+        while let Some(b) = self.current_byte() {
+            if (b as char).is_whitespace() && b != b'\n' {
+                self.advance(1);
             } else {
                 break;
             }
@@ -174,113 +161,130 @@ impl<'a> Lexer<'a> {
     }
 
     /// Helper to create a lexer error at the current position.
-    fn error(&self, kind: LexErrorKind) -> LexError {
+    #[cold]
+    fn error(&self, kind: LexErrorKind<'a>) -> LexError<'a> {
         LexError::new(kind, self.line, self.column)
     }
 
     /// Parse a number literal, supporting floating-point values.
-    fn read_number(&mut self) -> LexResult<f64> {
+    fn read_number(&mut self) -> LexResult<'a, f64> {
         let start = self.position;
         let mut seen_dot = false;
 
-        while let Some(ch) = self.current_char() {
+        while let Some(b) = self.current_byte() {
+            let ch = b as char;
             if ch.is_ascii_digit() {
-                self.advance();
+                self.advance(1);
             } else if ch == '.' && !seen_dot {
                 seen_dot = true;
-                self.advance();
+                self.advance(1);
             } else {
                 break;
             }
         }
 
         let num_str = &self.input[start..self.position];
-        num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str.to_string())))
+        num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str)))
     }
 
     /// Parse an identifier as a slice of the input.
     fn read_identifier_slice(&mut self) -> &str {
         let start = self.position;
-        while let Some(ch) = self.current_char() {
-            if matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') {
-                self.advance();
+        while let Some(b) = self.current_byte() {
+            let ch = b as char;
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                self.advance(1);
             } else {
                 break;
             }
         }
-        // SAFETY: start and self.position are always valid UTF-8 boundaries as they are advanced by char indices.
+        // SAFETY: start and self.position are always valid UTF-8 boundaries as we only advance by char boundaries.
         unsafe { self.input.get_unchecked(start..self.position) }
     }
 
-    /// Use iterator clone for lookahead to match multi-word keywords without mutating the main lexer state unless a match is found.
-    fn match_phrase(&mut self, words: &[&str]) -> bool {
-        let mut chars_clone = self.chars.clone();
+    /// Fast byte-based check for multi-word keywords at the current position.
+    fn match_multiword(&mut self, kw: &'static [u8]) -> bool {
+        let input_bytes = self.input.as_bytes();
         let mut pos = self.position;
+        let mut kw_idx = 0;
         let mut line = self.line;
         let mut column = self.column;
-        for (i, word) in words.iter().enumerate() {
-            if !self.input[pos..].starts_with(word) {
+        while kw_idx < kw.len() && pos < input_bytes.len() {
+            // Skip whitespace in input if present in keyword as space
+            if kw[kw_idx] == b' ' {
+                // Accept one or more spaces/tabs in input
+                while pos < input_bytes.len()
+                    && (input_bytes[pos] == b' ' || input_bytes[pos] == b'\t')
+                {
+                    pos += 1;
+                    column += 1;
+                }
+                kw_idx += 1;
+                continue;
+            }
+            if input_bytes[pos] != kw[kw_idx] {
                 return false;
             }
-            for _ in 0..word.len() {
-                if let Some((idx, ch)) = chars_clone.next() {
-                    pos = idx + ch.len_utf8();
-                    if ch == '\n' {
-                        line += 1;
-                        column = 1;
-                    } else {
-                        column += 1;
-                    }
-                }
+            if input_bytes[pos] == b'\n' {
+                line += 1;
+                column = 1;
+            } else {
+                column += 1;
             }
-            if i < words.len() - 1 {
-                while let Some(&(_, ch)) = chars_clone.peek() {
-                    if ch.is_whitespace() && ch != '\n' {
-                        if let Some((idx, ch)) = chars_clone.next() {
-                            pos = idx + ch.len_utf8();
-                            if ch == '\n' {
-                                line += 1;
-                                column = 1;
-                            } else {
-                                column += 1;
-                            }
-                        }
-                    } else {
-                        break;
-                    }
-                }
+            pos += 1;
+            kw_idx += 1;
+        }
+        if kw_idx == kw.len() {
+            while self.position < pos {
+                self.advance(1);
             }
+            self.line = line;
+            self.column = column;
+            return true;
         }
-
-        while self.position < pos {
-            self.advance();
-        }
-        self.line = line;
-        self.column = column;
-        true
+        false
     }
 
     /// Recognize multi-word keywords first, then fall back to single-word keywords or identifiers.
     fn read_keyword_or_identifier(&mut self) -> Token<'a> {
-        if self.match_phrase(&["if", "to", "say"]) {
+        // Multi-word keyword byte patterns
+        const IF_TO_SAY: &[u8] = b"if to say";
+        const IF_NOT_SO: &[u8] = b"if not so";
+        const SMALL_PASS: &[u8] = b"small pass";
+        if self.match_multiword(IF_TO_SAY) {
             return Token::IfToSay;
         }
-        if self.match_phrase(&["if", "not", "so"]) {
+        if self.match_multiword(IF_NOT_SO) {
             return Token::IfNotSo;
         }
-        if self.match_phrase(&["small", "pass"]) {
+        if self.match_multiword(SMALL_PASS) {
             return Token::SmallPass;
         }
-        // SAFETY: The returned &str is always a valid slice of self.input, which lives at least as long as 'a.
-        let ident: &'a str =
-            unsafe { std::mem::transmute::<&str, &'a str>(self.read_identifier_slice()) };
-        Token::from(ident)
+        // Single-word: extract identifier, then match against static byte arrays
+        let ident = self.read_identifier_slice();
+        // SAFETY: ident is a slice of self.input, which lives at least as long as 'a.
+        let ident: &'a str = unsafe { std::mem::transmute::<&str, &'a str>(ident) };
+        match ident {
+            "make" => Token::Make,
+            "get" => Token::Get,
+            "shout" => Token::Shout,
+            "jasi" => Token::Jasi,
+            "start" => Token::Start,
+            "end" => Token::End,
+            "add" => Token::Add,
+            "minus" => Token::Minus,
+            "times" => Token::Times,
+            "divide" => Token::Divide,
+            "na" => Token::Na,
+            "pass" => Token::Pass,
+            _ => Token::Identifier(ident),
+        }
     }
 }
 
 /// Implements Iterator to produce tokens from source code, handling all lexing logic and errors.
 impl<'a> Iterator for Lexer<'a> {
-    type Item = LexResult<Token<'a>>;
+    type Item = LexResult<'a, Token<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -288,34 +292,36 @@ impl<'a> Iterator for Lexer<'a> {
         }
         loop {
             match self.current_char() {
-                None => {
-                    self.done = true;
-                    return Some(Ok(Token::Eof));
-                }
                 Some(ch) if ch.is_whitespace() && ch != '\n' => {
                     self.skip_whitespace();
                     continue;
                 }
-                Some('\n') => {
-                    self.advance();
-                    return Some(Ok(Token::Newline));
-                }
-                Some('(') => {
-                    self.advance();
-                    return Some(Ok(Token::LeftParen));
-                }
-                Some(')') => {
-                    self.advance();
-                    return Some(Ok(Token::RightParen));
+                Some(ch) if ch.is_alphabetic() => {
+                    return Some(Ok(self.read_keyword_or_identifier()));
                 }
                 Some(ch) if ch.is_ascii_digit() => {
                     return Some(self.read_number().map(Token::Number));
                 }
-                Some(ch) if ch.is_alphabetic() => {
-                    return Some(Ok(self.read_keyword_or_identifier()));
+                Some('\n') => {
+                    self.advance_char();
+                    return Some(Ok(Token::Newline));
+                }
+                Some('(') => {
+                    self.advance_char();
+                    return Some(Ok(Token::LeftParen));
+                }
+                Some(')') => {
+                    self.advance_char();
+                    return Some(Ok(Token::RightParen));
+                }
+                None => {
+                    self.done = true;
+                    return Some(Ok(Token::Eof));
                 }
                 Some(ch) => {
-                    return Some(Err(self.error(LexErrorKind::UnexpectedCharacter(ch))));
+                    let err = self.error(LexErrorKind::UnexpectedCharacter(ch));
+                    self.advance_char();
+                    return Some(Err(err));
                 }
             }
         }
@@ -324,6 +330,8 @@ impl<'a> Iterator for Lexer<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
 
     #[test]
@@ -395,5 +403,21 @@ mod tests {
         let lexer = Lexer::new("small pass");
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(tokens, vec![Token::SmallPass, Token::Eof]);
+    }
+
+    #[test]
+    fn bench_large_input_lexing() {
+        let mut input = String::with_capacity(2_000_000);
+        for i in 0..100_000 {
+            input.push_str("make x get ");
+            input.push_str(&i.to_string());
+            input.push('\n');
+        }
+        let start = Instant::now();
+        let lexer = Lexer::new(&input);
+        let tokens: Result<Vec<_>, _> = lexer.collect();
+        let elapsed = start.elapsed();
+        assert!(tokens.is_ok());
+        println!("Lexed 100,000 lines in {elapsed:?}")
     }
 }
