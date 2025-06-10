@@ -195,26 +195,22 @@ impl<'a> Lexer<'a> {
         let bytes = self.input.as_bytes();
         let len = bytes.len();
         while self.position < len {
-            // Batch process up to 8 bytes at a time for ASCII whitespace
-            let mut advanced = false;
-            let max_batch = 8;
-            let mut batch = 0;
-            while batch < max_batch && self.position + batch < len {
-                let b = bytes[self.position + batch];
+            let start = self.position;
+            // Batch process as many ASCII whitespace as possible
+            while self.position < len {
+                let b = bytes[self.position];
                 if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Whitespace as u8 {
-                    batch += 1;
+                    self.position += 1;
                 } else {
                     break;
                 }
             }
-            if batch > 0 {
-                self.position += batch;
-                self.column += batch;
-                advanced = true;
+            let skipped = self.position - start;
+            if skipped > 0 {
+                self.column += skipped;
+                continue;
             }
-            if !advanced {
-                break;
-            }
+            break;
         }
     }
 
@@ -225,26 +221,22 @@ impl<'a> Lexer<'a> {
         let bytes = self.input.as_bytes();
         let len = bytes.len();
         while self.position < len {
-            // Batch process up to 8 bytes at a time for ASCII alpha
-            let mut advanced = false;
-            let max_batch = 8;
-            let mut batch = 0;
-            while batch < max_batch && self.position + batch < len {
-                let b = bytes[self.position + batch];
+            let begin = self.position;
+            // Batch process as many ASCII alpha as possible
+            while self.position < len {
+                let b = bytes[self.position];
                 if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Alpha as u8 {
-                    batch += 1;
+                    self.position += 1;
                 } else {
                     break;
                 }
             }
-            if batch > 0 {
-                self.position += batch;
-                self.column += batch;
-                advanced = true;
+            let advanced = self.position - begin;
+            if advanced > 0 {
+                self.column += advanced;
+                continue;
             }
-            if !advanced {
-                break;
-            }
+            break;
         }
         (start, self.position)
     }
@@ -425,75 +417,75 @@ impl<'a> Iterator for Lexer<'a> {
         if self.done {
             return None;
         }
+        let bytes = self.input.as_bytes();
+        let len = bytes.len();
         loop {
-            let byte = self.input.as_bytes().get(self.position).copied();
-            match byte {
-                None => {
-                    self.done = true;
-                    return Some(Ok(Token::Eof));
-                }
-                Some(b) if b < 0x80 => {
-                    match CHAR_CLASS[b as usize] {
-                        x if x == CharClass::Whitespace as u8 => {
-                            self.advance();
-                            continue;
-                        }
-                        x if x == CharClass::Newline as u8 => {
-                            self.advance();
-                            return Some(Ok(Token::Newline));
-                        }
-                        x if x == CharClass::LeftParen as u8 => {
-                            self.advance();
-                            return Some(Ok(Token::LeftParen));
-                        }
-                        x if x == CharClass::RightParen as u8 => {
-                            self.advance();
-                            return Some(Ok(Token::RightParen));
-                        }
-                        x if x == CharClass::Digit as u8 => {
-                            return Some(self.read_number().map(Token::Number));
-                        }
-                        x if x == CharClass::Alpha as u8 => {
-                            return Some(Ok(self.read_keyword_or_identifier()));
-                        }
-                        _ => {
-                            // Unknown ASCII character
-                            let ch = self.current_char().unwrap();
-                            return Some(Err(self.error(LexErrorKind::UnexpectedCharacter(ch))));
-                        }
-                    }
-                }
-                Some(_) => match self.current_char() {
-                    Some(ch) if ch.is_whitespace() && ch != '\n' => {
+            if self.position >= len {
+                self.done = true;
+                return Some(Ok(Token::Eof));
+            }
+            let b = bytes[self.position];
+            if b < 0x80 {
+                match CHAR_CLASS[b as usize] {
+                    x if x == CharClass::Whitespace as u8 => {
                         self.skip_whitespace();
                         continue;
                     }
-                    Some('\n') => {
+                    x if x == CharClass::Newline as u8 => {
                         self.advance();
                         return Some(Ok(Token::Newline));
                     }
-                    Some('(') => {
+                    x if x == CharClass::LeftParen as u8 => {
                         self.advance();
                         return Some(Ok(Token::LeftParen));
                     }
-                    Some(')') => {
+                    x if x == CharClass::RightParen as u8 => {
                         self.advance();
                         return Some(Ok(Token::RightParen));
                     }
-                    Some(ch) if ch.is_ascii_digit() => {
+                    x if x == CharClass::Digit as u8 => {
                         return Some(self.read_number().map(Token::Number));
                     }
-                    Some(ch) if ch.is_alphabetic() => {
+                    x if x == CharClass::Alpha as u8 => {
                         return Some(Ok(self.read_keyword_or_identifier()));
                     }
-                    Some(ch) => {
+                    _ => {
+                        // Unknown ASCII character
+                        let ch = self.current_char().unwrap();
                         return Some(Err(self.error(LexErrorKind::UnexpectedCharacter(ch))));
                     }
-                    None => {
-                        self.done = true;
-                        return Some(Ok(Token::Eof));
+                }
+            } else {
+                // Batch skip non-ASCII whitespace (except newline)
+                if let Some(ch) = self.current_char() {
+                    if ch.is_whitespace() && ch != '\n' {
+                        self.skip_whitespace();
+                        continue;
                     }
-                },
+                    if ch == '\n' {
+                        self.advance();
+                        return Some(Ok(Token::Newline));
+                    }
+                    if ch == '(' {
+                        self.advance();
+                        return Some(Ok(Token::LeftParen));
+                    }
+                    if ch == ')' {
+                        self.advance();
+                        return Some(Ok(Token::RightParen));
+                    }
+                    if ch.is_ascii_digit() {
+                        return Some(self.read_number().map(Token::Number));
+                    }
+                    if ch.is_alphabetic() {
+                        return Some(Ok(self.read_keyword_or_identifier()));
+                    }
+                    // Unknown non-ASCII character
+                    return Some(Err(self.error(LexErrorKind::UnexpectedCharacter(ch))));
+                } else {
+                    self.done = true;
+                    return Some(Ok(Token::Eof));
+                }
             }
         }
     }
