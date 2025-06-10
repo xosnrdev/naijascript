@@ -3,7 +3,7 @@ use std::fmt;
 /// All possible token types in NaijaScript.
 /// Each variant represents a keyword, operator, literal, or punctuation.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Token<'a> {
+pub enum Token {
     Make,
     Get,
     Shout,
@@ -19,7 +19,7 @@ pub enum Token<'a> {
     Na,
     Pass,
     SmallPass,
-    Identifier(&'a str),
+    Identifier { start: usize, end: usize },
     Number(f64),
     LeftParen,
     RightParen,
@@ -27,27 +27,23 @@ pub enum Token<'a> {
     Eof,
 }
 
-impl<'a> From<&'a str> for Token<'a> {
-    fn from(ident: &'a str) -> Self {
-        match ident {
-            "make" => Token::Make,
-            "get" => Token::Get,
-            "shout" => Token::Shout,
-            "jasi" => Token::Jasi,
-            "start" => Token::Start,
-            "end" => Token::End,
-            "add" => Token::Add,
-            "minus" => Token::Minus,
-            "times" => Token::Times,
-            "divide" => Token::Divide,
-            "na" => Token::Na,
-            "pass" => Token::Pass,
-            _ => Token::Identifier(ident),
+impl Token {
+    /// Get the identifier as a &str from the original input.
+    pub fn identifier_str<'a>(&self, input: &'a str) -> Option<&'a str> {
+        match self {
+            Token::Identifier { start, end } => Some(&input[*start..*end]),
+            _ => None,
         }
     }
 }
 
-impl<'a> fmt::Display for Token<'a> {
+impl<'a> From<(&'a str, usize, usize)> for Token {
+    fn from((_ident, start, end): (&'a str, usize, usize)) -> Self {
+        Token::Identifier { start, end }
+    }
+}
+
+impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Token::Make => write!(f, "make"),
@@ -65,7 +61,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Na => write!(f, "na"),
             Token::Pass => write!(f, "pass"),
             Token::SmallPass => write!(f, "small pass"),
-            Token::Identifier(ident) => write!(f, "identifier({ident})"),
+            Token::Identifier { start, end } => write!(f, "identifier({start}..{end})"),
             Token::Number(n) => write!(f, "number({n})"),
             Token::LeftParen => write!(f, "("),
             Token::RightParen => write!(f, ")"),
@@ -117,7 +113,7 @@ type LexResult<'a, T> = Result<T, LexError<'a>>;
 /// The main lexer struct for NaijaScript.
 /// Implements Iterator to produce tokens from source code.
 pub struct Lexer<'a> {
-    input: &'a str,
+    pub input: &'a str,
     position: usize,
     line: usize,
     column: usize,
@@ -217,9 +213,9 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Parse an identifier as a slice of the input.
+    /// Parse an identifier as a range of the input.
     #[inline(always)]
-    fn read_identifier_slice(&mut self) -> &str {
+    fn read_identifier_range(&mut self) -> (usize, usize) {
         let start = self.position;
         let bytes = self.input.as_bytes();
         let len = bytes.len();
@@ -240,8 +236,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        // SAFETY: start and self.position are always valid UTF-8 boundaries as they are advanced by char indices.
-        unsafe { self.input.get_unchecked(start..self.position) }
+        (start, self.position)
     }
 
     /// Parse a number literal, supporting floating-point values.
@@ -338,7 +333,7 @@ impl<'a> Lexer<'a> {
 
     /// Recognize multi-word keywords first, then fall back to single-word keywords or identifiers.
     #[inline(always)]
-    fn read_keyword_or_identifier(&mut self) -> Token<'a> {
+    fn read_keyword_or_identifier(&mut self) -> Token {
         if self.match_phrase(&["if", "to", "say"]) {
             return Token::IfToSay;
         }
@@ -348,10 +343,23 @@ impl<'a> Lexer<'a> {
         if self.match_phrase(&["small", "pass"]) {
             return Token::SmallPass;
         }
-        // SAFETY: The returned &str is always a valid slice of self.input, which lives at least as long as 'a.
-        let ident: &'a str =
-            unsafe { std::mem::transmute::<&str, &'a str>(self.read_identifier_slice()) };
-        Token::from(ident)
+        let (start, end) = self.read_identifier_range();
+        let ident = &self.input[start..end];
+        match ident {
+            "make" => Token::Make,
+            "get" => Token::Get,
+            "shout" => Token::Shout,
+            "jasi" => Token::Jasi,
+            "start" => Token::Start,
+            "end" => Token::End,
+            "add" => Token::Add,
+            "minus" => Token::Minus,
+            "times" => Token::Times,
+            "divide" => Token::Divide,
+            "na" => Token::Na,
+            "pass" => Token::Pass,
+            _ => Token::Identifier { start, end },
+        }
     }
 
     /// Helper to create a lexer error at the current position.
@@ -401,7 +409,7 @@ const CHAR_CLASS: [u8; 256] = {
 
 /// Implements Iterator to produce tokens from source code, handling all lexing logic and errors.
 impl<'a> Iterator for Lexer<'a> {
-    type Item = LexResult<'a, Token<'a>>;
+    type Item = LexResult<'a, Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -487,47 +495,44 @@ mod tests {
 
     #[test]
     fn test_basic_tokenization() {
-        let lexer = Lexer::new("make x get 5");
+        let input = "make x get 5";
+        let lexer = Lexer::new(input);
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
-        assert_eq!(
-            tokens,
-            vec![Token::Make, Token::Identifier("x"), Token::Get, Token::Number(5.0), Token::Eof]
-        );
+        assert_eq!(tokens[0], Token::Make);
+        assert!(matches!(tokens[1], Token::Identifier { .. }));
+        assert_eq!(tokens[1].identifier_str(input), Some("x"));
+        assert_eq!(tokens[2], Token::Get);
+        assert_eq!(tokens[3], Token::Number(5.0));
+        assert_eq!(tokens[4], Token::Eof);
     }
 
     #[test]
     fn test_expression_tokenization() {
-        let lexer = Lexer::new("x add 3 times 2");
+        let input = "x add 3 times 2";
+        let lexer = Lexer::new(input);
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Identifier("x"),
-                Token::Add,
-                Token::Number(3.0),
-                Token::Times,
-                Token::Number(2.0),
-                Token::Eof
-            ]
-        );
+        assert!(matches!(tokens[0], Token::Identifier { .. }));
+        assert_eq!(tokens[0].identifier_str(input), Some("x"));
+        assert_eq!(tokens[1], Token::Add);
+        assert_eq!(tokens[2], Token::Number(3.0));
+        assert_eq!(tokens[3], Token::Times);
+        assert_eq!(tokens[4], Token::Number(2.0));
+        assert_eq!(tokens[5], Token::Eof);
     }
 
     #[test]
     fn test_conditional_tokenization() {
-        let lexer = Lexer::new("if to say (x na 5)");
+        let input = "if to say (x na 5)";
+        let lexer = Lexer::new(input);
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::IfToSay,
-                Token::LeftParen,
-                Token::Identifier("x"),
-                Token::Na,
-                Token::Number(5.0),
-                Token::RightParen,
-                Token::Eof
-            ]
-        );
+        assert_eq!(tokens[0], Token::IfToSay);
+        assert_eq!(tokens[1], Token::LeftParen);
+        assert!(matches!(tokens[2], Token::Identifier { .. }));
+        assert_eq!(tokens[2].identifier_str(input), Some("x"));
+        assert_eq!(tokens[3], Token::Na);
+        assert_eq!(tokens[4], Token::Number(5.0));
+        assert_eq!(tokens[5], Token::RightParen);
+        assert_eq!(tokens[6], Token::Eof);
     }
 
     #[test]
@@ -553,6 +558,7 @@ mod tests {
     fn test_multi_word_keywords() {
         let lexer = Lexer::new("small pass");
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
-        assert_eq!(tokens, vec![Token::SmallPass, Token::Eof]);
+        assert_eq!(tokens[0], Token::SmallPass);
+        assert_eq!(tokens[1], Token::Eof);
     }
 }

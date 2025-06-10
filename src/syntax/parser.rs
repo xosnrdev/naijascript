@@ -8,7 +8,7 @@ use super::lexer::{self, Lexer, Token};
 #[derive(Debug, PartialEq)]
 pub enum ParseError<'a> {
     UnexpectedEof,
-    UnexpectedToken(Token<'a>),
+    UnexpectedToken(Token),
     LexerError(lexer::LexError<'a>),
 }
 
@@ -33,18 +33,20 @@ pub type ParseResult<'a, T> = Result<T, ParseError<'a>>;
 /// Uses a Peekable lexer for lookahead and implements Pratt parsing for expressions.
 pub struct Parser<'a> {
     tokens: Peekable<Lexer<'a>>,
+    input: &'a str,
 }
 
 impl<'a> Parser<'a> {
     /// Create a new parser from a lexer.
     #[inline]
     pub fn new(lexer: Lexer<'a>) -> Self {
-        Parser { tokens: lexer.peekable() }
+        let input = lexer.input;
+        Parser { tokens: lexer.peekable(), input }
     }
 
     /// Expect and consume a specific token, or return a parse error if the next token does not match.
     #[inline]
-    fn expect_token(&mut self, expected: Token<'a>) -> ParseResult<'a, ()> {
+    fn expect_token(&mut self, expected: Token) -> ParseResult<'a, ()> {
         match self.tokens.next() {
             Some(Ok(tok)) if tok == expected => Ok(()),
             Some(Ok(tok)) => Err(ParseError::UnexpectedToken(tok)),
@@ -101,7 +103,7 @@ impl<'a> Parser<'a> {
     fn parse_assignment(&mut self) -> ParseResult<'a, Statement<'a>> {
         self.expect_token(Token::Make)?;
         let variable = match self.tokens.next() {
-            Some(Ok(Token::Identifier(name))) => name,
+            Some(Ok(Token::Identifier { start, end })) => &self.input[start..end],
             Some(Ok(tok)) => return Err(ParseError::UnexpectedToken(tok)),
             Some(Err(e)) => return Err(ParseError::LexerError(e)),
             None => return Err(ParseError::UnexpectedEof),
@@ -199,7 +201,10 @@ impl<'a> Parser<'a> {
     fn parse_expr_bp(&mut self, min_bp: u8) -> ParseResult<'a, Expression<'a>> {
         let mut lhs = match self.tokens.next() {
             Some(Ok(Token::Number(n))) => Expression::number(n),
-            Some(Ok(Token::Identifier(name))) => Expression::variable(name),
+            Some(Ok(Token::Identifier { start, end })) => {
+                let name = &self.input[start..end];
+                Expression::variable(name)
+            }
             Some(Ok(Token::LeftParen)) => {
                 let expr = self.parse_expression()?;
                 match self.tokens.next() {
