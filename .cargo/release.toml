@@ -1,0 +1,11 @@
+# The following is not used by default via .cargo/config.toml,
+# because `build-std-features` cannot be keyed by profile.
+# This breaks the bench profile which doesn't support panic=abort.
+# See: https://github.com/rust-lang/cargo/issues/11214
+# See: https://github.com/rust-lang/cargo/issues/13894
+
+# The backtrace for rust is almost as large as the entire binary.
+# = Huge reduction in binary size by removing all that.
+[unstable]
+build-std = ["std", "panic_abort"]
+build-std-features = ["panic_immediate_abort", "optimize_for_size"]

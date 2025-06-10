@@ -60,7 +60,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
       - name: Build release binary
         run: |
-          cargo build --release --target ${{ matrix.target }} --bin ${{ matrix.bin_target }}
+          cargo build --config .cargo/release.toml --release --target ${{ matrix.target }} --bin ${{ matrix.bin_target }}
       - name: Set bin_name
         id: binname
         shell: bash
