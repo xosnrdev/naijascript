@@ -195,17 +195,22 @@ impl<'a> Lexer<'a> {
         let bytes = self.input.as_bytes();
         let len = bytes.len();
         while self.position < len {
+            // Batch process up to 8 bytes at a time for ASCII whitespace
             let mut advanced = false;
-            for _ in 0..4 {
-                if self.position < len {
-                    let b = bytes[self.position];
-                    if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Whitespace as u8 {
-                        self.advance();
-                        advanced = true;
-                    } else {
-                        break;
-                    }
+            let max_batch = 8;
+            let mut batch = 0;
+            while batch < max_batch && self.position + batch < len {
+                let b = bytes[self.position + batch];
+                if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Whitespace as u8 {
+                    batch += 1;
+                } else {
+                    break;
                 }
+            }
+            if batch > 0 {
+                self.position += batch;
+                self.column += batch;
+                advanced = true;
             }
             if !advanced {
                 break;
@@ -220,17 +225,22 @@ impl<'a> Lexer<'a> {
         let bytes = self.input.as_bytes();
         let len = bytes.len();
         while self.position < len {
+            // Batch process up to 8 bytes at a time for ASCII alpha
             let mut advanced = false;
-            for _ in 0..4 {
-                if self.position < len {
-                    let b = bytes[self.position];
-                    if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Alpha as u8 {
-                        self.advance();
-                        advanced = true;
-                    } else {
-                        break;
-                    }
+            let max_batch = 8;
+            let mut batch = 0;
+            while batch < max_batch && self.position + batch < len {
+                let b = bytes[self.position + batch];
+                if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Alpha as u8 {
+                    batch += 1;
+                } else {
+                    break;
                 }
+            }
+            if batch > 0 {
+                self.position += batch;
+                self.column += batch;
+                advanced = true;
             }
             if !advanced {
                 break;
@@ -491,6 +501,8 @@ impl<'a> Iterator for Lexer<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
 
     #[test]
@@ -560,5 +572,21 @@ mod tests {
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(tokens[0], Token::SmallPass);
         assert_eq!(tokens[1], Token::Eof);
+    }
+
+    #[test]
+    fn bench_large_input_lexing() {
+        let mut input = String::with_capacity(2_000_000);
+        for i in 0..100_000 {
+            input.push_str("make x get ");
+            input.push_str(&i.to_string());
+            input.push_str("\n");
+        }
+        let start = Instant::now();
+        let lexer = Lexer::new(&input);
+        let tokens: Result<Vec<_>, _> = lexer.collect();
+        let elapsed = start.elapsed();
+        assert!(tokens.is_ok());
+        println!("Lexed 100,000 lines in {:?}", elapsed);
     }
 }
