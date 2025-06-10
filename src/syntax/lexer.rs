@@ -1,6 +1,4 @@
 use std::fmt;
-use std::iter::Peekable;
-use std::str::CharIndices;
 
 /// All possible token types in NaijaScript.
 /// Each variant represents a keyword, operator, literal, or punctuation.
@@ -119,7 +117,6 @@ type LexResult<'a, T> = Result<T, LexError<'a>>;
 /// The main lexer struct for NaijaScript.
 /// Implements Iterator to produce tokens from source code.
 pub struct Lexer<'a> {
-    chars: Peekable<CharIndices<'a>>,
     input: &'a str,
     position: usize,
     line: usize,
@@ -130,27 +127,41 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     /// Create a new lexer from an input string.
     pub fn new(input: &'a str) -> Self {
-        Lexer {
-            chars: input.char_indices().peekable(),
-            input,
-            position: 0,
-            line: 1,
-            column: 1,
-            done: false,
+        Lexer { input, position: 0, line: 1, column: 1, done: false }
+    }
+
+    /// Get the next character and its byte length from the current position.
+    #[inline(always)]
+    fn next_char_and_len(&self) -> Option<(char, usize)> {
+        let bytes = &self.input.as_bytes()[self.position..];
+        if bytes.is_empty() {
+            return None;
+        }
+        // Fast ASCII path
+        if bytes[0] < 0x80 {
+            return Some((bytes[0] as char, 1));
+        }
+        // Multi-byte UTF-8
+        match std::str::from_utf8(bytes) {
+            Ok(s) => {
+                let mut chars = s.chars();
+                chars.next().map(|ch| (ch, ch.len_utf8()))
+            }
+            Err(_) => None, // Invalid UTF-8
         }
     }
 
     /// Get the current character without advancing the iterator.
-    #[inline]
-    fn current_char(&mut self) -> Option<char> {
-        self.chars.peek().map(|&(_, ch)| ch)
+    #[inline(always)]
+    fn current_char(&self) -> Option<char> {
+        self.next_char_and_len().map(|(ch, _)| ch)
     }
 
     /// Advance the iterator and update position, line, and column counters.
-    #[inline]
+    #[inline(always)]
     fn advance(&mut self) {
-        if let Some((idx, ch)) = self.chars.next() {
-            self.position = idx + ch.len_utf8();
+        if let Some((ch, char_len)) = self.next_char_and_len() {
+            self.position += char_len;
             if ch == '\n' {
                 self.line += 1;
                 self.column = 1;
@@ -161,61 +172,24 @@ impl<'a> Lexer<'a> {
     }
 
     /// Skip whitespace except for newlines.
-    #[inline]
+    #[inline(always)]
     fn skip_whitespace(&mut self) {
-        let bytes = self.input.as_bytes();
-        let mut pos = self.position;
-        while pos < bytes.len() {
-            let b = bytes[pos];
-            // ASCII whitespace except newline (b'\n' == 10)
-            if b == b' ' || b == b'\t' || b == b'\r' {
+        while let Some((ch, _)) = self.next_char_and_len() {
+            if ch.is_whitespace() && ch != '\n' {
                 self.advance();
-                pos = self.position;
             } else {
                 break;
             }
         }
-    }
-
-    /// Helper to create a lexer error at the current position.
-    fn error(&self, kind: LexErrorKind<'a>) -> LexError<'a> {
-        LexError::new(kind, self.line, self.column)
-    }
-
-    /// Parse a number literal, supporting floating-point values.
-    fn read_number(&mut self) -> LexResult<'a, f64> {
-        let start = self.position;
-        let bytes = self.input.as_bytes();
-        let mut pos = self.position;
-        let mut seen_dot = false;
-        while pos < bytes.len() {
-            let b = bytes[pos];
-            if b.is_ascii_digit() {
-                self.advance();
-                pos = self.position;
-            } else if b == b'.' && !seen_dot {
-                seen_dot = true;
-                self.advance();
-                pos = self.position;
-            } else {
-                break;
-            }
-        }
-        let num_str: &'a str = &self.input[start..self.position];
-        num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str)))
     }
 
     /// Parse an identifier as a slice of the input.
+    #[inline(always)]
     fn read_identifier_slice(&mut self) -> &str {
         let start = self.position;
-        let bytes = self.input.as_bytes();
-        let mut pos = self.position;
-        while pos < bytes.len() {
-            let b = bytes[pos];
-            // Accept a-z, A-Z, 0-9, _ (ASCII only)
-            if b.is_ascii_lowercase() || b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_' {
+        while let Some((ch, _)) = self.next_char_and_len() {
+            if ch.is_alphanumeric() || ch == '_' {
                 self.advance();
-                pos = self.position;
             } else {
                 break;
             }
@@ -224,9 +198,28 @@ impl<'a> Lexer<'a> {
         unsafe { self.input.get_unchecked(start..self.position) }
     }
 
+    /// Parse a number literal, supporting floating-point values.
+    #[inline(always)]
+    fn read_number(&mut self) -> LexResult<'a, f64> {
+        let start = self.position;
+        let mut seen_dot = false;
+        while let Some((ch, _)) = self.next_char_and_len() {
+            if ch.is_ascii_digit() {
+                self.advance();
+            } else if ch == '.' && !seen_dot {
+                seen_dot = true;
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let num_str: &'a str = &self.input[start..self.position];
+        num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str)))
+    }
+
     /// Use iterator clone for lookahead to match multi-word keywords without mutating the main lexer state unless a match is found.
+    #[inline(always)]
     fn match_phrase(&mut self, words: &[&str]) -> bool {
-        let mut chars_clone = self.chars.clone();
         let mut pos = self.position;
         let mut line = self.line;
         let mut column = self.column;
@@ -234,29 +227,30 @@ impl<'a> Lexer<'a> {
             if !self.input[pos..].starts_with(word) {
                 return false;
             }
-            for _ in 0..word.len() {
-                if let Some((idx, ch)) = chars_clone.next() {
-                    pos = idx + ch.len_utf8();
-                    if ch == '\n' {
-                        line += 1;
-                        column = 1;
-                    } else {
-                        column += 1;
-                    }
+            // Advance pos, line, column for each char in word
+            let chars = word.chars();
+            for ch in chars {
+                let char_len = ch.len_utf8();
+                if ch == '\n' {
+                    line += 1;
+                    column = 1;
+                } else {
+                    column += 1;
                 }
+                pos += char_len;
             }
             if i < words.len() - 1 {
-                while let Some(&(_, ch)) = chars_clone.peek() {
+                // Skip whitespace except newlines
+                while pos < self.input.len() {
+                    let ch = self.input[pos..].chars().next().unwrap();
                     if ch.is_whitespace() && ch != '\n' {
-                        if let Some((idx, ch)) = chars_clone.next() {
-                            pos = idx + ch.len_utf8();
-                            if ch == '\n' {
-                                line += 1;
-                                column = 1;
-                            } else {
-                                column += 1;
-                            }
+                        if ch == '\n' {
+                            line += 1;
+                            column = 1;
+                        } else {
+                            column += 1;
                         }
+                        pos += ch.len_utf8();
                     } else {
                         break;
                     }
@@ -273,6 +267,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Recognize multi-word keywords first, then fall back to single-word keywords or identifiers.
+    #[inline(always)]
     fn read_keyword_or_identifier(&mut self) -> Token<'a> {
         if self.match_phrase(&["if", "to", "say"]) {
             return Token::IfToSay;
@@ -287,6 +282,12 @@ impl<'a> Lexer<'a> {
         let ident: &'a str =
             unsafe { std::mem::transmute::<&str, &'a str>(self.read_identifier_slice()) };
         Token::from(ident)
+    }
+
+    /// Helper to create a lexer error at the current position.
+    #[cold]
+    fn error(&self, kind: LexErrorKind<'a>) -> LexError<'a> {
+        LexError::new(kind, self.line, self.column)
     }
 }
 
