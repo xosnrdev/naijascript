@@ -163,10 +163,14 @@ impl<'a> Lexer<'a> {
     /// Skip whitespace except for newlines.
     #[inline]
     fn skip_whitespace(&mut self) {
-        // Intent: Skip whitespace except for newlines
-        while let Some(&(_, ch)) = self.chars.peek() {
-            if ch.is_whitespace() && ch != '\n' {
+        let bytes = self.input.as_bytes();
+        let mut pos = self.position;
+        while pos < bytes.len() {
+            let b = bytes[pos];
+            // ASCII whitespace except newline (b'\n' == 10)
+            if b == b' ' || b == b'\t' || b == b'\r' {
                 self.advance();
+                pos = self.position;
             } else {
                 break;
             }
@@ -181,19 +185,22 @@ impl<'a> Lexer<'a> {
     /// Parse a number literal, supporting floating-point values.
     fn read_number(&mut self) -> LexResult<'a, f64> {
         let start = self.position;
+        let bytes = self.input.as_bytes();
+        let mut pos = self.position;
         let mut seen_dot = false;
-
-        while let Some(ch) = self.current_char() {
-            if ch.is_ascii_digit() {
+        while pos < bytes.len() {
+            let b = bytes[pos];
+            if b.is_ascii_digit() {
                 self.advance();
-            } else if ch == '.' && !seen_dot {
+                pos = self.position;
+            } else if b == b'.' && !seen_dot {
                 seen_dot = true;
                 self.advance();
+                pos = self.position;
             } else {
                 break;
             }
         }
-
         let num_str: &'a str = &self.input[start..self.position];
         num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str)))
     }
@@ -201,9 +208,14 @@ impl<'a> Lexer<'a> {
     /// Parse an identifier as a slice of the input.
     fn read_identifier_slice(&mut self) -> &str {
         let start = self.position;
-        while let Some(ch) = self.current_char() {
-            if matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') {
+        let bytes = self.input.as_bytes();
+        let mut pos = self.position;
+        while pos < bytes.len() {
+            let b = bytes[pos];
+            // Accept a-z, A-Z, 0-9, _ (ASCII only)
+            if b.is_ascii_lowercase() || b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_' {
                 self.advance();
+                pos = self.position;
             } else {
                 break;
             }
