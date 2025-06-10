@@ -133,22 +133,44 @@ impl<'a> Lexer<'a> {
     /// Get the next character and its byte length from the current position.
     #[inline(always)]
     fn next_char_and_len(&self) -> Option<(char, usize)> {
-        let bytes = &self.input.as_bytes()[self.position..];
-        if bytes.is_empty() {
+        let bytes = self.input.as_bytes();
+        if self.position >= bytes.len() {
             return None;
         }
+        let b = bytes[self.position];
         // Fast ASCII path
-        if bytes[0] < 0x80 {
-            return Some((bytes[0] as char, 1));
+        if b < 0x80 {
+            return Some((b as char, 1));
         }
-        // Multi-byte UTF-8
-        match std::str::from_utf8(bytes) {
-            Ok(s) => {
-                let mut chars = s.chars();
-                chars.next().map(|ch| (ch, ch.len_utf8()))
+        // Manual UTF-8 decode for first char
+        let remaining = &bytes[self.position..];
+        let len = remaining.len();
+        if len >= 2 && (b & 0b1110_0000) == 0b1100_0000 {
+            // 2-byte UTF-8
+            let c = ((b & 0x1F) as u32) << 6 | (remaining[1] & 0x3F) as u32;
+            if let Some(ch) = std::char::from_u32(c) {
+                return Some((ch, 2));
             }
-            Err(_) => None, // Invalid UTF-8
+        } else if len >= 3 && (b & 0b1111_0000) == 0b1110_0000 {
+            // 3-byte UTF-8
+            let c = ((b & 0x0F) as u32) << 12
+                | ((remaining[1] & 0x3F) as u32) << 6
+                | (remaining[2] & 0x3F) as u32;
+            if let Some(ch) = std::char::from_u32(c) {
+                return Some((ch, 3));
+            }
+        } else if len >= 4 && (b & 0b1111_1000) == 0b1111_0000 {
+            // 4-byte UTF-8
+            let c = ((b & 0x07) as u32) << 18
+                | ((remaining[1] & 0x3F) as u32) << 12
+                | ((remaining[2] & 0x3F) as u32) << 6
+                | (remaining[3] & 0x3F) as u32;
+            if let Some(ch) = std::char::from_u32(c) {
+                return Some((ch, 4));
+            }
         }
+        // Fallback: use .chars() (should be rare)
+        self.input[self.position..].chars().next().map(|ch| (ch, ch.len_utf8()))
     }
 
     /// Get the current character without advancing the iterator.
@@ -247,41 +269,65 @@ impl<'a> Lexer<'a> {
         let mut pos = self.position;
         let mut line = self.line;
         let mut column = self.column;
+        let bytes = self.input.as_bytes();
         for (i, word) in words.iter().enumerate() {
-            if !self.input[pos..].starts_with(word) {
+            let wbytes = word.as_bytes();
+            if pos + wbytes.len() > bytes.len() {
                 return false;
             }
-            // Advance pos, line, column for each char in word
-            let chars = word.chars();
-            for ch in chars {
-                let char_len = ch.len_utf8();
-                if ch == '\n' {
-                    line += 1;
-                    column = 1;
-                } else {
-                    column += 1;
+            // Fast ASCII path: compare bytes directly
+            if wbytes.iter().all(|&b| b < 0x80) && bytes[pos..pos + wbytes.len()] == *wbytes {
+                // Update pos, line, column
+                for &b in &bytes[pos..pos + wbytes.len()] {
+                    if b == b'\n' {
+                        line += 1;
+                        column = 1;
+                    } else {
+                        column += 1;
+                    }
                 }
-                pos += char_len;
+                pos += wbytes.len();
+            } else {
+                // Fallback: use .starts_with and .chars()
+                if !self.input[pos..].starts_with(word) {
+                    return false;
+                }
+                for ch in word.chars() {
+                    let char_len = ch.len_utf8();
+                    if ch == '\n' {
+                        line += 1;
+                        column = 1;
+                    } else {
+                        column += 1;
+                    }
+                    pos += char_len;
+                }
             }
             if i < words.len() - 1 {
                 // Skip whitespace except newlines
-                while pos < self.input.len() {
-                    let ch = self.input[pos..].chars().next().unwrap();
-                    if ch.is_whitespace() && ch != '\n' {
-                        if ch == '\n' {
-                            line += 1;
-                            column = 1;
-                        } else {
-                            column += 1;
-                        }
-                        pos += ch.len_utf8();
-                    } else {
+                while pos < bytes.len() {
+                    let b = bytes[pos];
+                    if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Whitespace as u8 {
+                        column += 1;
+                        pos += 1;
+                    } else if b == b'\n' {
                         break;
+                    } else {
+                        // Fallback for non-ASCII
+                        let ch = self.input[pos..].chars().next().unwrap();
+                        if ch.is_whitespace() && ch != '\n' {
+                            if ch == '\n' {
+                                break;
+                            }
+                            column += 1;
+                            pos += ch.len_utf8();
+                        } else {
+                            break;
+                        }
                     }
                 }
             }
         }
-
         while self.position < pos {
             self.advance();
         }
