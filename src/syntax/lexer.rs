@@ -174,10 +174,22 @@ impl<'a> Lexer<'a> {
     /// Skip whitespace except for newlines.
     #[inline(always)]
     fn skip_whitespace(&mut self) {
-        while let Some(&b) = self.input.as_bytes().get(self.position) {
-            if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Whitespace as u8 {
-                self.advance();
-            } else {
+        let bytes = self.input.as_bytes();
+        let len = bytes.len();
+        while self.position < len {
+            let mut advanced = false;
+            for _ in 0..4 {
+                if self.position < len {
+                    let b = bytes[self.position];
+                    if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Whitespace as u8 {
+                        self.advance();
+                        advanced = true;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            if !advanced {
                 break;
             }
         }
@@ -187,10 +199,22 @@ impl<'a> Lexer<'a> {
     #[inline(always)]
     fn read_identifier_slice(&mut self) -> &str {
         let start = self.position;
-        while let Some(&b) = self.input.as_bytes().get(self.position) {
-            if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Alpha as u8 {
-                self.advance();
-            } else {
+        let bytes = self.input.as_bytes();
+        let len = bytes.len();
+        while self.position < len {
+            let mut advanced = false;
+            for _ in 0..4 {
+                if self.position < len {
+                    let b = bytes[self.position];
+                    if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Alpha as u8 {
+                        self.advance();
+                        advanced = true;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            if !advanced {
                 break;
             }
         }
