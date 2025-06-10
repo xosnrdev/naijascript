@@ -174,8 +174,8 @@ impl<'a> Lexer<'a> {
     /// Skip whitespace except for newlines.
     #[inline(always)]
     fn skip_whitespace(&mut self) {
-        while let Some((ch, _)) = self.next_char_and_len() {
-            if ch.is_whitespace() && ch != '\n' {
+        while let Some(&b) = self.input.as_bytes().get(self.position) {
+            if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Whitespace as u8 {
                 self.advance();
             } else {
                 break;
@@ -187,8 +187,8 @@ impl<'a> Lexer<'a> {
     #[inline(always)]
     fn read_identifier_slice(&mut self) -> &str {
         let start = self.position;
-        while let Some((ch, _)) = self.next_char_and_len() {
-            if ch.is_alphanumeric() || ch == '_' {
+        while let Some(&b) = self.input.as_bytes().get(self.position) {
+            if b < 0x80 && CHAR_CLASS[b as usize] == CharClass::Alpha as u8 {
                 self.advance();
             } else {
                 break;
@@ -291,6 +291,44 @@ impl<'a> Lexer<'a> {
     }
 }
 
+// Character class codes for ASCII bytes
+#[repr(u8)]
+enum CharClass {
+    Other = 0,
+    Whitespace = 1,
+    Newline = 2,
+    Digit = 3,
+    Alpha = 4,
+    LeftParen = 5,
+    RightParen = 6,
+}
+
+// Static lookup table for ASCII character classification
+const CHAR_CLASS: [u8; 256] = {
+    let mut table = [0u8; 256];
+    let mut i = 0;
+    while i < 256 {
+        let c = i as u8;
+        table[i] = if c == b' ' || c == b'\t' {
+            CharClass::Whitespace as u8
+        } else if c == b'\n' {
+            CharClass::Newline as u8
+        } else if c >= b'0' && c <= b'9' {
+            CharClass::Digit as u8
+        } else if (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z') || c == b'_' {
+            CharClass::Alpha as u8
+        } else if c == b'(' {
+            CharClass::LeftParen as u8
+        } else if c == b')' {
+            CharClass::RightParen as u8
+        } else {
+            CharClass::Other as u8
+        };
+        i += 1;
+    }
+    table
+};
+
 /// Implements Iterator to produce tokens from source code, handling all lexing logic and errors.
 impl<'a> Iterator for Lexer<'a> {
     type Item = LexResult<'a, Token<'a>>;
@@ -300,36 +338,74 @@ impl<'a> Iterator for Lexer<'a> {
             return None;
         }
         loop {
-            match self.current_char() {
+            let byte = self.input.as_bytes().get(self.position).copied();
+            match byte {
                 None => {
                     self.done = true;
                     return Some(Ok(Token::Eof));
                 }
-                Some(ch) if ch.is_whitespace() && ch != '\n' => {
-                    self.skip_whitespace();
-                    continue;
+                Some(b) if b < 0x80 => {
+                    match CHAR_CLASS[b as usize] {
+                        x if x == CharClass::Whitespace as u8 => {
+                            self.advance();
+                            continue;
+                        }
+                        x if x == CharClass::Newline as u8 => {
+                            self.advance();
+                            return Some(Ok(Token::Newline));
+                        }
+                        x if x == CharClass::LeftParen as u8 => {
+                            self.advance();
+                            return Some(Ok(Token::LeftParen));
+                        }
+                        x if x == CharClass::RightParen as u8 => {
+                            self.advance();
+                            return Some(Ok(Token::RightParen));
+                        }
+                        x if x == CharClass::Digit as u8 => {
+                            return Some(self.read_number().map(Token::Number));
+                        }
+                        x if x == CharClass::Alpha as u8 => {
+                            return Some(Ok(self.read_keyword_or_identifier()));
+                        }
+                        _ => {
+                            // Unknown ASCII character
+                            let ch = self.current_char().unwrap();
+                            return Some(Err(self.error(LexErrorKind::UnexpectedCharacter(ch))));
+                        }
+                    }
                 }
-                Some('\n') => {
-                    self.advance();
-                    return Some(Ok(Token::Newline));
-                }
-                Some('(') => {
-                    self.advance();
-                    return Some(Ok(Token::LeftParen));
-                }
-                Some(')') => {
-                    self.advance();
-                    return Some(Ok(Token::RightParen));
-                }
-                Some(ch) if ch.is_ascii_digit() => {
-                    return Some(self.read_number().map(Token::Number));
-                }
-                Some(ch) if ch.is_alphabetic() => {
-                    return Some(Ok(self.read_keyword_or_identifier()));
-                }
-                Some(ch) => {
-                    return Some(Err(self.error(LexErrorKind::UnexpectedCharacter(ch))));
-                }
+                Some(_) => match self.current_char() {
+                    Some(ch) if ch.is_whitespace() && ch != '\n' => {
+                        self.skip_whitespace();
+                        continue;
+                    }
+                    Some('\n') => {
+                        self.advance();
+                        return Some(Ok(Token::Newline));
+                    }
+                    Some('(') => {
+                        self.advance();
+                        return Some(Ok(Token::LeftParen));
+                    }
+                    Some(')') => {
+                        self.advance();
+                        return Some(Ok(Token::RightParen));
+                    }
+                    Some(ch) if ch.is_ascii_digit() => {
+                        return Some(self.read_number().map(Token::Number));
+                    }
+                    Some(ch) if ch.is_alphabetic() => {
+                        return Some(Ok(self.read_keyword_or_identifier()));
+                    }
+                    Some(ch) => {
+                        return Some(Err(self.error(LexErrorKind::UnexpectedCharacter(ch))));
+                    }
+                    None => {
+                        self.done = true;
+                        return Some(Ok(Token::Eof));
+                    }
+                },
             }
         }
     }
