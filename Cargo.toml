@@ -18,6 +18,13 @@ zip = "4.0.0"
 [target.aarch64-unknown-linux-gnu.dependencies]
 openssl = { version = "0.10.73", features = ["vendored"] }
 
+[dev-dependencies]
+criterion = { version = "0.6.0", features = ["html_reports"] }
+
+[[bench]]
+name = "lib"
+harness = false
+
 # We use `opt-level = "s"` as it significantly reduces binary size.
 [profile.release]
 codegen-units = 1           # reduces binary size by ~2%
