@@ -388,6 +388,7 @@ impl<'a> Lexer<'a> {
         LexError::new(kind, self.line, self.column)
     }
 
+    #[allow(clippy::needless_return)]
     fn next_token_jump(&mut self) -> Option<LexResult<'a, Token<'a>>> {
         if self.done {
             return None;
@@ -406,7 +407,6 @@ impl<'a> Lexer<'a> {
                     _ => Some(self.handle_error()),
                 }
             } else {
-                #[allow(clippy::needless_return)]
                 // Non-ASCII: Unicode-aware fallback
                 let ch = self.current_char().unwrap();
                 if ch.is_whitespace() {
