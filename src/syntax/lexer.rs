@@ -280,51 +280,67 @@ impl<'a> Lexer<'a> {
             _ => Token::Identifier(ident),
         }
     }
-}
 
-/// Implements Iterator to produce tokens from source code, handling all lexing logic and errors.
-impl<'a> Iterator for Lexer<'a> {
-    type Item = LexResult<'a, Token<'a>>;
+    fn handle_whitespace(&mut self) -> LexResult<'a, Token<'a>> {
+        self.skip_whitespace();
+        // After skipping, dispatch again (tail call):
+        // But must return a Result, so call next_token_jump and unwrap Option
+        match self.next_token_jump() {
+            Some(res) => res,
+            None => Ok(Token::Eof),
+        }
+    }
+    fn handle_alpha(&mut self) -> LexResult<'a, Token<'a>> {
+        Ok(self.read_keyword_or_identifier())
+    }
+    fn handle_digit(&mut self) -> LexResult<'a, Token<'a>> {
+        self.read_number().map(Token::Number)
+    }
+    fn handle_newline(&mut self) -> LexResult<'a, Token<'a>> {
+        self.advance_char();
+        Ok(Token::Newline)
+    }
+    fn handle_left_paren(&mut self) -> LexResult<'a, Token<'a>> {
+        self.advance_char();
+        Ok(Token::LeftParen)
+    }
+    fn handle_right_paren(&mut self) -> LexResult<'a, Token<'a>> {
+        self.advance_char();
+        Ok(Token::RightParen)
+    }
+    fn handle_eof(&mut self) -> LexResult<'a, Token<'a>> {
+        self.done = true;
+        Ok(Token::Eof)
+    }
+    fn handle_error(&mut self) -> LexResult<'a, Token<'a>> {
+        let ch = self.current_char().unwrap();
+        let err = self.error(LexErrorKind::UnexpectedCharacter(ch));
+        self.advance_char();
+        Err(err)
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next_token_jump(&mut self) -> Option<LexResult<'a, Token<'a>>> {
         if self.done {
             return None;
         }
-        loop {
-            match self.current_char() {
-                Some(ch) if ch.is_whitespace() && ch != '\n' => {
-                    self.skip_whitespace();
-                    continue;
-                }
-                Some(ch) if ch.is_alphabetic() => {
-                    return Some(Ok(self.read_keyword_or_identifier()));
-                }
-                Some(ch) if ch.is_ascii_digit() => {
-                    return Some(self.read_number().map(Token::Number));
-                }
-                Some('\n') => {
-                    self.advance_char();
-                    return Some(Ok(Token::Newline));
-                }
-                Some('(') => {
-                    self.advance_char();
-                    return Some(Ok(Token::LeftParen));
-                }
-                Some(')') => {
-                    self.advance_char();
-                    return Some(Ok(Token::RightParen));
-                }
-                None => {
-                    self.done = true;
-                    return Some(Ok(Token::Eof));
-                }
-                Some(ch) => {
-                    let err = self.error(LexErrorKind::UnexpectedCharacter(ch));
-                    self.advance_char();
-                    return Some(Err(err));
-                }
-            }
+        let b = self.current_byte();
+        match b {
+            Some(b' ' | b'\t' | b'\r') => Some(self.handle_whitespace()),
+            Some(b'\n') => Some(self.handle_newline()),
+            Some(b'(') => Some(self.handle_left_paren()),
+            Some(b')') => Some(self.handle_right_paren()),
+            Some(b) if (b as char).is_ascii_alphabetic() || b == b'_' => Some(self.handle_alpha()),
+            Some(b) if (b as char).is_ascii_digit() => Some(self.handle_digit()),
+            None => Some(self.handle_eof()),
+            Some(_) => Some(self.handle_error()),
         }
+    }
+}
+
+impl<'a> Iterator for Lexer<'a> {
+    type Item = LexResult<'a, Token<'a>>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_token_jump()
     }
 }
 
