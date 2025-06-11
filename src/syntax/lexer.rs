@@ -1,7 +1,5 @@
 use std::fmt;
 
-/// All possible token types in NaijaScript.
-/// Each variant represents a keyword, operator, literal, or punctuation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'a> {
     Make,
@@ -55,7 +53,6 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-/// All possible error kinds that can occur during lexing.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LexErrorKind<'a> {
     UnexpectedCharacter(char),
@@ -64,7 +61,6 @@ pub enum LexErrorKind<'a> {
     InvalidEscapeSequence(char),
 }
 
-/// Error type for lexer errors, including line and column for diagnostics.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LexError<'a> {
     pub kind: LexErrorKind<'a>,
@@ -73,6 +69,7 @@ pub struct LexError<'a> {
 }
 
 impl<'a> LexError<'a> {
+    // Hint to compiler this is unlikely to be called, optimizing happy path
     #[cold]
     fn new(kind: LexErrorKind<'a>, line: usize, column: usize) -> Self {
         Self { kind, line, column }
@@ -95,60 +92,56 @@ impl<'a> std::error::Error for LexError<'a> {}
 
 pub type LexResult<'a, T> = Result<T, LexError<'a>>;
 
-/// The main lexer struct for NaijaScript.
-/// Implements Iterator to produce tokens from source code.
 pub struct Lexer<'a> {
     input: &'a str,
     position: usize,
-    line: usize,
-    column: usize,
     done: bool,
 }
 
 impl<'a> Lexer<'a> {
-    /// Create a new lexer from an input string.
     pub fn new(input: &'a str) -> Self {
-        Lexer { input, position: 0, line: 1, column: 1, done: false }
+        Lexer { input, position: 0, done: false }
     }
 
-    /// Get the current byte at position, or None if at end.
     #[inline(always)]
     fn current_byte(&self) -> Option<u8> {
         self.input.as_bytes().get(self.position).copied()
     }
 
-    /// Get the current character at position, None if at end.
     #[inline(always)]
     fn current_char(&self) -> Option<char> {
         self.input[self.position..].chars().next()
     }
 
-    /// Advance by n bytes, updating line/column.
     #[inline(always)]
     fn advance(&mut self, n: usize) {
-        for _ in 0..n {
-            if let Some(b) = self.current_byte() {
-                if b == b'\n' {
-                    self.line += 1;
-                    self.column = 1;
-                } else {
-                    self.column += 1;
-                }
-                self.position += 1;
-            }
-        }
+        self.position += n;
     }
 
-    /// Advance by one character (may be multiple bytes).
     #[inline(always)]
     fn advance_char(&mut self) {
         if let Some(ch) = self.current_char() {
-            let len = ch.len_utf8();
-            self.advance(len);
+            self.position += ch.len_utf8();
         }
     }
 
-    /// Static lookup table for ASCII alphanumeric and underscore
+    fn calculate_line_column(&self, pos: usize) -> (usize, usize) {
+        let mut line = 1;
+        let mut column = 1;
+        let bytes = self.input.as_bytes();
+
+        for &byte in bytes.iter().take(pos.min(bytes.len())) {
+            if byte == b'\n' {
+                line += 1;
+                column = 1;
+            } else {
+                column += 1;
+            }
+        }
+        (line, column)
+    }
+
+    // Precomputed lookup table avoids function calls for ASCII alphanumeric checks
     const IS_ALNUM: [bool; 256] = {
         let mut arr = [false; 256];
         let mut i = b'0';
@@ -170,7 +163,17 @@ impl<'a> Lexer<'a> {
         arr
     };
 
-    /// Skip whitespace except for newlines.
+    // Precomputed powers avoid expensive floating-point exponentiation
+    const POWERS_OF_10: [f64; 19] = [
+        1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16,
+        1e17, 1e18,
+    ];
+
+    #[inline(always)]
+    const fn is_digit(b: u8) -> bool {
+        b.wrapping_sub(b'0') < 10
+    }
+
     #[inline(always)]
     fn skip_whitespace(&mut self) {
         let bytes = self.input.as_bytes();
@@ -179,7 +182,7 @@ impl<'a> Lexer<'a> {
             let b = bytes[self.position];
             if b == b' ' || b == b'\t' || b == b'\r' {
                 self.advance(1);
-                // Try to skip up to 3 more bytes
+                // Manual loop unrolling for better performance
                 for _ in 0..3 {
                     if self.position < len {
                         let b2 = bytes[self.position];
@@ -196,28 +199,79 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Parse a number literal, supporting floating-point values.
+    // Manual parsing avoids string allocation and is faster than parse()
     #[inline(always)]
     fn read_number(&mut self) -> LexResult<'a, f64> {
         let bytes = self.input.as_bytes();
         let len = bytes.len();
         let start = self.position;
+
+        let mut integer_part = 0u64;
+
+        // Detect overflow before it happens to avoid panic
+        while self.position < len {
+            let b = bytes[self.position];
+            if Self::is_digit(b) {
+                let digit = (b - b'0') as u64;
+
+                // Prevent overflow by checking before multiplication
+                if integer_part > (u64::MAX - digit) / 10 {
+                    // Fall back to string parsing when numbers are too large
+                    self.position = start;
+                    return self.read_number_fallback();
+                }
+
+                integer_part = integer_part * 10 + digit;
+                self.advance(1);
+            } else {
+                break;
+            }
+        }
+
+        // Fast path: no decimal point
+        if self.position >= len || bytes[self.position] != b'.' {
+            return Ok(integer_part as f64);
+        }
+
+        // Parse decimal part
+        self.advance(1); // Skip the dot
+        let mut decimal_part = 0u64;
+        let mut decimal_places = 0u32;
+
+        // Limit precision to prevent overflow in decimal_part
+        while self.position < len && decimal_places < 17 {
+            let b = bytes[self.position];
+            if Self::is_digit(b) {
+                decimal_part = decimal_part * 10 + (b - b'0') as u64;
+                decimal_places += 1;
+                self.advance(1);
+            } else {
+                break;
+            }
+        }
+
+        // Convert to f64
+        let mut result = integer_part as f64;
+        if decimal_places > 0 && decimal_places < Self::POWERS_OF_10.len() as u32 {
+            let decimal_value = decimal_part as f64;
+            result += decimal_value / Self::POWERS_OF_10[decimal_places as usize];
+        }
+
+        Ok(result)
+    }
+
+    // Fallback for edge cases like very large numbers
+    #[inline(never)]
+    fn read_number_fallback(&mut self) -> LexResult<'a, f64> {
+        let bytes = self.input.as_bytes();
+        let len = bytes.len();
+        let start = self.position;
         let mut seen_dot = false;
+
         while self.position < len {
             let b = bytes[self.position];
             if b.is_ascii_digit() {
                 self.advance(1);
-                // Try to skip up to 3 more digits
-                for _ in 0..3 {
-                    if self.position < len {
-                        let b2 = bytes[self.position];
-                        if b2.is_ascii_digit() {
-                            self.advance(1);
-                        } else {
-                            break;
-                        }
-                    }
-                }
             } else if b == b'.' && !seen_dot {
                 seen_dot = true;
                 self.advance(1);
@@ -229,7 +283,6 @@ impl<'a> Lexer<'a> {
         num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str)))
     }
 
-    /// Parse an identifier as a slice of the input.
     #[inline(always)]
     fn read_identifier_slice(&mut self) -> &str {
         let bytes = self.input.as_bytes();
@@ -239,7 +292,7 @@ impl<'a> Lexer<'a> {
             let b = bytes[self.position];
             if Self::IS_ALNUM[b as usize] {
                 self.advance(1);
-                // Try to skip up to 3 more bytes
+                // Manual loop unrolling for better performance
                 for _ in 0..3 {
                     if self.position < len {
                         let b2 = bytes[self.position];
@@ -254,26 +307,24 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        // SAFETY: start and self.position are always valid UTF-8 boundaries as we only advance by char boundaries.
+        // SAFETY: We only advance by valid UTF-8 char boundaries in identifier parsing,
+        // so start..position always represents valid UTF-8 substring
         unsafe { self.input.get_unchecked(start..self.position) }
     }
 
-    /// Fast byte-based check for multi-word keywords at the current position.
+    // Complex state machine handles flexible whitespace in multi-word keywords
     fn match_multiword(&mut self, kw: &'static [u8]) -> bool {
         let input_bytes = self.input.as_bytes();
         let mut pos = self.position;
         let mut kw_idx = 0;
-        let mut line = self.line;
-        let mut column = self.column;
         while kw_idx < kw.len() && pos < input_bytes.len() {
-            // Skip whitespace in input if present in keyword as space
+            // Allow flexible whitespace where keyword has single space
             if kw[kw_idx] == b' ' {
                 // Accept one or more spaces/tabs in input
                 while pos < input_bytes.len()
                     && (input_bytes[pos] == b' ' || input_bytes[pos] == b'\t')
                 {
                     pos += 1;
-                    column += 1;
                 }
                 kw_idx += 1;
                 continue;
@@ -281,27 +332,17 @@ impl<'a> Lexer<'a> {
             if input_bytes[pos] != kw[kw_idx] {
                 return false;
             }
-            if input_bytes[pos] == b'\n' {
-                line += 1;
-                column = 1;
-            } else {
-                column += 1;
-            }
             pos += 1;
             kw_idx += 1;
         }
         if kw_idx == kw.len() {
-            while self.position < pos {
-                self.advance(1);
-            }
-            self.line = line;
-            self.column = column;
+            self.position = pos;
             return true;
         }
         false
     }
 
-    /// Recognize multi-word keywords first, then fall back to single-word keywords or identifiers.
+    // Multi-word keywords checked first to avoid mis-parsing as identifiers
     #[inline(always)]
     fn read_keyword_or_identifier(&mut self) -> Token<'a> {
         // Multi-word keyword byte patterns
@@ -319,7 +360,8 @@ impl<'a> Lexer<'a> {
         }
         // Single-word: extract identifier, then match against static byte arrays
         let ident = self.read_identifier_slice();
-        // SAFETY: ident is a slice of self.input, which lives at least as long as 'a.
+        // SAFETY: ident is a slice of self.input which lives for 'a, and we need
+        // to extend its lifetime to match Token<'a> for zero-copy parsing
         let ident: &'a str = unsafe { std::mem::transmute::<&str, &'a str>(ident) };
         match ident {
             "make" => Token::Make,
@@ -385,9 +427,11 @@ impl<'a> Lexer<'a> {
     }
     #[inline(always)]
     fn error(&self, kind: LexErrorKind<'a>) -> LexError<'a> {
-        LexError::new(kind, self.line, self.column)
+        let (line, column) = self.calculate_line_column(self.position);
+        LexError::new(kind, line, column)
     }
 
+    // Jump table dispatch pattern for better branch prediction
     #[allow(clippy::needless_return)]
     fn next_token_jump(&mut self) -> Option<LexResult<'a, Token<'a>>> {
         if self.done {
@@ -396,7 +440,7 @@ impl<'a> Lexer<'a> {
         let b = self.current_byte();
         if let Some(b) = b {
             if b < 0x80 {
-                // ASCII fast path
+                // ASCII fast path optimizes common case
                 match b {
                     b' ' | b'\t' | b'\r' => Some(self.handle_whitespace()),
                     b'\n' => Some(self.handle_newline()),
@@ -407,7 +451,7 @@ impl<'a> Lexer<'a> {
                     _ => Some(self.handle_error()),
                 }
             } else {
-                // Non-ASCII: Unicode-aware fallback
+                // Non-ASCII: Unicode-aware fallback for rare cases
                 let ch = self.current_char().unwrap();
                 if ch.is_whitespace() {
                     // Unicode whitespace (rare in source)
@@ -437,8 +481,6 @@ impl<'a> Iterator for Lexer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
-
     use super::*;
 
     #[test]
@@ -520,7 +562,7 @@ mod tests {
             input.push_str(&i.to_string());
             input.push('\n');
         }
-        let start = Instant::now();
+        let start = std::time::Instant::now();
         let lexer = Lexer::new(&input);
         let tokens: Result<Vec<_>, _> = lexer.collect();
         let elapsed = start.elapsed();
