@@ -148,52 +148,108 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Static lookup table for ASCII alphanumeric and underscore
+    const IS_ALNUM: [bool; 256] = {
+        let mut arr = [false; 256];
+        let mut i = b'0';
+        while i <= b'9' {
+            arr[i as usize] = true;
+            i += 1;
+        }
+        let mut i = b'A';
+        while i <= b'Z' {
+            arr[i as usize] = true;
+            i += 1;
+        }
+        let mut i = b'a';
+        while i <= b'z' {
+            arr[i as usize] = true;
+            i += 1;
+        }
+        arr[b'_' as usize] = true;
+        arr
+    };
+
     /// Skip whitespace except for newlines.
     #[inline(always)]
     fn skip_whitespace(&mut self) {
-        while let Some(b) = self.current_byte() {
-            if (b as char).is_whitespace() && b != b'\n' {
+        let bytes = self.input.as_bytes();
+        let len = bytes.len();
+        while self.position < len {
+            let b = bytes[self.position];
+            if b == b' ' || b == b'\t' || b == b'\r' {
                 self.advance(1);
+                // Try to skip up to 3 more bytes
+                for _ in 0..3 {
+                    if self.position < len {
+                        let b2 = bytes[self.position];
+                        if b2 == b' ' || b2 == b'\t' || b2 == b'\r' {
+                            self.advance(1);
+                        } else {
+                            break;
+                        }
+                    }
+                }
             } else {
                 break;
             }
         }
     }
 
-    /// Helper to create a lexer error at the current position.
-    #[cold]
-    fn error(&self, kind: LexErrorKind<'a>) -> LexError<'a> {
-        LexError::new(kind, self.line, self.column)
-    }
-
     /// Parse a number literal, supporting floating-point values.
+    #[inline(always)]
     fn read_number(&mut self) -> LexResult<'a, f64> {
+        let bytes = self.input.as_bytes();
+        let len = bytes.len();
         let start = self.position;
         let mut seen_dot = false;
-
-        while let Some(b) = self.current_byte() {
-            let ch = b as char;
-            if ch.is_ascii_digit() {
+        while self.position < len {
+            let b = bytes[self.position];
+            if b.is_ascii_digit() {
                 self.advance(1);
-            } else if ch == '.' && !seen_dot {
+                // Try to skip up to 3 more digits
+                for _ in 0..3 {
+                    if self.position < len {
+                        let b2 = bytes[self.position];
+                        if b2.is_ascii_digit() {
+                            self.advance(1);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            } else if b == b'.' && !seen_dot {
                 seen_dot = true;
                 self.advance(1);
             } else {
                 break;
             }
         }
-
         let num_str = &self.input[start..self.position];
         num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str)))
     }
 
     /// Parse an identifier as a slice of the input.
+    #[inline(always)]
     fn read_identifier_slice(&mut self) -> &str {
+        let bytes = self.input.as_bytes();
+        let len = bytes.len();
         let start = self.position;
-        while let Some(b) = self.current_byte() {
-            let ch = b as char;
-            if ch.is_ascii_alphanumeric() || ch == '_' {
+        while self.position < len {
+            let b = bytes[self.position];
+            if Self::IS_ALNUM[b as usize] {
                 self.advance(1);
+                // Try to skip up to 3 more bytes
+                for _ in 0..3 {
+                    if self.position < len {
+                        let b2 = bytes[self.position];
+                        if Self::IS_ALNUM[b2 as usize] {
+                            self.advance(1);
+                        } else {
+                            break;
+                        }
+                    }
+                }
             } else {
                 break;
             }
@@ -246,6 +302,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Recognize multi-word keywords first, then fall back to single-word keywords or identifiers.
+    #[inline(always)]
     fn read_keyword_or_identifier(&mut self) -> Token<'a> {
         // Multi-word keyword byte patterns
         const IF_TO_SAY: &[u8] = b"if to say";
@@ -281,6 +338,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    #[inline(always)]
     fn handle_whitespace(&mut self) -> LexResult<'a, Token<'a>> {
         self.skip_whitespace();
         // After skipping, dispatch again (tail call):
@@ -290,33 +348,44 @@ impl<'a> Lexer<'a> {
             None => Ok(Token::Eof),
         }
     }
+    #[inline(always)]
     fn handle_alpha(&mut self) -> LexResult<'a, Token<'a>> {
         Ok(self.read_keyword_or_identifier())
     }
+    #[inline(always)]
     fn handle_digit(&mut self) -> LexResult<'a, Token<'a>> {
         self.read_number().map(Token::Number)
     }
+    #[inline(always)]
     fn handle_newline(&mut self) -> LexResult<'a, Token<'a>> {
         self.advance_char();
         Ok(Token::Newline)
     }
+    #[inline(always)]
     fn handle_left_paren(&mut self) -> LexResult<'a, Token<'a>> {
         self.advance_char();
         Ok(Token::LeftParen)
     }
+    #[inline(always)]
     fn handle_right_paren(&mut self) -> LexResult<'a, Token<'a>> {
         self.advance_char();
         Ok(Token::RightParen)
     }
+    #[inline(always)]
     fn handle_eof(&mut self) -> LexResult<'a, Token<'a>> {
         self.done = true;
         Ok(Token::Eof)
     }
+    #[inline(always)]
     fn handle_error(&mut self) -> LexResult<'a, Token<'a>> {
         let ch = self.current_char().unwrap();
         let err = self.error(LexErrorKind::UnexpectedCharacter(ch));
         self.advance_char();
         Err(err)
+    }
+    #[inline(always)]
+    fn error(&self, kind: LexErrorKind<'a>) -> LexError<'a> {
+        LexError::new(kind, self.line, self.column)
     }
 
     fn next_token_jump(&mut self) -> Option<LexResult<'a, Token<'a>>> {
