@@ -406,6 +406,7 @@ impl<'a> Lexer<'a> {
                     _ => Some(self.handle_error()),
                 }
             } else {
+                #[allow(clippy::needless_return)]
                 // Non-ASCII: Unicode-aware fallback
                 let ch = self.current_char().unwrap();
                 if ch.is_whitespace() {
