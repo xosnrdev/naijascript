@@ -393,15 +393,36 @@ impl<'a> Lexer<'a> {
             return None;
         }
         let b = self.current_byte();
-        match b {
-            Some(b' ' | b'\t' | b'\r') => Some(self.handle_whitespace()),
-            Some(b'\n') => Some(self.handle_newline()),
-            Some(b'(') => Some(self.handle_left_paren()),
-            Some(b')') => Some(self.handle_right_paren()),
-            Some(b) if (b as char).is_ascii_alphabetic() || b == b'_' => Some(self.handle_alpha()),
-            Some(b) if (b as char).is_ascii_digit() => Some(self.handle_digit()),
-            None => Some(self.handle_eof()),
-            Some(_) => Some(self.handle_error()),
+        if let Some(b) = b {
+            if b < 0x80 {
+                // ASCII fast path
+                match b {
+                    b' ' | b'\t' | b'\r' => Some(self.handle_whitespace()),
+                    b'\n' => Some(self.handle_newline()),
+                    b'(' => Some(self.handle_left_paren()),
+                    b')' => Some(self.handle_right_paren()),
+                    b'a'..=b'z' | b'A'..=b'Z' | b'_' => Some(self.handle_alpha()),
+                    b'0'..=b'9' => Some(self.handle_digit()),
+                    _ => Some(self.handle_error()),
+                }
+            } else {
+                // Non-ASCII: Unicode-aware fallback
+                let ch = self.current_char().unwrap();
+                if ch.is_whitespace() {
+                    // Unicode whitespace (rare in source)
+                    self.advance_char();
+                    Some(self.next_token_jump().unwrap_or(Ok(Token::Eof)))
+                } else if ch.is_alphabetic() || ch == '_' {
+                    return Some(self.handle_alpha());
+                } else if ch.is_numeric() {
+                    return Some(self.handle_digit());
+                } else {
+                    // Unknown non-ASCII character
+                    return Some(self.handle_error());
+                }
+            }
+        } else {
+            Some(self.handle_eof())
         }
     }
 }
