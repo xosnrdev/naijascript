@@ -5,10 +5,6 @@ edition = "2024"
 authors = ["Success Kingsley <xosnrdev@gmail.com>"]
 description = "A scripting language for learning, automation, and fun with Naija (Nigerian) lingo."
 
-[[bench]]
-name = "lib"
-harness = false
-
 [dependencies]
 clap = { version = "4.5.39", features = ["derive"] }
 clap-cargo = { version = "0.15.2", features = ["clap"] }
@@ -22,6 +18,13 @@ zip = "4.0.0"
 [target.aarch64-unknown-linux-gnu.dependencies]
 openssl = { version = "0.10.73", features = ["vendored"] }
 
+[dev-dependencies]
+criterion = { version = "0.6.0", features = ["html_reports"] }
+
+[[bench]]
+name = "lib"
+harness = false
+
 # We use `opt-level = "s"` as it significantly reduces binary size.
 [profile.release]
 codegen-units = 1           # reduces binary size by ~2%
@@ -32,6 +35,3 @@ panic = "abort"             # reduces binary size by ~50% in combination with -Z
 split-debuginfo = "packed"  # generates a separate *.dwp/*.dSYM so the binary can get stripped
 strip = "symbols"           # See split-debuginfo - allows us to drop the size by ~65%
 incremental = true          # Improves re-compile times
-
-[dev-dependencies]
-criterion = "0.6.0"
