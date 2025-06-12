@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::syntax::ast::*;
 
 /// Represents a runtime value in NaijaScript.
@@ -42,6 +43,68 @@ impl<'a> std::fmt::Display for InterpreterError<'a> {
 }
 
 impl<'a> std::error::Error for InterpreterError<'a> {}
+
+impl<'a> InterpreterError<'a> {
+    pub fn to_diagnostic(
+        &self,
+        file: Option<&str>,
+        line: Option<usize>,
+        column: Option<usize>,
+    ) -> Diagnostic {
+        match self {
+            InterpreterError::UndefinedVariable(name) => Diagnostic {
+                kind: DiagnosticKind::Error,
+                code: "E0001",
+                message: format!("Abeg, variable '{name}' no dey defined for here o"),
+                file: file.map(|s| s.to_string()),
+                line,
+                column,
+                snippet: None,
+                suggestion: Some("Try declare the variable with 'make' first".to_string()),
+            },
+            InterpreterError::DivisionByZero => Diagnostic {
+                kind: DiagnosticKind::Error,
+                code: "E0002",
+                message: "Kai! You wan divide by zero? Wahala o!".to_string(),
+                file: file.map(|s| s.to_string()),
+                line,
+                column,
+                snippet: None,
+                suggestion: None,
+            },
+            InterpreterError::TypeError(msg) => Diagnostic {
+                kind: DiagnosticKind::Error,
+                code: "E0003",
+                message: format!("Omo! Type wahala: {msg}"),
+                file: file.map(|s| s.to_string()),
+                line,
+                column,
+                snippet: None,
+                suggestion: None,
+            },
+            InterpreterError::ScopeError => Diagnostic {
+                kind: DiagnosticKind::Error,
+                code: "E0004",
+                message: "No environment scope found (this na bug)".to_string(),
+                file: file.map(|s| s.to_string()),
+                line,
+                column,
+                snippet: None,
+                suggestion: None,
+            },
+            InterpreterError::Other(msg) => Diagnostic {
+                kind: DiagnosticKind::Error,
+                code: "E9999",
+                message: format!("Interpreter wahala: {msg}"),
+                file: file.map(|s| s.to_string()),
+                line,
+                column,
+                snippet: None,
+                suggestion: None,
+            },
+        }
+    }
+}
 
 /// Type alias for interpreter results, using custom error type.
 pub type InterpreterResult<'a, T> = Result<T, InterpreterError<'a>>;

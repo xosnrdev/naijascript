@@ -3,6 +3,7 @@ use std::io::{self, IsTerminal, Read, Write};
 use clap::Parser as ClapParser;
 use clap_cargo::style::CLAP_STYLING;
 
+use crate::diagnostic::{DiagnosticEmitter, TerminalEmitter};
 use crate::interpreter::{Interpreter, InterpreterError};
 use crate::syntax::Lexer;
 use crate::syntax::parser::{ParseError, Parser};
@@ -62,27 +63,18 @@ pub fn run() {
     let exit_code = if let Some(code) = cli.eval {
         match run_eval(&code) {
             Ok(()) => 0,
-            Err(e) => {
-                eprintln!("{e}");
-                1
-            }
+            Err(_) => 1,
         }
     } else if let Some(script) = cli.script {
         if script == "-" {
             match run_stdin() {
                 Ok(()) => 0,
-                Err(e) => {
-                    eprintln!("{e}");
-                    1
-                }
+                Err(_) => 1,
             }
         } else {
             match run_script(&script) {
                 Ok(()) => 0,
-                Err(e) => {
-                    eprintln!("{e}");
-                    1
-                }
+                Err(_) => 1,
             }
         }
     } else if cli.interactive {
@@ -93,10 +85,7 @@ pub fn run() {
     } else if !io::stdin().is_terminal() {
         match run_stdin() {
             Ok(()) => 0,
-            Err(e) => {
-                eprintln!("{e}");
-                1
-            }
+            Err(_) => 1,
         }
     } else {
         1
@@ -111,9 +100,20 @@ fn run_eval<'a>(code: &'a str) -> CmdResult<'a, ()> {
     match parser.parse_program() {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
-            interpreter.eval_program(&program).map_err(CmdError::Interpreter)
+            match interpreter.eval_program(&program) {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    let emitter = TerminalEmitter;
+                    emitter.emit(&e.to_diagnostic(None, None, None));
+                    Err(CmdError::Interpreter(e))
+                }
+            }
         }
-        Err(e) => Err(CmdError::Parse(e)),
+        Err(e) => {
+            let emitter = TerminalEmitter;
+            emitter.emit(&e.to_diagnostic(code, None));
+            Err(CmdError::Parse(e))
+        }
     }
 }
 
@@ -128,10 +128,20 @@ fn run_script(script: &str) -> CmdResult<'static, ()> {
     match parser.parse_program() {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
-            // Workaround: parser/interpreter errors are stringified for static lifetime
-            interpreter.eval_program(&program).map_err(|e| CmdError::Other(e.to_string()))
+            match interpreter.eval_program(&program) {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    let emitter = TerminalEmitter;
+                    emitter.emit(&e.to_diagnostic(Some(script), None, None));
+                    Err(CmdError::Other(e.to_string()))
+                }
+            }
         }
-        Err(e) => Err(CmdError::Other(e.to_string())),
+        Err(e) => {
+            let emitter = TerminalEmitter;
+            emitter.emit(&e.to_diagnostic(&source, Some(script)));
+            Err(CmdError::Other(e.to_string()))
+        }
     }
 }
 
@@ -171,10 +181,14 @@ fn run_repl<'a>() -> CmdResult<'a, ()> {
                 match parser.parse_program() {
                     Ok(program) => {
                         if let Err(e) = interpreter.eval_program(&program) {
-                            eprintln!("{e}");
+                            let emitter = TerminalEmitter;
+                            emitter.emit(&e.to_diagnostic(None, None, None));
                         }
                     }
-                    Err(e) => eprintln!("{e}"),
+                    Err(e) => {
+                        let emitter = TerminalEmitter;
+                        emitter.emit(&e.to_diagnostic(static_input, None));
+                    }
                 }
             }
             Err(_) => {
@@ -197,10 +211,20 @@ fn run_stdin() -> CmdResult<'static, ()> {
     match parser.parse_program() {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
-            // Workaround: parser/interpreter errors are stringified for static lifetime
-            interpreter.eval_program(&program).map_err(|e| CmdError::Other(e.to_string()))
+            match interpreter.eval_program(&program) {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    let emitter = TerminalEmitter;
+                    emitter.emit(&e.to_diagnostic(None, None, None));
+                    Err(CmdError::Other(e.to_string()))
+                }
+            }
         }
-        Err(e) => Err(CmdError::Other(e.to_string())),
+        Err(e) => {
+            let emitter = TerminalEmitter;
+            emitter.emit(&e.to_diagnostic(&buffer, None));
+            Err(CmdError::Other(e.to_string()))
+        }
     }
 }
 
