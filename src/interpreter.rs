@@ -1,4 +1,4 @@
-//! Tree-Walking Interpreter for NaijaScript.
+//! Tree-Walk Interpreter for NaijaScript.
 
 use std::collections::HashMap;
 
