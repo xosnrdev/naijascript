@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::diagnostics::{Diagnostic, DiagnosticHandler};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'a> {
     Make,
@@ -74,21 +76,28 @@ impl<'a> LexError<'a> {
     fn new(kind: LexErrorKind<'a>, line: usize, column: usize) -> Self {
         Self { kind, line, column }
     }
-}
 
-impl<'a> fmt::Display for LexError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let message = match &self.kind {
-            LexErrorKind::UnexpectedCharacter(ch) => format!("Wetin be dis character: '{ch}'"),
-            LexErrorKind::InvalidNumber(num) => format!("Wetin be dis number: '{num}'"),
-            LexErrorKind::UnterminatedString => "You no close dis string".to_string(),
-            LexErrorKind::InvalidEscapeSequence(ch) => format!("Wetin be dis escape: '\\{ch}'"),
+    pub fn to_diagnostic(&self, source: &'a str, position: usize) -> Diagnostic<'a> {
+        let (span_start, span_end) = match &self.kind {
+            LexErrorKind::UnexpectedCharacter(ch) => (position, position + ch.len_utf8()),
+            _ => (0, 0),
         };
-        write!(f, "{} (line {}, column {})", message, self.line, self.column)
+        let message = match &self.kind {
+            LexErrorKind::UnexpectedCharacter(_) => "Wetin be dis character",
+            LexErrorKind::InvalidNumber(_) => "Wetin be dis number",
+            LexErrorKind::UnterminatedString => "You no close dis string",
+            LexErrorKind::InvalidEscapeSequence(_) => "Wetin be dis escape",
+        };
+        Diagnostic::error(
+            "lexical error",
+            message,
+            source,
+            (span_start, span_end),
+            self.line,
+            self.column,
+        )
     }
 }
-
-impl<'a> std::error::Error for LexError<'a> {}
 
 pub type LexResult<'a, T> = Result<T, LexError<'a>>;
 
@@ -429,6 +438,21 @@ impl<'a> Lexer<'a> {
     fn error(&self, kind: LexErrorKind<'a>) -> LexError<'a> {
         let (line, column) = self.calculate_line_column(self.position);
         LexError::new(kind, line, column)
+    }
+
+    /// Like next(), but reports diagnostics if a handler is provided.
+    pub fn next_with_handler(
+        &mut self,
+        handler: Option<&mut dyn DiagnosticHandler>,
+        source: &'a str,
+    ) -> Option<LexResult<'a, Token<'a>>> {
+        let res = self.next_token_jump();
+        if let Some(Err(ref e)) = res
+            && let Some(h) = handler
+        {
+            h.report(&e.to_diagnostic(source, self.position));
+        }
+        res
     }
 
     // Jump table dispatch pattern for better branch prediction

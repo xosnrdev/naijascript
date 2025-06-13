@@ -2,6 +2,7 @@ use std::iter::Peekable;
 
 use super::ast::*;
 use super::lexer::{self, Lexer, Token};
+use crate::diagnostics::{Diagnostic, DiagnosticHandler};
 
 /// All possible errors that can occur during parsing.
 /// Includes unexpected tokens, unexpected EOF, and lexer errors.
@@ -12,19 +13,30 @@ pub enum ParseError<'a> {
     LexerError(lexer::LexError<'a>),
 }
 
-impl<'a> std::fmt::Display for ParseError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'a> ParseError<'a> {
+    pub fn to_diagnostic(&self, source: &'a str) -> Diagnostic<'a> {
         match self {
-            ParseError::UnexpectedEof => {
-                write!(f, "Omo! Your code finish for middle, e never complete")
+            ParseError::UnexpectedEof => Diagnostic::error(
+                "syntax error",
+                "Omo! Your code finish for middle, e never complete",
+                source,
+                (0, 0),
+                0,
+                0,
+            ),
+            ParseError::UnexpectedToken(tok) => {
+                let tok_str = format!("{tok}");
+                let (start, end) = if let Some(start) = source.find(&tok_str) {
+                    (start, start + tok_str.len())
+                } else {
+                    (0, 0)
+                };
+                Diagnostic::error("syntax error", "Wetin be dis token", source, (start, end), 0, 0)
             }
-            ParseError::UnexpectedToken(tok) => write!(f, "Wetin be dis token: {tok}"),
-            ParseError::LexerError(e) => write!(f, "{e}"),
+            ParseError::LexerError(e) => e.to_diagnostic(source, 0),
         }
     }
 }
-
-impl<'a> std::error::Error for ParseError<'a> {}
 
 /// Alias for parser result type, used throughout the parser for ergonomic error handling.
 pub type ParseResult<'a, T> = Result<T, ParseError<'a>>;
@@ -243,6 +255,23 @@ impl<'a> Parser<'a> {
             skipped = true;
         }
         skipped || self.tokens.peek().is_some()
+    }
+
+    /// Parse a full program (entry point), collecting all top-level statements, with error handling via a diagnostics handler.
+    pub fn parse_program_with_handler(
+        &mut self,
+        handler: Option<&mut dyn DiagnosticHandler>,
+        source: &'a str,
+    ) -> ParseResult<'a, Program<'a>> {
+        match self.parse_program() {
+            Ok(program) => Ok(program),
+            Err(e) => {
+                if let Some(h) = handler {
+                    h.report(&e.to_diagnostic(source));
+                }
+                Err(e)
+            }
+        }
     }
 }
 

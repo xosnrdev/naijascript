@@ -3,6 +3,7 @@ use std::io::{self, IsTerminal, Read, Write};
 use clap::Parser as ClapParser;
 use clap_cargo::style::CLAP_STYLING;
 
+use crate::diagnostics::StderrHandler;
 use crate::interpreter::{Interpreter, InterpreterError};
 use crate::syntax::Lexer;
 use crate::syntax::parser::{ParseError, Parser};
@@ -36,22 +37,6 @@ pub enum CmdError<'a> {
     Other(String),
 }
 
-impl<'a> std::fmt::Display for CmdError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CmdError::Io(_) => write!(f, "I no see the file you wan run"),
-            CmdError::Parse(e) => write!(f, "{e}"),
-            CmdError::Interpreter(e) => write!(f, "{e}"),
-            CmdError::InvalidScriptExtension(s) => {
-                write!(f, "Omo! Only .ns or .naija files dey allowed as script. You give me: {s}")
-            }
-            CmdError::Other(msg) => write!(f, "{msg}"),
-        }
-    }
-}
-
-impl<'a> std::error::Error for CmdError<'a> {}
-
 /// Alias for command result type, for ergonomic error handling
 pub type CmdResult<'a, T> = Result<T, CmdError<'a>>;
 
@@ -62,27 +47,18 @@ pub fn run() {
     let exit_code = if let Some(code) = cli.eval {
         match run_eval(&code) {
             Ok(()) => 0,
-            Err(e) => {
-                eprintln!("{e}");
-                1
-            }
+            Err(_) => 1,
         }
     } else if let Some(script) = cli.script {
         if script == "-" {
             match run_stdin() {
                 Ok(()) => 0,
-                Err(e) => {
-                    eprintln!("{e}");
-                    1
-                }
+                Err(_) => 1,
             }
         } else {
             match run_script(&script) {
                 Ok(()) => 0,
-                Err(e) => {
-                    eprintln!("{e}");
-                    1
-                }
+                Err(_) => 1,
             }
         }
     } else if cli.interactive {
@@ -93,10 +69,7 @@ pub fn run() {
     } else if !io::stdin().is_terminal() {
         match run_stdin() {
             Ok(()) => 0,
-            Err(e) => {
-                eprintln!("{e}");
-                1
-            }
+            Err(_) => 1,
         }
     } else {
         1
@@ -107,11 +80,14 @@ pub fn run() {
 /// Evaluate code passed as a string (for --eval).
 /// Returns error if parsing or execution fails.
 fn run_eval<'a>(code: &'a str) -> CmdResult<'a, ()> {
+    let mut handler = StderrHandler;
     let mut parser = Parser::new(Lexer::new(code));
-    match parser.parse_program() {
+    match parser.parse_program_with_handler(Some(&mut handler), code) {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
-            interpreter.eval_program(&program).map_err(CmdError::Interpreter)
+            interpreter
+                .eval_program_with_handler(&program, Some(&mut handler), code)
+                .map_err(CmdError::Interpreter)
         }
         Err(e) => Err(CmdError::Parse(e)),
     }
@@ -124,20 +100,22 @@ fn run_script(script: &str) -> CmdResult<'static, ()> {
         return Err(CmdError::InvalidScriptExtension(script.to_string()));
     }
     let source = std::fs::read_to_string(script).map_err(CmdError::Io)?;
-    let mut parser = Parser::new(Lexer::new(&source));
-    match parser.parse_program() {
+    // Leak the source to extend its lifetime to 'static for error reporting
+    let source: &'static str = Box::leak(source.into_boxed_str());
+    let mut handler = StderrHandler;
+    let mut parser = Parser::new(Lexer::new(source));
+    match parser.parse_program_with_handler(Some(&mut handler), source) {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
-            // Workaround: parser/interpreter errors are stringified for static lifetime
-            interpreter.eval_program(&program).map_err(|e| CmdError::Other(e.to_string()))
+            interpreter
+                .eval_program_with_handler(&program, Some(&mut handler), source)
+                .map_err(CmdError::Interpreter)
         }
-        Err(e) => Err(CmdError::Other(e.to_string())),
+        Err(e) => Err(CmdError::Parse(e)),
     }
 }
 
 /// Start the interactive REPL.
-/// Uses Box::leak to extend input lifetime for parser/interpreter.
-/// This is a workaround for lifetime constraints in the REPL loop.
 fn run_repl<'a>() -> CmdResult<'a, ()> {
     println!("NaijaScript REPL (type 'exit' or Ctrl+D to comot)");
     let mut interpreter = Interpreter::new();
@@ -147,7 +125,6 @@ fn run_repl<'a>() -> CmdResult<'a, ()> {
         print!("> ");
         stdout.flush().ok();
         let mut line = String::new();
-        // Fix: handle EOF (Ctrl+D) by checking if read_line returns 0
         let n = stdin.read_line(&mut line);
         match n {
             Ok(0) => {
@@ -163,18 +140,19 @@ fn run_repl<'a>() -> CmdResult<'a, ()> {
                 if trimmed.is_empty() {
                     continue;
                 }
-                // Box::leak is used here to give the input a 'static lifetime for the parser.
-                // This is safe in a REPL since the process is short-lived and input is small.
                 let input = trimmed.to_owned().into_boxed_str();
+                // Leak the buffer to extend its lifetime to 'static for error reporting
                 let static_input: &'static str = Box::leak(input);
+                let mut handler = StderrHandler;
                 let mut parser = Parser::new(Lexer::new(static_input));
-                match parser.parse_program() {
-                    Ok(program) => {
-                        if let Err(e) = interpreter.eval_program(&program) {
-                            eprintln!("{e}");
-                        }
-                    }
-                    Err(e) => eprintln!("{e}"),
+                if let Ok(program) =
+                    parser.parse_program_with_handler(Some(&mut handler), static_input)
+                {
+                    let _ = interpreter.eval_program_with_handler(
+                        &program,
+                        Some(&mut handler),
+                        static_input,
+                    );
                 }
             }
             Err(_) => {
@@ -193,14 +171,18 @@ fn run_stdin() -> CmdResult<'static, ()> {
     if let Err(e) = io::stdin().read_to_string(&mut buffer) {
         return Err(CmdError::Io(e));
     }
-    let mut parser = Parser::new(Lexer::new(&buffer));
-    match parser.parse_program() {
+    // Leak the buffer to extend its lifetime to 'static for error reporting
+    let buffer: &'static str = Box::leak(buffer.into_boxed_str());
+    let mut handler = StderrHandler;
+    let mut parser = Parser::new(Lexer::new(buffer));
+    match parser.parse_program_with_handler(Some(&mut handler), buffer) {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
-            // Workaround: parser/interpreter errors are stringified for static lifetime
-            interpreter.eval_program(&program).map_err(|e| CmdError::Other(e.to_string()))
+            interpreter
+                .eval_program_with_handler(&program, Some(&mut handler), buffer)
+                .map_err(CmdError::Interpreter)
         }
-        Err(e) => Err(CmdError::Other(e.to_string())),
+        Err(e) => Err(CmdError::Parse(e)),
     }
 }
 

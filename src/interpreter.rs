@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::diagnostics::{Diagnostic, DiagnosticHandler};
 use crate::syntax::ast::*;
 
 /// Represents a runtime value in NaijaScript.
@@ -27,21 +28,94 @@ pub enum InterpreterError<'a> {
     Other(String),
 }
 
-impl<'a> std::fmt::Display for InterpreterError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'a> InterpreterError<'a> {
+    pub fn to_diagnostic(&self, source: &'a str) -> Diagnostic<'a> {
+        fn line_col_from_offset(source: &str, offset: usize) -> (usize, usize) {
+            let mut line = 1;
+            let mut col = 1;
+            let mut count = 0;
+            for ch in source.chars() {
+                if count >= offset {
+                    break;
+                }
+                if ch == '\n' {
+                    line += 1;
+                    col = 1;
+                } else {
+                    col += 1;
+                }
+                count += ch.len_utf8();
+            }
+            (line, col)
+        }
+        fn find_first_word_span(msg: &str, source: &str) -> (usize, usize) {
+            let first_word = msg.split_whitespace().next().unwrap_or("");
+            let span = source.find(first_word).map(|start| start..start + first_word.len());
+            span.map(|r| (r.start, r.end)).unwrap_or((0, 0))
+        }
         match self {
             InterpreterError::UndefinedVariable(name) => {
-                write!(f, "Abeg, variable '{name}' no dey defined for here o")
+                let (start, end) = if let Some(start) = source.find(name) {
+                    (start, start + name.len())
+                } else {
+                    (0, 0)
+                };
+                let (line, col) = line_col_from_offset(source, start);
+                Diagnostic::error(
+                    "runtime error",
+                    "Abeg, variable no dey defined for here o",
+                    source,
+                    (start, end),
+                    line,
+                    col,
+                )
             }
-            InterpreterError::DivisionByZero => write!(f, "Kai! You wan divide by zero? Wahala o!"),
-            InterpreterError::TypeError(msg) => write!(f, "Omo! Type wahala: {msg}"),
-            InterpreterError::ScopeError => write!(f, "No environment scope found (this na bug)"),
-            InterpreterError::Other(msg) => write!(f, "Interpreter wahala: {msg}"),
+            InterpreterError::DivisionByZero => {
+                let (start, end) = if let Some(start) = source.find("divide 0") {
+                    (start, start + "divide 0".len())
+                } else if let Some(start) = source.find("0") {
+                    (start, start + 1)
+                } else {
+                    (0, 0)
+                };
+                let (line, col) = line_col_from_offset(source, start);
+                Diagnostic::error(
+                    "runtime error",
+                    "Kai! You wan divide by zero? Wahala o!",
+                    source,
+                    (start, end),
+                    line,
+                    col,
+                )
+            }
+            InterpreterError::TypeError(msg) => {
+                let (start, end) = find_first_word_span(msg, source);
+                let (line, col) = line_col_from_offset(source, start);
+                Diagnostic::error("runtime error", msg, source, (start, end), line, col)
+            }
+            InterpreterError::ScopeError => Diagnostic::error(
+                "runtime error",
+                "No environment scope found (this na bug)",
+                source,
+                (0, 0),
+                0,
+                0,
+            ),
+            InterpreterError::Other(msg) => {
+                let (start, end) = find_first_word_span(msg, source);
+                let (line, col) = line_col_from_offset(source, start);
+                Diagnostic::error(
+                    "runtime error",
+                    "Interpreter wahala",
+                    source,
+                    (start, end),
+                    line,
+                    col,
+                )
+            }
         }
     }
 }
-
-impl<'a> std::error::Error for InterpreterError<'a> {}
 
 /// Type alias for interpreter results, using custom error type.
 pub type InterpreterResult<'a, T> = Result<T, InterpreterError<'a>>;
@@ -64,6 +138,25 @@ impl<'a> Interpreter<'a> {
     pub fn eval_program(&mut self, program: &Program<'a>) -> InterpreterResult<'a, ()> {
         for stmt in &program.statements {
             self.eval_statement(stmt)?;
+        }
+        Ok(())
+    }
+
+    /// Evaluates a full program with error reporting via a diagnostics handler.
+    /// Returns an error if any statement fails.
+    pub fn eval_program_with_handler(
+        &mut self,
+        program: &Program<'a>,
+        handler: Option<&mut dyn DiagnosticHandler>,
+        source: &'a str,
+    ) -> InterpreterResult<'a, ()> {
+        for stmt in &program.statements {
+            if let Err(e) = self.eval_statement(stmt) {
+                if let Some(h) = handler {
+                    h.report(&e.to_diagnostic(source));
+                }
+                return Err(e);
+            }
         }
         Ok(())
     }
