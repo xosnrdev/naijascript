@@ -1,12 +1,16 @@
+//! The command line interface for NaijaScript interpreter.
+
 use std::io::{self, IsTerminal, Read, Write};
 
 use clap::Parser as ClapParser;
 use clap_cargo::style::CLAP_STYLING;
 
-use crate::interpreter::{Interpreter, InterpreterError};
+use crate::diagnostics::StderrHandler;
+use crate::interpreter::Interpreter;
 use crate::syntax::Lexer;
-use crate::syntax::parser::{ParseError, Parser};
+use crate::syntax::parser::Parser;
 
+/// Command line arguments for the NaijaScript interpreter.
 #[derive(Debug, ClapParser)]
 #[command(
     about = "Scripting language wey you fit use learn, run things, and catch cruise.",
@@ -25,64 +29,44 @@ struct Cli {
     pub interactive: bool,
 }
 
-/// Error type for command-line operations.
-/// Wraps IO, parse, interpreter, and script extension errors.
+/// Represents errors that can occur during command execution.
 #[derive(Debug)]
-pub enum CmdError<'a> {
+pub enum CmdError {
+    /// I/O error (file, stdin, etc.)
     Io(std::io::Error),
-    Parse(ParseError<'a>),
-    Interpreter(InterpreterError<'a>),
+    /// Parsing error
+    Parse(String),
+    /// Interpreter error
+    Interpreter(String),
+    /// Invalid script file extension
     InvalidScriptExtension(String),
+    /// Other miscellaneous error
     Other(String),
 }
 
-impl<'a> std::fmt::Display for CmdError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CmdError::Io(_) => write!(f, "I no see the file you wan run"),
-            CmdError::Parse(e) => write!(f, "{e}"),
-            CmdError::Interpreter(e) => write!(f, "{e}"),
-            CmdError::InvalidScriptExtension(s) => {
-                write!(f, "Omo! Only .ns or .naija files dey allowed as script. You give me: {s}")
-            }
-            CmdError::Other(msg) => write!(f, "{msg}"),
-        }
-    }
-}
+/// Result type for command execution.
+pub type CmdResult<T> = Result<T, CmdError>;
 
-impl<'a> std::error::Error for CmdError<'a> {}
-
-/// Alias for command result type, for ergonomic error handling
-pub type CmdResult<'a, T> = Result<T, CmdError<'a>>;
-
-/// Entry point for the command-line tool.
-/// Dispatches to eval, script, REPL, or stdin mode based on arguments.
+/// Entry point for the NaijaScript CLI.
+///
+/// Parses command line arguments and dispatches to the appropriate mode (eval, script, REPL, stdin).
 pub fn run() {
     let cli = Cli::parse();
     let exit_code = if let Some(code) = cli.eval {
         match run_eval(&code) {
             Ok(()) => 0,
-            Err(e) => {
-                eprintln!("{e}");
-                1
-            }
+            Err(_) => 1,
         }
     } else if let Some(script) = cli.script {
         if script == "-" {
             match run_stdin() {
                 Ok(()) => 0,
-                Err(e) => {
-                    eprintln!("{e}");
-                    1
-                }
+                Err(_) => 1,
             }
         } else {
             match run_script(&script) {
                 Ok(()) => 0,
-                Err(e) => {
-                    eprintln!("{e}");
-                    1
-                }
+                Err(_) => 1,
             }
         }
     } else if cli.interactive {
@@ -93,10 +77,7 @@ pub fn run() {
     } else if !io::stdin().is_terminal() {
         match run_stdin() {
             Ok(()) => 0,
-            Err(e) => {
-                eprintln!("{e}");
-                1
-            }
+            Err(_) => 1,
         }
     } else {
         1
@@ -104,50 +85,63 @@ pub fn run() {
     std::process::exit(exit_code);
 }
 
-/// Evaluate code passed as a string (for --eval).
-/// Returns error if parsing or execution fails.
-fn run_eval<'a>(code: &'a str) -> CmdResult<'a, ()> {
+/// Evaluates a string of code provided via the command line.
+fn run_eval(code: &str) -> CmdResult<()> {
+    let mut handler = StderrHandler;
     let mut parser = Parser::new(Lexer::new(code));
-    match parser.parse_program() {
+    match parser.parse_program_with_handler(Some(&mut handler), code) {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
-            interpreter.eval_program(&program).map_err(CmdError::Interpreter)
+            interpreter
+                .eval_program_with_handler(&program, Some(&mut handler), code)
+                .map_err(|e| CmdError::Interpreter(format!("{e:?}")))
         }
-        Err(e) => Err(CmdError::Parse(e)),
+        Err(e) => Err(CmdError::Parse(format!("{e:?}"))),
     }
 }
 
-/// Run a script file from disk.
-/// Only .ns and .naija extensions are allowed for safety and convention.
-fn run_script(script: &str) -> CmdResult<'static, ()> {
+/// Helper struct for script input, wraps the source code as a string.
+struct ScriptInput {
+    source: String,
+}
+
+impl ScriptInput {
+    /// Returns the script source as a string slice.
+    fn as_str(&self) -> &str {
+        &self.source
+    }
+}
+
+/// Runs a script file from disk.
+fn run_script(script: &str) -> CmdResult<()> {
     if !(script.ends_with(".ns") || script.ends_with(".naija")) {
         return Err(CmdError::InvalidScriptExtension(script.to_string()));
     }
     let source = std::fs::read_to_string(script).map_err(CmdError::Io)?;
-    let mut parser = Parser::new(Lexer::new(&source));
-    match parser.parse_program() {
+    let input = ScriptInput { source };
+    let src = input.as_str();
+    let mut handler = StderrHandler;
+    let mut parser = Parser::new(Lexer::new(src));
+    match parser.parse_program_with_handler(Some(&mut handler), src) {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
-            // Workaround: parser/interpreter errors are stringified for static lifetime
-            interpreter.eval_program(&program).map_err(|e| CmdError::Other(e.to_string()))
+            interpreter
+                .eval_program_with_handler(&program, Some(&mut handler), src)
+                .map_err(|e| CmdError::Interpreter(format!("{e:?}")))
         }
-        Err(e) => Err(CmdError::Other(e.to_string())),
+        Err(e) => Err(CmdError::Parse(format!("{e:?}"))),
     }
 }
 
-/// Start the interactive REPL.
-/// Uses Box::leak to extend input lifetime for parser/interpreter.
-/// This is a workaround for lifetime constraints in the REPL loop.
-fn run_repl<'a>() -> CmdResult<'a, ()> {
+/// Starts the interactive Read-Eval-Print Loop (REPL).
+fn run_repl() -> CmdResult<()> {
     println!("NaijaScript REPL (type 'exit' or Ctrl+D to comot)");
-    let mut interpreter = Interpreter::new();
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     loop {
         print!("> ");
         stdout.flush().ok();
         let mut line = String::new();
-        // Fix: handle EOF (Ctrl+D) by checking if read_line returns 0
         let n = stdin.read_line(&mut line);
         match n {
             Ok(0) => {
@@ -163,18 +157,18 @@ fn run_repl<'a>() -> CmdResult<'a, ()> {
                 if trimmed.is_empty() {
                     continue;
                 }
-                // Box::leak is used here to give the input a 'static lifetime for the parser.
-                // This is safe in a REPL since the process is short-lived and input is small.
-                let input = trimmed.to_owned().into_boxed_str();
-                let static_input: &'static str = Box::leak(input);
-                let mut parser = Parser::new(Lexer::new(static_input));
-                match parser.parse_program() {
-                    Ok(program) => {
-                        if let Err(e) = interpreter.eval_program(&program) {
-                            eprintln!("{e}");
-                        }
+                {
+                    let input = ScriptInput { source: trimmed.to_owned() };
+                    let mut handler = StderrHandler;
+                    if let Ok(program) = Parser::new(Lexer::new(input.as_str()))
+                        .parse_program_with_handler(Some(&mut handler), input.as_str())
+                    {
+                        let _ = Interpreter::new().eval_program_with_handler(
+                            &program,
+                            Some(&mut handler),
+                            input.as_str(),
+                        );
                     }
-                    Err(e) => eprintln!("{e}"),
                 }
             }
             Err(_) => {
@@ -186,21 +180,24 @@ fn run_repl<'a>() -> CmdResult<'a, ()> {
     Ok(())
 }
 
-/// Run code from stdin (for piping or file redirection).
-/// Reads all input, then parses and executes.
-fn run_stdin() -> CmdResult<'static, ()> {
+/// Reads code from standard input and runs it as a script.
+fn run_stdin() -> CmdResult<()> {
     let mut buffer = String::new();
     if let Err(e) = io::stdin().read_to_string(&mut buffer) {
         return Err(CmdError::Io(e));
     }
-    let mut parser = Parser::new(Lexer::new(&buffer));
-    match parser.parse_program() {
+    let input = ScriptInput { source: buffer };
+    let src = input.as_str();
+    let mut handler = StderrHandler;
+    let mut parser = Parser::new(Lexer::new(src));
+    match parser.parse_program_with_handler(Some(&mut handler), src) {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
-            // Workaround: parser/interpreter errors are stringified for static lifetime
-            interpreter.eval_program(&program).map_err(|e| CmdError::Other(e.to_string()))
+            interpreter
+                .eval_program_with_handler(&program, Some(&mut handler), src)
+                .map_err(|e| CmdError::Interpreter(format!("{e:?}")))
         }
-        Err(e) => Err(CmdError::Other(e.to_string())),
+        Err(e) => Err(CmdError::Parse(format!("{e:?}"))),
     }
 }
 

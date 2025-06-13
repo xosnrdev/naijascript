@@ -1,123 +1,156 @@
-use std::fmt;
+//! The lexical analyzer (lexer) for NaijaScript.
 
+use crate::diagnostics::{Diagnostic, DiagnosticHandler};
+
+/// Represents a lexical token in NaijaScript.
+///
+/// Each variant corresponds to a distinct syntactic element, such as a keyword, operator,
+/// identifier, or literal. The lifetime parameter `'a` allows tokens to reference slices of the
+/// original input.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'a> {
+    /// The `make` keyword.
     Make,
+    /// The `get` keyword.
     Get,
+    /// The `shout` keyword.
     Shout,
+    /// The multi-word keyword `if to say`.
     IfToSay,
+    /// The multi-word keyword `if not so`.
     IfNotSo,
+    /// The `jasi` keyword.
     Jasi,
+    /// The `start` keyword.
     Start,
+    /// The `end` keyword.
     End,
+    /// The `add` keyword.
     Add,
+    /// The `minus` keyword.
     Minus,
+    /// The `times` keyword.
     Times,
+    /// The `divide` keyword.
     Divide,
+    /// The `na` keyword.
     Na,
+    /// The `pass` keyword.
     Pass,
+    /// The multi-word keyword `small pass`.
     SmallPass,
+    /// An identifier (variable or function name).
     Identifier(&'a str),
+    /// A numeric literal.
     Number(f64),
+    /// The left parenthesis `(`.
     LeftParen,
+    /// The right parenthesis `)`.
     RightParen,
+    /// A newline character (line break).
     Newline,
+    /// End of file/input.
     Eof,
 }
 
-impl<'a> fmt::Display for Token<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Token::Make => write!(f, "make"),
-            Token::Get => write!(f, "get"),
-            Token::Shout => write!(f, "shout"),
-            Token::IfToSay => write!(f, "if to say"),
-            Token::IfNotSo => write!(f, "if not so"),
-            Token::Jasi => write!(f, "jasi"),
-            Token::Start => write!(f, "start"),
-            Token::End => write!(f, "end"),
-            Token::Add => write!(f, "add"),
-            Token::Minus => write!(f, "minus"),
-            Token::Times => write!(f, "times"),
-            Token::Divide => write!(f, "divide"),
-            Token::Na => write!(f, "na"),
-            Token::Pass => write!(f, "pass"),
-            Token::SmallPass => write!(f, "small pass"),
-            Token::Identifier(ident) => write!(f, "identifier({ident})"),
-            Token::Number(n) => write!(f, "number({n})"),
-            Token::LeftParen => write!(f, "("),
-            Token::RightParen => write!(f, ")"),
-            Token::Newline => write!(f, "newline"),
-            Token::Eof => write!(f, "eof"),
-        }
-    }
-}
-
+/// Enumerates possible lexical error kinds encountered during tokenization.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LexErrorKind<'a> {
+    /// An unexpected character was encountered.
     UnexpectedCharacter(char),
+    /// An invalid number literal was found.
     InvalidNumber(&'a str),
+    /// A string literal was not properly terminated.
     UnterminatedString,
+    /// An invalid escape sequence was found in a string.
     InvalidEscapeSequence(char),
 }
 
+/// Represents a lexical error, including its kind and position in the source.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LexError<'a> {
+    /// The specific kind of lexical error.
     pub kind: LexErrorKind<'a>,
+    /// The line number where the error occurred (1-based).
     pub line: usize,
+    /// The column number where the error occurred (1-based).
     pub column: usize,
 }
 
 impl<'a> LexError<'a> {
-    // Hint to compiler this is unlikely to be called, optimizing happy path
+    /// Constructs a new `LexError` with the given kind, line, and column.
     #[cold]
     fn new(kind: LexErrorKind<'a>, line: usize, column: usize) -> Self {
         Self { kind, line, column }
     }
-}
 
-impl<'a> fmt::Display for LexError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let message = match &self.kind {
-            LexErrorKind::UnexpectedCharacter(ch) => format!("Wetin be dis character: '{ch}'"),
-            LexErrorKind::InvalidNumber(num) => format!("Wetin be dis number: '{num}'"),
-            LexErrorKind::UnterminatedString => "You no close dis string".to_string(),
-            LexErrorKind::InvalidEscapeSequence(ch) => format!("Wetin be dis escape: '\\{ch}'"),
+    /// Converts this error into a `Diagnostic` for user-facing error reporting.
+    ///
+    /// The diagnostic includes a message, the relevant source span, and the line/column.
+    pub fn to_diagnostic(&self, source: &'a str, position: usize) -> Diagnostic<'a> {
+        let (span_start, span_end) = match &self.kind {
+            LexErrorKind::UnexpectedCharacter(ch) => (position, position + ch.len_utf8()),
+            _ => (0, 0),
         };
-        write!(f, "{} (line {}, column {})", message, self.line, self.column)
+        let message = match &self.kind {
+            LexErrorKind::UnexpectedCharacter(_) => "Wetin be dis character",
+            LexErrorKind::InvalidNumber(_) => "Wetin be dis number",
+            LexErrorKind::UnterminatedString => "You no close dis string",
+            LexErrorKind::InvalidEscapeSequence(_) => "Wetin be dis escape",
+        };
+        Diagnostic::error(
+            "lexical error",
+            message,
+            source,
+            (span_start, span_end),
+            self.line,
+            self.column,
+        )
     }
 }
 
-impl<'a> std::error::Error for LexError<'a> {}
-
+/// The result type for lexing operations.
 pub type LexResult<'a, T> = Result<T, LexError<'a>>;
 
+/// The main lexer struct for NaijaScript.
+///
+/// The lexer processes the input string and produces a stream of tokens. It is optimized for
+/// performance and supports both ASCII and Unicode input. The lexer maintains its current position
+/// and tracks when the end of input is reached.
 pub struct Lexer<'a> {
+    /// The source input being tokenized.
     input: &'a str,
+    /// The current byte position in the input.
     position: usize,
+    /// Indicates whether the lexer has reached the end of input.
     done: bool,
 }
 
 impl<'a> Lexer<'a> {
+    /// Creates a new lexer for the given input string.
     pub fn new(input: &'a str) -> Self {
         Lexer { input, position: 0, done: false }
     }
 
+    /// Returns the current byte at the lexer's position, if any.
     #[inline(always)]
     fn current_byte(&self) -> Option<u8> {
         self.input.as_bytes().get(self.position).copied()
     }
 
+    /// Returns the current character at the lexer's position, if any.
     #[inline(always)]
     fn current_char(&self) -> Option<char> {
         self.input[self.position..].chars().next()
     }
 
+    /// Advances the lexer's position by `n` bytes.
     #[inline(always)]
     fn advance(&mut self, n: usize) {
         self.position += n;
     }
 
+    /// Advances the lexer's position by one character (handling UTF-8).
     #[inline(always)]
     fn advance_char(&mut self) {
         if let Some(ch) = self.current_char() {
@@ -125,6 +158,9 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Calculates the line and column number for a given byte position.
+    ///
+    /// This is used for precise error reporting.
     fn calculate_line_column(&self, pos: usize) -> (usize, usize) {
         let mut line = 1;
         let mut column = 1;
@@ -141,7 +177,9 @@ impl<'a> Lexer<'a> {
         (line, column)
     }
 
-    // Precomputed lookup table avoids function calls for ASCII alphanumeric checks
+    /// Lookup table for fast ASCII alphanumeric and underscore checks.
+    ///
+    /// Used to quickly determine if a byte is valid in an identifier.
     const IS_ALNUM: [bool; 256] = {
         let mut arr = [false; 256];
         let mut i = b'0';
@@ -163,17 +201,22 @@ impl<'a> Lexer<'a> {
         arr
     };
 
-    // Precomputed powers avoid expensive floating-point exponentiation
+    /// Precomputed powers of 10 for fast decimal conversion.
     const POWERS_OF_10: [f64; 19] = [
         1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16,
         1e17, 1e18,
     ];
 
+    /// Returns true if the given byte is an ASCII digit ('0'..='9').
     #[inline(always)]
     const fn is_digit(b: u8) -> bool {
         b.wrapping_sub(b'0') < 10
     }
 
+    /// Skips whitespace characters (space, tab, carriage return) in the input.
+    ///
+    /// This method is optimized to skip up to four consecutive whitespace characters per loop
+    /// iteration for performance.
     #[inline(always)]
     fn skip_whitespace(&mut self) {
         let bytes = self.input.as_bytes();
@@ -182,7 +225,6 @@ impl<'a> Lexer<'a> {
             let b = bytes[self.position];
             if b == b' ' || b == b'\t' || b == b'\r' {
                 self.advance(1);
-                // Manual loop unrolling for better performance
                 for _ in 0..3 {
                     if self.position < len {
                         let b2 = bytes[self.position];
@@ -199,7 +241,9 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // Manual parsing avoids string allocation and is faster than parse()
+    /// Reads a number literal from the input, supporting both integer and floating-point formats.
+    ///
+    /// Uses a fast path for common cases and falls back to a slower method if overflow is possible.
     #[inline(always)]
     fn read_number(&mut self) -> LexResult<'a, f64> {
         let bytes = self.input.as_bytes();
@@ -208,15 +252,13 @@ impl<'a> Lexer<'a> {
 
         let mut integer_part = 0u64;
 
-        // Detect overflow before it happens to avoid panic
         while self.position < len {
             let b = bytes[self.position];
             if Self::is_digit(b) {
                 let digit = (b - b'0') as u64;
 
-                // Prevent overflow by checking before multiplication
+                // Check for integer overflow.
                 if integer_part > (u64::MAX - digit) / 10 {
-                    // Fall back to string parsing when numbers are too large
                     self.position = start;
                     return self.read_number_fallback();
                 }
@@ -228,17 +270,15 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        // Fast path: no decimal point
+        // Check for decimal point.
         if self.position >= len || bytes[self.position] != b'.' {
             return Ok(integer_part as f64);
         }
 
-        // Parse decimal part
-        self.advance(1); // Skip the dot
+        self.advance(1);
         let mut decimal_part = 0u64;
         let mut decimal_places = 0u32;
 
-        // Limit precision to prevent overflow in decimal_part
         while self.position < len && decimal_places < 17 {
             let b = bytes[self.position];
             if Self::is_digit(b) {
@@ -250,7 +290,6 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        // Convert to f64
         let mut result = integer_part as f64;
         if decimal_places > 0 && decimal_places < Self::POWERS_OF_10.len() as u32 {
             let decimal_value = decimal_part as f64;
@@ -260,7 +299,10 @@ impl<'a> Lexer<'a> {
         Ok(result)
     }
 
-    // Fallback for edge cases like very large numbers
+    /// Fallback method for reading a number literal as a string and parsing it.
+    ///
+    /// This is used when the fast path in `read_number` cannot be used due to possible overflow or
+    /// unusual formats.
     #[inline(never)]
     fn read_number_fallback(&mut self) -> LexResult<'a, f64> {
         let bytes = self.input.as_bytes();
@@ -283,6 +325,9 @@ impl<'a> Lexer<'a> {
         num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str)))
     }
 
+    /// Reads an identifier or keyword from the input as a string slice.
+    ///
+    /// This method uses a fast path for ASCII alphanumeric and underscore characters.
     #[inline(always)]
     fn read_identifier_slice(&mut self) -> &str {
         let bytes = self.input.as_bytes();
@@ -292,7 +337,6 @@ impl<'a> Lexer<'a> {
             let b = bytes[self.position];
             if Self::IS_ALNUM[b as usize] {
                 self.advance(1);
-                // Manual loop unrolling for better performance
                 for _ in 0..3 {
                     if self.position < len {
                         let b2 = bytes[self.position];
@@ -307,20 +351,19 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        // SAFETY: We only advance by valid UTF-8 char boundaries in identifier parsing,
-        // so start..position always represents valid UTF-8 substring
+        // SAFETY: The slice is guaranteed to be valid UTF-8 as it is a substring of the input.
         unsafe { self.input.get_unchecked(start..self.position) }
     }
 
-    // Complex state machine handles flexible whitespace in multi-word keywords
+    /// Attempts to match a multi-word keyword at the current position.
+    ///
+    /// This function skips whitespace in the input as needed to match the keyword pattern.
     fn match_multiword(&mut self, kw: &'static [u8]) -> bool {
         let input_bytes = self.input.as_bytes();
         let mut pos = self.position;
         let mut kw_idx = 0;
         while kw_idx < kw.len() && pos < input_bytes.len() {
-            // Allow flexible whitespace where keyword has single space
             if kw[kw_idx] == b' ' {
-                // Accept one or more spaces/tabs in input
                 while pos < input_bytes.len()
                     && (input_bytes[pos] == b' ' || input_bytes[pos] == b'\t')
                 {
@@ -342,10 +385,12 @@ impl<'a> Lexer<'a> {
         false
     }
 
-    // Multi-word keywords checked first to avoid mis-parsing as identifiers
+    /// Reads a keyword or identifier from the input.
+    ///
+    /// This method first checks for multi-word keywords, then single-word keywords, and finally
+    /// returns an identifier if no keyword matches.
     #[inline(always)]
     fn read_keyword_or_identifier(&mut self) -> Token<'a> {
-        // Multi-word keyword byte patterns
         const IF_TO_SAY: &[u8] = b"if to say";
         const IF_NOT_SO: &[u8] = b"if not so";
         const SMALL_PASS: &[u8] = b"small pass";
@@ -358,10 +403,8 @@ impl<'a> Lexer<'a> {
         if self.match_multiword(SMALL_PASS) {
             return Token::SmallPass;
         }
-        // Single-word: extract identifier, then match against static byte arrays
         let ident = self.read_identifier_slice();
-        // SAFETY: ident is a slice of self.input which lives for 'a, and we need
-        // to extend its lifetime to match Token<'a> for zero-copy parsing
+        // SAFETY: The identifier slice is valid for the input lifetime.
         let ident: &'a str = unsafe { std::mem::transmute::<&str, &'a str>(ident) };
         match ident {
             "make" => Token::Make,
@@ -380,44 +423,50 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Handles whitespace by skipping it and returning the next token.
     #[inline(always)]
     fn handle_whitespace(&mut self) -> LexResult<'a, Token<'a>> {
         self.skip_whitespace();
-        // After skipping, dispatch again (tail call):
-        // But must return a Result, so call next_token_jump and unwrap Option
         match self.next_token_jump() {
             Some(res) => res,
             None => Ok(Token::Eof),
         }
     }
+    /// Handles alphabetic input by reading a keyword or identifier.
     #[inline(always)]
     fn handle_alpha(&mut self) -> LexResult<'a, Token<'a>> {
         Ok(self.read_keyword_or_identifier())
     }
+    /// Handles digit input by reading a number literal.
     #[inline(always)]
     fn handle_digit(&mut self) -> LexResult<'a, Token<'a>> {
         self.read_number().map(Token::Number)
     }
+    /// Handles newline characters.
     #[inline(always)]
     fn handle_newline(&mut self) -> LexResult<'a, Token<'a>> {
         self.advance_char();
         Ok(Token::Newline)
     }
+    /// Handles left parenthesis.
     #[inline(always)]
     fn handle_left_paren(&mut self) -> LexResult<'a, Token<'a>> {
         self.advance_char();
         Ok(Token::LeftParen)
     }
+    /// Handles right parenthesis.
     #[inline(always)]
     fn handle_right_paren(&mut self) -> LexResult<'a, Token<'a>> {
         self.advance_char();
         Ok(Token::RightParen)
     }
+    /// Handles end-of-file by marking the lexer as done.
     #[inline(always)]
     fn handle_eof(&mut self) -> LexResult<'a, Token<'a>> {
         self.done = true;
         Ok(Token::Eof)
     }
+    /// Handles unexpected or invalid input by producing a lexical error.
     #[inline(always)]
     fn handle_error(&mut self) -> LexResult<'a, Token<'a>> {
         let ch = self.current_char().unwrap();
@@ -425,13 +474,34 @@ impl<'a> Lexer<'a> {
         self.advance_char();
         Err(err)
     }
+    /// Constructs a lexical error at the current position.
     #[inline(always)]
     fn error(&self, kind: LexErrorKind<'a>) -> LexError<'a> {
         let (line, column) = self.calculate_line_column(self.position);
         LexError::new(kind, line, column)
     }
 
-    // Jump table dispatch pattern for better branch prediction
+    /// Returns the next token, optionally reporting errors via a diagnostic handler.
+    ///
+    /// This method is intended for use cases where error reporting should not stop lexing.
+    pub fn next_with_handler(
+        &mut self,
+        handler: Option<&mut dyn DiagnosticHandler>,
+        source: &'a str,
+    ) -> Option<LexResult<'a, Token<'a>>> {
+        let res = self.next_token_jump();
+        if let Some(Err(ref e)) = res
+            && let Some(h) = handler
+        {
+            h.report(&e.to_diagnostic(source, self.position));
+        }
+        res
+    }
+
+    /// The main lexing loop: dispatches to the appropriate handler based on the current input.
+    ///
+    /// This function is optimized for ASCII input but also supports Unicode. It returns `None` when
+    /// the end of input is reached.
     #[allow(clippy::needless_return)]
     fn next_token_jump(&mut self) -> Option<LexResult<'a, Token<'a>>> {
         if self.done {
@@ -440,7 +510,6 @@ impl<'a> Lexer<'a> {
         let b = self.current_byte();
         if let Some(b) = b {
             if b < 0x80 {
-                // ASCII fast path optimizes common case
                 match b {
                     b' ' | b'\t' | b'\r' => Some(self.handle_whitespace()),
                     b'\n' => Some(self.handle_newline()),
@@ -451,10 +520,9 @@ impl<'a> Lexer<'a> {
                     _ => Some(self.handle_error()),
                 }
             } else {
-                // Non-ASCII: Unicode-aware fallback for rare cases
+                // Unicode-aware path for non-ASCII input.
                 let ch = self.current_char().unwrap();
                 if ch.is_whitespace() {
-                    // Unicode whitespace (rare in source)
                     self.advance_char();
                     Some(self.next_token_jump().unwrap_or(Ok(Token::Eof)))
                 } else if ch.is_alphabetic() || ch == '_' {
@@ -462,7 +530,6 @@ impl<'a> Lexer<'a> {
                 } else if ch.is_numeric() {
                     return Some(self.handle_digit());
                 } else {
-                    // Unknown non-ASCII character
                     return Some(self.handle_error());
                 }
             }
@@ -472,6 +539,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
+/// Implements the `Iterator` trait for the lexer, producing a stream of tokens or errors.
 impl<'a> Iterator for Lexer<'a> {
     type Item = LexResult<'a, Token<'a>>;
     fn next(&mut self) -> Option<Self::Item> {

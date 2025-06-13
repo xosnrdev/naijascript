@@ -1,172 +1,111 @@
-use std::fmt;
+//! The abstract syntax tree (AST) representation for NaijaScript.
 
-/// The root node of a parsed NaijaScript program.
-/// Holds a list of statements to be executed in order.
+/// The root node of a NaijaScript program.
+///
+/// A program consists of a sequence of statements, which may include assignments, outputs,
+/// conditionals, and loops.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program<'a> {
+    /// The list of statements in the program.
     pub statements: Vec<Statement<'a>>,
 }
 
 impl<'a> Program<'a> {
+    /// Constructs a new `Program` from a vector of statements.
     #[inline]
     pub fn new(statements: Vec<Statement<'a>>) -> Self {
         Self { statements }
     }
 }
 
-/// All possible statement forms in NaijaScript.
-/// Each variant represents a top-level action or control flow construct.
+/// Represents a top-level statement in NaijaScript.
+///
+/// Each variant corresponds to a distinct statement type in the language.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement<'a> {
-    /// Variable assignment, e.g. `make x get expr`
+    /// Variable assignment, e.g., `make x get 5`.
     Assignment { variable: &'a str, value: Expression<'a> },
-    /// Output statement, e.g. `shout (expr)`
+    /// Output statement, e.g., `shout (x add 2)`.
     Output(Expression<'a>),
-    /// Conditional statement, e.g. `if to say (cond) start ... end [if not so start ... end]`
+    /// Conditional statement with optional else block.
     If { condition: Condition<'a>, then_block: Block<'a>, else_block: Option<Block<'a>> },
-    /// Loop statement, e.g. `jasi (cond) start ... end`
+    /// Loop statement, executes the body while the condition is true.
     Loop { condition: Condition<'a>, body: Block<'a> },
 }
 
-/// Sequence of statements, used for block bodies in if/loop.
+/// Represents a block of statements, used for the body of conditionals and loops.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block<'a> {
+    /// The statements contained in the block.
     pub statements: Vec<Statement<'a>>,
 }
 
 impl<'a> Block<'a> {
+    /// Constructs a new `Block` from a vector of statements.
     #[inline]
     pub fn new(statements: Vec<Statement<'a>>) -> Self {
         Self { statements }
     }
 }
 
-/// All possible expressions in NaijaScript.
-/// Expressions produce values and can be nested.
+/// Represents an expression in NaijaScript.
+///
+/// Expressions can be literals, variable references, binary operations, or grouped expressions.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'a> {
-    /// Numeric literal
+    /// Numeric literal, e.g., `42`.
     Number(f64),
-    /// Variable reference
+    /// Variable reference, e.g., `x`.
     Variable(&'a str),
-    /// Binary operation (e.g. add, minus, times, divide)
+    /// Binary operation, e.g., `x add 2`.
     Binary { left: Box<Expression<'a>>, op: BinaryOp, right: Box<Expression<'a>> },
-    /// Parenthesized expression
+    /// Parenthesized (grouped) expression, e.g., `(x add 2)`.
     Grouping(Box<Expression<'a>>),
 }
 
 impl<'a> Expression<'a> {
+    /// Constructs a numeric literal expression.
     #[inline]
     pub fn number(n: f64) -> Self {
         Expression::Number(n)
     }
+    /// Constructs a variable reference expression.
     #[inline]
     pub fn variable(name: &'a str) -> Self {
         Expression::Variable(name)
     }
+    /// Constructs a binary operation expression.
     #[inline]
     pub fn binary(left: Expression<'a>, op: BinaryOp, right: Expression<'a>) -> Self {
         Expression::Binary { left: Box::new(left), op, right: Box::new(right) }
     }
+    /// Constructs a grouped (parenthesized) expression.
     #[inline]
     pub fn grouping(expr: Expression<'a>) -> Self {
         Expression::Grouping(Box::new(expr))
     }
 }
 
-/// Supported binary operators for expressions.
+/// Enumerates the supported binary operators in NaijaScript.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
+    /// Addition operator (`add`).
     Add,
+    /// Subtraction operator (`minus`).
     Minus,
+    /// Multiplication operator (`times`).
     Times,
+    /// Division operator (`divide`).
     Divide,
 }
 
-/// Supported condition forms for if/loop constructs.
-/// Each variant represents a comparison between two expressions.
+/// Represents a boolean condition for use in `if` and `loop` statements.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition<'a> {
-    /// Equality: `na` (==)
+    /// Equality check (`na`), e.g., `x na 2`.
     Na(Expression<'a>, Expression<'a>),
-    /// Greater than: `pass` (>)
+    /// Greater-than check (`pass`), e.g., `x pass 2`.
     Pass(Expression<'a>, Expression<'a>),
-    /// Less than: `small pass` (<)
+    /// Less-than check (`small pass`), e.g., `x small pass 2`.
     SmallPass(Expression<'a>, Expression<'a>),
-}
-
-impl<'a> fmt::Display for Program<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Program [")?;
-        for stmt in &self.statements {
-            writeln!(f, "  {stmt}")?;
-        }
-        write!(f, "]")
-    }
-}
-
-impl<'a> fmt::Display for Statement<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Statement::Assignment { variable, value } => {
-                write!(f, "Assignment(variable: {variable:?}, value: {value})")
-            }
-            Statement::Output(expr) => {
-                write!(f, "Output({expr})")
-            }
-            Statement::If { condition, then_block, else_block } => {
-                write!(f, "If(condition: {condition}, then: {then_block}")?;
-                if let Some(else_block) = else_block {
-                    write!(f, ", else: {else_block}")?;
-                }
-                write!(f, ")")
-            }
-            Statement::Loop { condition, body } => {
-                write!(f, "Loop(condition: {condition}, body: {body})")
-            }
-        }
-    }
-}
-
-impl<'a> fmt::Display for Block<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Block [")?;
-        for stmt in &self.statements {
-            write!(f, " {stmt}")?;
-        }
-        write!(f, "]")
-    }
-}
-
-impl<'a> fmt::Display for Expression<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Expression::Number(n) => write!(f, "Number({n})"),
-            Expression::Variable(name) => write!(f, "Variable({name:?})"),
-            Expression::Binary { left, op, right } => write!(f, "Binary({op}, {left}, {right})"),
-            Expression::Grouping(expr) => write!(f, "Grouping({expr})"),
-        }
-    }
-}
-
-impl fmt::Display for BinaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let op_str = match self {
-            BinaryOp::Add => "Add",
-            BinaryOp::Minus => "Minus",
-            BinaryOp::Times => "Times",
-            BinaryOp::Divide => "Divide",
-        };
-        write!(f, "{op_str}")
-    }
-}
-
-impl<'a> fmt::Display for Condition<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Condition::Na(l, r) => write!(f, "Na({l}, {r})"),
-            Condition::Pass(l, r) => write!(f, "Pass({l}, {r})"),
-            Condition::SmallPass(l, r) => write!(f, "SmallPass({l}, {r})"),
-        }
-    }
 }

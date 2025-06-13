@@ -1,50 +1,73 @@
+//! The parser for NaijaScript.
+//!
+//! It implements recursive descent for statements and pratt for expressions parsing.
+
 use std::iter::Peekable;
 
 use super::ast::*;
 use super::lexer::{self, Lexer, Token};
+use crate::diagnostics::{Diagnostic, DiagnosticHandler};
 
-/// All possible errors that can occur during parsing.
-/// Includes unexpected tokens, unexpected EOF, and lexer errors.
+/// Represents a syntax error encountered during parsing.
 #[derive(Debug, PartialEq)]
-pub enum ParseError<'a> {
+pub enum ParseError<'source> {
+    /// The input ended unexpectedly.
     UnexpectedEof,
-    UnexpectedToken(Token<'a>),
-    LexerError(lexer::LexError<'a>),
+    /// A token did not match the expected grammar.
+    UnexpectedToken(Token<'source>),
+    /// A lexer error was encountered and propagated.
+    LexerError(lexer::LexError<'source>),
 }
 
-impl<'a> std::fmt::Display for ParseError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'source> ParseError<'source> {
+    /// Converts this parse error into a user-facing diagnostic.
+    pub fn to_diagnostic(&self, source: &'source str) -> Diagnostic<'source> {
         match self {
-            ParseError::UnexpectedEof => {
-                write!(f, "Omo! Your code finish for middle, e never complete")
+            ParseError::UnexpectedEof => Diagnostic::error(
+                "syntax error",
+                "Omo! Your code finish for middle, e never complete",
+                source,
+                (0, 0),
+                0,
+                0,
+            ),
+            ParseError::UnexpectedToken(tok) => {
+                let tok_str = format!("{tok:?}");
+                let (start, end) = if let Some(start) = source.find(&tok_str) {
+                    (start, start + tok_str.len())
+                } else {
+                    (0, 0)
+                };
+                Diagnostic::error("syntax error", "Wetin be dis token", source, (start, end), 0, 0)
             }
-            ParseError::UnexpectedToken(tok) => write!(f, "Wetin be dis token: {tok}"),
-            ParseError::LexerError(e) => write!(f, "{e}"),
+            ParseError::LexerError(e) => e.to_diagnostic(source, 0),
         }
     }
 }
 
-impl<'a> std::error::Error for ParseError<'a> {}
+/// The result type for parser operations.
+pub type ParseResult<'source, T> = Result<T, ParseError<'source>>;
 
-/// Alias for parser result type, used throughout the parser for ergonomic error handling.
-pub type ParseResult<'a, T> = Result<T, ParseError<'a>>;
-
-/// Recursive descent parser for NaijaScript.
-/// Uses a Peekable lexer for lookahead and implements Pratt parsing for expressions.
-pub struct Parser<'a> {
-    tokens: Peekable<Lexer<'a>>,
+/// The main parser struct for NaijaScript.
+///
+/// The parser operates on a peekable iterator of tokens, allowing lookahead for grammar decisions.
+pub struct Parser<'source> {
+    /// The stream of tokens to be parsed.
+    tokens: Peekable<Lexer<'source>>,
 }
 
-impl<'a> Parser<'a> {
-    /// Create a new parser from a lexer.
+impl<'source> Parser<'source> {
+    /// Constructs a new parser from a lexer.
     #[inline]
-    pub fn new(lexer: Lexer<'a>) -> Self {
+    pub fn new(lexer: Lexer<'source>) -> Self {
         Parser { tokens: lexer.peekable() }
     }
 
-    /// Expect and consume a specific token, or return a parse error if the next token does not match.
+    /// Consumes the next token and checks if it matches the expected token.
+    ///
+    /// Returns an error if the token does not match.
     #[inline]
-    fn expect_token(&mut self, expected: Token<'a>) -> ParseResult<'a, ()> {
+    fn expect_token(&mut self, expected: Token<'source>) -> ParseResult<'source, ()> {
         match self.tokens.next() {
             Some(Ok(tok)) if tok == expected => Ok(()),
             Some(Ok(tok)) => Err(ParseError::UnexpectedToken(tok)),
@@ -53,14 +76,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parse a full program (entry point), collecting all top-level statements.
-    pub fn parse_program(&mut self) -> ParseResult<'a, Program<'a>> {
+    /// Parses a complete program and returns the root AST node.
+    pub fn parse_program(&mut self) -> ParseResult<'source, Program<'source>> {
         let statements = self.parse_statement_list()?;
         Ok(Program::new(statements))
     }
 
-    /// Parse a list of statements until EOF or block end, skipping newlines.
-    fn parse_statement_list(&mut self) -> ParseResult<'a, Vec<Statement<'a>>> {
+    /// Parses a list of statements, skipping newlines, until EOF or an invalid statement is encountered.
+    fn parse_statement_list(&mut self) -> ParseResult<'source, Vec<Statement<'source>>> {
         let mut statements = Vec::new();
         while self.skip_newlines() {
             if let Some(stmt) = self.parse_statement_opt()? {
@@ -72,8 +95,8 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
-    /// Try to parse a statement, returning None if EOF is reached.
-    fn parse_statement_opt(&mut self) -> ParseResult<'a, Option<Statement<'a>>> {
+    /// Optionally parses a statement, returning `None` at EOF.
+    fn parse_statement_opt(&mut self) -> ParseResult<'source, Option<Statement<'source>>> {
         self.skip_newlines();
         match self.tokens.peek() {
             Some(Ok(Token::Eof)) | None => Ok(None),
@@ -81,8 +104,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Dispatch to the correct statement parser based on the next token.
-    fn parse_statement(&mut self) -> ParseResult<'a, Statement<'a>> {
+    /// Parses a single statement, dispatching based on the next token.
+    fn parse_statement(&mut self) -> ParseResult<'source, Statement<'source>> {
         let token = self.tokens.peek().ok_or(ParseError::UnexpectedEof)?;
         let token = match token {
             Ok(t) => t,
@@ -97,8 +120,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parse an assignment statement: make x get expr
-    fn parse_assignment(&mut self) -> ParseResult<'a, Statement<'a>> {
+    /// Parses an assignment statement: `make x get expr`.
+    fn parse_assignment(&mut self) -> ParseResult<'source, Statement<'source>> {
         self.expect_token(Token::Make)?;
         let variable = match self.tokens.next() {
             Some(Ok(Token::Identifier(name))) => name,
@@ -111,8 +134,8 @@ impl<'a> Parser<'a> {
         Ok(Statement::Assignment { variable, value })
     }
 
-    /// Parse an output statement: shout (expr)
-    fn parse_output(&mut self) -> ParseResult<'a, Statement<'a>> {
+    /// Parses an output statement: `shout ( expr )`.
+    fn parse_output(&mut self) -> ParseResult<'source, Statement<'source>> {
         self.expect_token(Token::Shout)?;
         self.expect_token(Token::LeftParen)?;
         let expr = self.parse_expression()?;
@@ -120,8 +143,8 @@ impl<'a> Parser<'a> {
         Ok(Statement::Output(expr))
     }
 
-    /// Parse an if statement, with optional else block.
-    fn parse_if(&mut self) -> ParseResult<'a, Statement<'a>> {
+    /// Parses an if statement, including optional else block.
+    fn parse_if(&mut self) -> ParseResult<'source, Statement<'source>> {
         self.expect_token(Token::IfToSay)?;
         self.expect_token(Token::LeftParen)?;
         let condition = self.parse_condition()?;
@@ -139,8 +162,8 @@ impl<'a> Parser<'a> {
         Ok(Statement::If { condition, then_block, else_block })
     }
 
-    /// Parse a block: statements until 'end'.
-    fn parse_block(&mut self) -> ParseResult<'a, Block<'a>> {
+    /// Parses a block of statements, ending at `end`.
+    fn parse_block(&mut self) -> ParseResult<'source, Block<'source>> {
         let mut statements = Vec::new();
         loop {
             self.skip_newlines();
@@ -156,8 +179,8 @@ impl<'a> Parser<'a> {
         Ok(Block::new(statements))
     }
 
-    /// Parse a condition: e.g. x na 5, x pass 3, x small pass 2
-    fn parse_condition(&mut self) -> ParseResult<'a, Condition<'a>> {
+    /// Parses a condition of the form `expr op expr`, where `op` is one of `na`, `pass`, or `small pass`.
+    fn parse_condition(&mut self) -> ParseResult<'source, Condition<'source>> {
         let left = self.parse_expression()?;
         let op = match self.tokens.next() {
             Some(Ok(Token::Na)) => "na",
@@ -177,8 +200,8 @@ impl<'a> Parser<'a> {
         Ok(cond)
     }
 
-    /// Parse a loop statement: jasi (cond) start ... end
-    fn parse_loop(&mut self) -> ParseResult<'a, Statement<'a>> {
+    /// Parses a loop statement: `jasi (cond) start ... end`.
+    fn parse_loop(&mut self) -> ParseResult<'source, Statement<'source>> {
         self.expect_token(Token::Jasi)?;
         self.expect_token(Token::LeftParen)?;
         let condition = self.parse_condition()?;
@@ -188,15 +211,20 @@ impl<'a> Parser<'a> {
         Ok(Statement::Loop { condition, body })
     }
 
-    /// Parse an expression using Pratt parsing (precedence climbing).
+    /// Parses an expression using the Pratt parsing algorithm.
+    ///
+    /// This method is the entry point for expression parsing and delegates to `parse_expr_bp` with minimum binding power 0.
     #[inline]
-    pub fn parse_expression(&mut self) -> ParseResult<'a, Expression<'a>> {
+    pub fn parse_expression(&mut self) -> ParseResult<'source, Expression<'source>> {
         self.parse_expr_bp(0)
     }
 
-    /// Pratt parser core: parse expression with minimum binding power.
+    /// Pratt parser for expressions, supporting operator precedence and associativity.
+    ///
+    /// `min_bp` is the minimum binding power required to continue parsing infix operators.
     #[inline]
-    fn parse_expr_bp(&mut self, min_bp: u8) -> ParseResult<'a, Expression<'a>> {
+    fn parse_expr_bp(&mut self, min_bp: u8) -> ParseResult<'source, Expression<'source>> {
+        // Parse the left-hand side (primary expression).
         let mut lhs = match self.tokens.next() {
             Some(Ok(Token::Number(n))) => Expression::number(n),
             Some(Ok(Token::Identifier(name))) => Expression::variable(name),
@@ -214,8 +242,7 @@ impl<'a> Parser<'a> {
             Some(Err(e)) => return Err(ParseError::LexerError(e)),
             None => return Err(ParseError::UnexpectedEof),
         };
-
-        // Loop to parse left-associative binary operators with correct precedence.
+        // Parse infix operators with correct precedence.
         loop {
             let op = match self.tokens.peek() {
                 Some(Ok(Token::Add)) => BinaryOp::Add,
@@ -235,7 +262,7 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    /// Skip over any Newline tokens, returning true if any were skipped or if more tokens remain.
+    /// Skips over any number of newline tokens, returning true if any tokens remain.
     fn skip_newlines(&mut self) -> bool {
         let mut skipped = false;
         while let Some(Ok(Token::Newline)) = self.tokens.peek() {
@@ -244,9 +271,28 @@ impl<'a> Parser<'a> {
         }
         skipped || self.tokens.peek().is_some()
     }
+
+    /// Parses a program and reports errors via a diagnostic handler if provided.
+    pub fn parse_program_with_handler(
+        &mut self,
+        handler: Option<&mut dyn DiagnosticHandler>,
+        source: &'source str,
+    ) -> ParseResult<'source, Program<'source>> {
+        match self.parse_program() {
+            Ok(program) => Ok(program),
+            Err(e) => {
+                if let Some(h) = handler {
+                    h.report(&e.to_diagnostic(source));
+                }
+                Err(e)
+            }
+        }
+    }
 }
 
-/// Get binding power for each binary operator (Pratt parsing).
+/// Returns the left and right binding powers for each infix operator.
+///
+/// Higher numbers mean higher precedence. Used by the Pratt parser.
 fn infix_binding_power(op: &BinaryOp) -> (u8, u8) {
     match op {
         BinaryOp::Add | BinaryOp::Minus => (1, 2),
