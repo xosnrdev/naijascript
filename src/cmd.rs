@@ -1,3 +1,5 @@
+//! The command line interface for NaijaScript interpreter.
+
 use std::io::{self, IsTerminal, Read, Write};
 
 use clap::Parser as ClapParser;
@@ -8,6 +10,7 @@ use crate::interpreter::Interpreter;
 use crate::syntax::Lexer;
 use crate::syntax::parser::Parser;
 
+/// Command line arguments for the NaijaScript interpreter.
 #[derive(Debug, ClapParser)]
 #[command(
     about = "Scripting language wey you fit use learn, run things, and catch cruise.",
@@ -26,17 +29,27 @@ struct Cli {
     pub interactive: bool,
 }
 
+/// Represents errors that can occur during command execution.
 #[derive(Debug)]
 pub enum CmdError {
+    /// I/O error (file, stdin, etc.)
     Io(std::io::Error),
+    /// Parsing error
     Parse(String),
+    /// Interpreter error
     Interpreter(String),
+    /// Invalid script file extension
     InvalidScriptExtension(String),
+    /// Other miscellaneous error
     Other(String),
 }
 
+/// Result type for command execution.
 pub type CmdResult<T> = Result<T, CmdError>;
 
+/// Entry point for the NaijaScript CLI.
+///
+/// Parses command line arguments and dispatches to the appropriate mode (eval, script, REPL, stdin).
 pub fn run() {
     let cli = Cli::parse();
     let exit_code = if let Some(code) = cli.eval {
@@ -72,6 +85,7 @@ pub fn run() {
     std::process::exit(exit_code);
 }
 
+/// Evaluates a string of code provided via the command line.
 fn run_eval(code: &str) -> CmdResult<()> {
     let mut handler = StderrHandler;
     let mut parser = Parser::new(Lexer::new(code));
@@ -86,16 +100,19 @@ fn run_eval(code: &str) -> CmdResult<()> {
     }
 }
 
+/// Helper struct for script input, wraps the source code as a string.
 struct ScriptInput {
     source: String,
 }
 
 impl ScriptInput {
+    /// Returns the script source as a string slice.
     fn as_str(&self) -> &str {
         &self.source
     }
 }
 
+/// Runs a script file from disk.
 fn run_script(script: &str) -> CmdResult<()> {
     if !(script.ends_with(".ns") || script.ends_with(".naija")) {
         return Err(CmdError::InvalidScriptExtension(script.to_string()));
@@ -116,6 +133,7 @@ fn run_script(script: &str) -> CmdResult<()> {
     }
 }
 
+/// Starts the interactive Read-Eval-Print Loop (REPL).
 fn run_repl() -> CmdResult<()> {
     println!("NaijaScript REPL (type 'exit' or Ctrl+D to comot)");
     let stdin = io::stdin();
@@ -162,6 +180,7 @@ fn run_repl() -> CmdResult<()> {
     Ok(())
 }
 
+/// Reads code from standard input and runs it as a script.
 fn run_stdin() -> CmdResult<()> {
     let mut buffer = String::new();
     if let Err(e) = io::stdin().read_to_string(&mut buffer) {
