@@ -101,4 +101,4 @@ Follow these steps to get up and running with NaijaScript:
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](./LICENSE).
