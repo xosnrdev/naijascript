@@ -5,19 +5,19 @@ use crate::diagnostics::{Diagnostic, DiagnosticHandler};
 /// Represents a lexical token in NaijaScript.
 ///
 /// Each variant corresponds to a distinct syntactic element, such as a keyword, operator,
-/// identifier, or literal. The lifetime parameter `'a` allows tokens to reference slices of the
+/// identifier, or literal. The lifetime parameter `'input` allows tokens to reference slices of the
 /// original input.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Token<'a> {
+pub struct Token<'input> {
     /// The kind of the token.
-    pub kind: TokenKind<'a>,
+    pub kind: TokenKind<'input>,
     /// The span of the token in the source input.
     pub span: Span,
 }
 
 /// Represents the different kinds of tokens that can be produced by the lexer.
 #[derive(Debug, Clone, PartialEq)]
-pub enum TokenKind<'a> {
+pub enum TokenKind<'input> {
     /// The `make` keyword.
     Make,
     /// The `get` keyword.
@@ -49,7 +49,7 @@ pub enum TokenKind<'a> {
     /// The multi-word keyword `small pass`.
     SmallPass,
     /// An identifier (variable or function name).
-    Identifier(&'a str),
+    Identifier(&'input str),
     /// A numeric literal.
     Number(f64),
     /// The left parenthesis `(`.
@@ -73,11 +73,11 @@ pub struct Span {
 
 /// Enumerates possible lexical error kinds encountered during tokenization.
 #[derive(Debug, Clone, PartialEq)]
-pub enum LexErrorKind<'a> {
+pub enum LexErrorKind<'input> {
     /// An unexpected character was encountered.
     UnexpectedCharacter(char),
     /// An invalid number literal was found.
-    InvalidNumber(&'a str),
+    InvalidNumber(&'input str),
     /// A string literal was not properly terminated.
     UnterminatedString,
     /// An invalid escape sequence was found in a string.
@@ -86,71 +86,66 @@ pub enum LexErrorKind<'a> {
 
 /// Represents a lexical error, including its kind and position in the source.
 #[derive(Debug, Clone, PartialEq)]
-pub struct LexError<'a> {
+pub struct LexError<'input> {
     /// The specific kind of lexical error.
-    pub kind: LexErrorKind<'a>,
+    pub kind: LexErrorKind<'input>,
     /// The span of the error in the source input.
     pub span: Span,
-    /// The line number where the error occurred.
-    pub line: usize,
-    /// The column number where the error occurred.
-    pub column: usize,
 }
 
-impl<'a> LexError<'a> {
-    /// Constructs a new `LexError` with the given kind, span, line, and column.
+impl<'input> LexError<'input> {
+    /// Constructs a new `LexError` with the given kind and span.
     #[cold]
-    fn new(kind: LexErrorKind<'a>, span: Span, line: usize, column: usize) -> Self {
-        Self { kind, span, line, column }
+    fn new(kind: LexErrorKind<'input>, span: Span) -> Self {
+        Self { kind, span }
     }
 
     /// Converts this error into a `Diagnostic` for user-facing error reporting.
     ///
-    /// The diagnostic includes a message, the relevant source span, and the line/column.
-    pub fn to_diagnostic(&self, source: &'a str, filename: Option<&'a str>) -> Diagnostic<'a> {
+    /// The diagnostic includes a message and the relevant source span.
+    pub fn to_diagnostic(
+        &self,
+        source: &'input str,
+        filename: Option<&'input str>,
+    ) -> Diagnostic<'input> {
         let message = match &self.kind {
             LexErrorKind::UnexpectedCharacter(_) => "Wetin be dis character",
             LexErrorKind::InvalidNumber(_) => "Wetin be dis number",
             LexErrorKind::UnterminatedString => "You no close dis string",
             LexErrorKind::InvalidEscapeSequence(_) => "Wetin be dis escape",
         };
+        let (line, column) = offset_to_line_col(source, self.span.start);
         Diagnostic::error(
             "lexical error",
             message,
             source,
             (self.span.start, self.span.end),
-            self.line,
-            self.column,
+            line,
+            column,
             filename,
         )
     }
 }
 
 /// The result type for lexing operations.
-pub type LexResult<'a, T> = Result<T, LexError<'a>>;
+pub type LexResult<'input, T> = Result<T, LexError<'input>>;
 
 /// The main lexer struct for NaijaScript.
 ///
 /// The lexer processes the input string and produces a stream of tokens. It is optimized for
 /// performance and supports both ASCII and Unicode input. The lexer maintains its current position
 /// and tracks when the end of input is reached.
-pub struct Lexer<'a> {
+pub struct Lexer<'input> {
     /// The source input being tokenized.
-    input: &'a str,
+    input: &'input str,
     /// The current byte position in the input.
     position: usize,
-    /// Indicates whether the lexer has reached the end of input.
-    done: bool,
-    /// The current line number.
-    line: usize,
-    /// The current column number.
-    column: usize,
 }
 
-impl<'a> Lexer<'a> {
+impl<'input> Lexer<'input> {
     /// Creates a new lexer for the given input string.
-    pub fn new(input: &'a str) -> Self {
-        Lexer { input, position: 0, done: false, line: 1, column: 1 }
+    pub fn new(input: &'input str) -> Self {
+        Lexer { input, position: 0 }
     }
 
     /// Returns the next token, optionally reporting errors via a diagnostic handler.
@@ -159,9 +154,9 @@ impl<'a> Lexer<'a> {
     pub fn next_with_handler(
         &mut self,
         handler: Option<&mut dyn DiagnosticHandler>,
-        source: &'a str,
-        filename: Option<&'a str>,
-    ) -> Option<LexResult<'a, Token<'a>>> {
+        source: &'input str,
+        filename: Option<&'input str>,
+    ) -> Option<LexResult<'input, Token<'input>>> {
         let res = self.next_token_jump();
         if let Some(Err(ref e)) = res
             && let Some(h) = handler
@@ -200,28 +195,21 @@ impl<'a> Lexer<'a> {
         Span { start, end: self.position }
     }
 
-    /// Advances the lexer by one byte, updating line and column counters.
+    /// Advances the lexer by one byte.
     #[inline(always)]
-    fn advance_byte_update_linecol(&mut self) {
+    fn advance_byte(&mut self) {
         let bytes = self.input.as_bytes();
         if self.position >= bytes.len() {
             return;
         }
-        let b = bytes[self.position];
         self.position += 1;
-        if b == b'\n' {
-            self.line += 1;
-            self.column = 1;
-        } else {
-            self.column += 1;
-        }
     }
 
     /// Advances the lexer's position by `n` bytes.
     #[inline(always)]
     fn advance(&mut self, n: usize) {
         for _ in 0..n {
-            self.advance_byte_update_linecol();
+            self.advance_byte();
         }
     }
 
@@ -244,7 +232,7 @@ impl<'a> Lexer<'a> {
             }
         };
         for _ in 0..char_len {
-            self.advance_byte_update_linecol();
+            self.advance_byte();
         }
     }
 
@@ -327,7 +315,7 @@ impl<'a> Lexer<'a> {
     ///
     /// Uses a fast path for common cases and falls back to a slower method if overflow is possible.
     #[inline(always)]
-    fn read_number(&mut self) -> LexResult<'a, f64> {
+    fn read_number(&mut self) -> LexResult<'input, f64> {
         let bytes = self.input.as_bytes();
         let len = bytes.len();
         let start = self.position;
@@ -386,7 +374,7 @@ impl<'a> Lexer<'a> {
     /// This is used when the fast path in `read_number` cannot be used due to possible overflow or
     /// unusual formats.
     #[inline(never)]
-    fn read_number_fallback(&mut self) -> LexResult<'a, f64> {
+    fn read_number_fallback(&mut self) -> LexResult<'input, f64> {
         let bytes = self.input.as_bytes();
         let len = bytes.len();
         let start = self.position;
@@ -465,7 +453,7 @@ impl<'a> Lexer<'a> {
     /// This method first checks for multi-word keywords, then single-word keywords, and finally
     /// returns an identifier if no keyword matches.
     #[inline(always)]
-    fn read_keyword_or_identifier(&mut self) -> TokenKind<'a> {
+    fn read_keyword_or_identifier(&mut self) -> TokenKind<'input> {
         const IF_TO_SAY: &[u8] = b"if to say";
         const IF_NOT_SO: &[u8] = b"if not so";
         const SMALL_PASS: &[u8] = b"small pass";
@@ -480,7 +468,7 @@ impl<'a> Lexer<'a> {
         }
         let ident = self.read_identifier_slice();
         // SAFETY: The identifier slice is valid for the input lifetime.
-        let ident: &'a str = unsafe { std::mem::transmute::<&str, &'a str>(ident) };
+        let ident: &'input str = unsafe { std::mem::transmute::<&str, &'input str>(ident) };
         match ident {
             "make" => TokenKind::Make,
             "get" => TokenKind::Get,
@@ -500,7 +488,7 @@ impl<'a> Lexer<'a> {
 
     /// Handles whitespace by skipping it and returning the next token.
     #[inline(always)]
-    fn handle_whitespace(&mut self) -> LexResult<'a, Token<'a>> {
+    fn handle_whitespace(&mut self) -> LexResult<'input, Token<'input>> {
         self.skip_whitespace();
         match self.next_token_jump() {
             Some(res) => res,
@@ -509,48 +497,47 @@ impl<'a> Lexer<'a> {
     }
     /// Handles alphabetic input by reading a keyword or identifier.
     #[inline(always)]
-    fn handle_alpha(&mut self) -> LexResult<'a, Token<'a>> {
+    fn handle_alpha(&mut self) -> LexResult<'input, Token<'input>> {
         let start = self.position;
         let kind = self.read_keyword_or_identifier();
         Ok(Token { kind, span: self.span_from(start) })
     }
     /// Handles digit input by reading a number literal.
     #[inline(always)]
-    fn handle_digit(&mut self) -> LexResult<'a, Token<'a>> {
+    fn handle_digit(&mut self) -> LexResult<'input, Token<'input>> {
         let start = self.position;
         let number = self.read_number()?;
         Ok(Token { kind: TokenKind::Number(number), span: self.span_from(start) })
     }
     /// Handles newline characters.
     #[inline(always)]
-    fn handle_newline(&mut self) -> LexResult<'a, Token<'a>> {
+    fn handle_newline(&mut self) -> LexResult<'input, Token<'input>> {
         let start = self.position;
         self.advance_char();
         Ok(Token { kind: TokenKind::Newline, span: self.span_from(start) })
     }
     /// Handles left parenthesis.
     #[inline(always)]
-    fn handle_left_paren(&mut self) -> LexResult<'a, Token<'a>> {
+    fn handle_left_paren(&mut self) -> LexResult<'input, Token<'input>> {
         let start = self.position;
         self.advance_char();
         Ok(Token { kind: TokenKind::LeftParen, span: self.span_from(start) })
     }
     /// Handles right parenthesis.
     #[inline(always)]
-    fn handle_right_paren(&mut self) -> LexResult<'a, Token<'a>> {
+    fn handle_right_paren(&mut self) -> LexResult<'input, Token<'input>> {
         let start = self.position;
         self.advance_char();
         Ok(Token { kind: TokenKind::RightParen, span: self.span_from(start) })
     }
-    /// Handles end-of-file by marking the lexer as done.
+    /// Handles end-of-file.
     #[inline(always)]
-    fn handle_eof(&mut self) -> LexResult<'a, Token<'a>> {
-        self.done = true;
+    fn handle_eof(&mut self) -> LexResult<'input, Token<'input>> {
         Ok(Token { kind: TokenKind::Eof, span: self.single_char_span() })
     }
     /// Handles unexpected or invalid input by producing a lexical error.
     #[inline(always)]
-    fn handle_error(&mut self) -> LexResult<'a, Token<'a>> {
+    fn handle_error(&mut self) -> LexResult<'input, Token<'input>> {
         let ch = self.current_char().unwrap();
         let err =
             self.error_with_span(LexErrorKind::UnexpectedCharacter(ch), self.single_char_span());
@@ -559,8 +546,8 @@ impl<'a> Lexer<'a> {
     }
     /// Constructs a lexical error at the current position with a given span.
     #[inline(always)]
-    fn error_with_span(&self, kind: LexErrorKind<'a>, span: Span) -> LexError<'a> {
-        LexError::new(kind, span, self.line, self.column)
+    fn error_with_span(&self, kind: LexErrorKind<'input>, span: Span) -> LexError<'input> {
+        LexError::new(kind, span)
     }
 
     /// The main lexing loop: dispatches to the appropriate handler based on the current input.
@@ -568,9 +555,13 @@ impl<'a> Lexer<'a> {
     /// This function is optimized for ASCII input but also supports Unicode. It returns `None` when
     /// the end of input is reached.
     #[allow(clippy::needless_return)]
-    fn next_token_jump(&mut self) -> Option<LexResult<'a, Token<'a>>> {
-        if self.done {
+    fn next_token_jump(&mut self) -> Option<LexResult<'input, Token<'input>>> {
+        if self.position > self.input.len() {
             return None;
+        }
+        if self.position == self.input.len() {
+            self.position += 1;
+            return Some(self.handle_eof());
         }
         let b = self.current_byte();
         if let Some(b) = b {
@@ -607,9 +598,28 @@ impl<'a> Lexer<'a> {
     }
 }
 
+/// Computes the (line, column) for a given byte offset in the source.
+#[inline(always)]
+pub fn offset_to_line_col(source: &str, offset: usize) -> (usize, usize) {
+    let mut line = 1;
+    let mut col = 1;
+    let mut i = 0;
+    let bytes = source.as_bytes();
+    while i < offset && i < bytes.len() {
+        if bytes[i] == b'\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+        i += 1;
+    }
+    (line, col)
+}
+
 /// Implements the `Iterator` trait for the lexer, producing a stream of tokens or errors.
-impl<'a> Iterator for Lexer<'a> {
-    type Item = LexResult<'a, Token<'a>>;
+impl<'input> Iterator for Lexer<'input> {
+    type Item = LexResult<'input, Token<'input>>;
     fn next(&mut self) -> Option<Self::Item> {
         self.next_token_jump()
     }
@@ -676,13 +686,15 @@ mod tests {
 
     #[test]
     fn test_lexical_errors() {
-        let lexer = Lexer::new("make x get @");
+        let src = "make x get @";
+        let lexer = Lexer::new(src);
         let result: Result<Vec<_>, _> = lexer.collect();
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert_eq!(error.kind, LexErrorKind::UnexpectedCharacter('@'));
-        assert_eq!(error.line, 1);
-        assert_eq!(error.column, 12);
+        assert_eq!(error.span.start, 11);
+        let (line, col) = offset_to_line_col(src, error.span.start);
+        assert_eq!((line, col), (1, 12));
     }
 
     #[test]

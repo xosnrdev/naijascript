@@ -245,6 +245,7 @@ impl<'source> Parser<'source> {
     /// `min_bp` is the minimum binding power required to continue parsing infix operators.
     #[inline]
     fn parse_expr_bp(&mut self, min_bp: u8) -> ParseResult<'source, Expression<'source>> {
+        // Parse the left-hand side (primary expression).
         let mut lhs = match self.tokens.next() {
             Some(Ok(tok)) => match &tok.kind {
                 TokenKind::Number(n) => Expression::number(*n),
@@ -264,6 +265,7 @@ impl<'source> Parser<'source> {
             Some(Err(e)) => return Err(ParseError::LexerError(e)),
             None => return Err(ParseError::UnexpectedEof),
         };
+        // Parse infix operators with correct precedence.
         while let Some(Ok(tok)) = self.tokens.peek() {
             let op = match &tok.kind {
                 TokenKind::Add => BinaryOp::Add,
