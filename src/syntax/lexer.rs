@@ -8,7 +8,16 @@ use crate::diagnostics::{Diagnostic, DiagnosticHandler};
 /// identifier, or literal. The lifetime parameter `'a` allows tokens to reference slices of the
 /// original input.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Token<'a> {
+pub struct Token<'a> {
+    /// The kind of the token.
+    pub kind: TokenKind<'a>,
+    /// The span of the token in the source input.
+    pub span: Span,
+}
+
+/// Represents the different kinds of tokens that can be produced by the lexer.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokenKind<'a> {
     /// The `make` keyword.
     Make,
     /// The `get` keyword.
@@ -53,6 +62,15 @@ pub enum Token<'a> {
     Eof,
 }
 
+/// Represents a span in the source input (byte offsets).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span {
+    /// The starting byte offset of the span.
+    pub start: usize,
+    /// The ending byte offset of the span (exclusive).
+    pub end: usize,
+}
+
 /// Enumerates possible lexical error kinds encountered during tokenization.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LexErrorKind<'a> {
@@ -71,27 +89,25 @@ pub enum LexErrorKind<'a> {
 pub struct LexError<'a> {
     /// The specific kind of lexical error.
     pub kind: LexErrorKind<'a>,
-    /// The line number where the error occurred (1-based).
+    /// The span of the error in the source input.
+    pub span: Span,
+    /// The line number where the error occurred.
     pub line: usize,
-    /// The column number where the error occurred (1-based).
+    /// The column number where the error occurred.
     pub column: usize,
 }
 
 impl<'a> LexError<'a> {
-    /// Constructs a new `LexError` with the given kind, line, and column.
+    /// Constructs a new `LexError` with the given kind, span, line, and column.
     #[cold]
-    fn new(kind: LexErrorKind<'a>, line: usize, column: usize) -> Self {
-        Self { kind, line, column }
+    fn new(kind: LexErrorKind<'a>, span: Span, line: usize, column: usize) -> Self {
+        Self { kind, span, line, column }
     }
 
     /// Converts this error into a `Diagnostic` for user-facing error reporting.
     ///
     /// The diagnostic includes a message, the relevant source span, and the line/column.
-    pub fn to_diagnostic(&self, source: &'a str, position: usize) -> Diagnostic<'a> {
-        let (span_start, span_end) = match &self.kind {
-            LexErrorKind::UnexpectedCharacter(ch) => (position, position + ch.len_utf8()),
-            _ => (0, 0),
-        };
+    pub fn to_diagnostic(&self, source: &'a str) -> Diagnostic<'a> {
         let message = match &self.kind {
             LexErrorKind::UnexpectedCharacter(_) => "Wetin be dis character",
             LexErrorKind::InvalidNumber(_) => "Wetin be dis number",
@@ -102,7 +118,7 @@ impl<'a> LexError<'a> {
             "lexical error",
             message,
             source,
-            (span_start, span_end),
+            (self.span.start, self.span.end),
             self.line,
             self.column,
         )
@@ -124,12 +140,33 @@ pub struct Lexer<'a> {
     position: usize,
     /// Indicates whether the lexer has reached the end of input.
     done: bool,
+    /// The current line number.
+    line: usize,
+    /// The current column number.
+    column: usize,
 }
 
 impl<'a> Lexer<'a> {
     /// Creates a new lexer for the given input string.
     pub fn new(input: &'a str) -> Self {
-        Lexer { input, position: 0, done: false }
+        Lexer { input, position: 0, done: false, line: 1, column: 1 }
+    }
+
+    /// Returns the next token, optionally reporting errors via a diagnostic handler.
+    ///
+    /// This method is intended for use cases where error reporting should not stop lexing.
+    pub fn next_with_handler(
+        &mut self,
+        handler: Option<&mut dyn DiagnosticHandler>,
+        source: &'a str,
+    ) -> Option<LexResult<'a, Token<'a>>> {
+        let res = self.next_token_jump();
+        if let Some(Err(ref e)) = res
+            && let Some(h) = handler
+        {
+            h.report(&e.to_diagnostic(source));
+        }
+        res
     }
 
     /// Returns the current byte at the lexer's position, if any.
@@ -141,40 +178,72 @@ impl<'a> Lexer<'a> {
     /// Returns the current character at the lexer's position, if any.
     #[inline(always)]
     fn current_char(&self) -> Option<char> {
-        self.input[self.position..].chars().next()
+        let bytes = self.input.as_bytes();
+        if self.position >= bytes.len() {
+            return None;
+        }
+        let b = bytes[self.position];
+        if b < 0x80 { Some(b as char) } else { self.input[self.position..].chars().next() }
+    }
+
+    /// Returns the current position as a Span of length 1 (for single-char tokens/errors).
+    #[inline(always)]
+    fn single_char_span(&self) -> Span {
+        Span { start: self.position, end: self.position + 1 }
+    }
+
+    /// Returns a span from a start position to the current position.
+    #[inline(always)]
+    fn span_from(&self, start: usize) -> Span {
+        Span { start, end: self.position }
+    }
+
+    /// Advances the lexer by one byte, updating line and column counters.
+    #[inline(always)]
+    fn advance_byte_update_linecol(&mut self) {
+        let bytes = self.input.as_bytes();
+        if self.position >= bytes.len() {
+            return;
+        }
+        let b = bytes[self.position];
+        self.position += 1;
+        if b == b'\n' {
+            self.line += 1;
+            self.column = 1;
+        } else {
+            self.column += 1;
+        }
     }
 
     /// Advances the lexer's position by `n` bytes.
     #[inline(always)]
     fn advance(&mut self, n: usize) {
-        self.position += n;
+        for _ in 0..n {
+            self.advance_byte_update_linecol();
+        }
     }
 
     /// Advances the lexer's position by one character (handling UTF-8).
     #[inline(always)]
     fn advance_char(&mut self) {
-        if let Some(ch) = self.current_char() {
-            self.position += ch.len_utf8();
-        }
-    }
-
-    /// Calculates the line and column number for a given byte position.
-    ///
-    /// This is used for precise error reporting.
-    fn calculate_line_column(&self, pos: usize) -> (usize, usize) {
-        let mut line = 1;
-        let mut column = 1;
         let bytes = self.input.as_bytes();
-
-        for &byte in bytes.iter().take(pos.min(bytes.len())) {
-            if byte == b'\n' {
-                line += 1;
-                column = 1;
-            } else {
-                column += 1;
-            }
+        if self.position >= bytes.len() {
+            return;
         }
-        (line, column)
+        let b = bytes[self.position];
+        let char_len = if b < 0x80 {
+            1
+        } else {
+            match b {
+                0xC0..=0xDF => 2,
+                0xE0..=0xEF => 3,
+                0xF0..=0xF7 => 4,
+                _ => 1,
+            }
+        };
+        for _ in 0..char_len {
+            self.advance_byte_update_linecol();
+        }
     }
 
     /// Lookup table for fast ASCII alphanumeric and underscore checks.
@@ -213,6 +282,26 @@ impl<'a> Lexer<'a> {
         b.wrapping_sub(b'0') < 10
     }
 
+    /// Advances the lexer's position up to `max` times while the predicate is true.
+    #[inline(always)]
+    fn advance_while_limit<F>(&mut self, pred: F, max: usize)
+    where
+        F: Fn(u8) -> bool,
+    {
+        let bytes = self.input.as_bytes();
+        let len = bytes.len();
+        for _ in 0..max {
+            if self.position < len {
+                let b = bytes[self.position];
+                if pred(b) {
+                    self.advance(1);
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
     /// Skips whitespace characters (space, tab, carriage return) in the input.
     ///
     /// This method is optimized to skip up to four consecutive whitespace characters per loop
@@ -225,16 +314,7 @@ impl<'a> Lexer<'a> {
             let b = bytes[self.position];
             if b == b' ' || b == b'\t' || b == b'\r' {
                 self.advance(1);
-                for _ in 0..3 {
-                    if self.position < len {
-                        let b2 = bytes[self.position];
-                        if b2 == b' ' || b2 == b'\t' || b2 == b'\r' {
-                            self.advance(1);
-                        } else {
-                            break;
-                        }
-                    }
-                }
+                self.advance_while_limit(|b2| b2 == b' ' || b2 == b'\t' || b2 == b'\r', 3);
             } else {
                 break;
             }
@@ -322,7 +402,9 @@ impl<'a> Lexer<'a> {
             }
         }
         let num_str = &self.input[start..self.position];
-        num_str.parse().map_err(|_| self.error(LexErrorKind::InvalidNumber(num_str)))
+        num_str.parse().map_err(|_| {
+            self.error_with_span(LexErrorKind::InvalidNumber(num_str), self.span_from(start))
+        })
     }
 
     /// Reads an identifier or keyword from the input as a string slice.
@@ -337,16 +419,7 @@ impl<'a> Lexer<'a> {
             let b = bytes[self.position];
             if Self::IS_ALNUM[b as usize] {
                 self.advance(1);
-                for _ in 0..3 {
-                    if self.position < len {
-                        let b2 = bytes[self.position];
-                        if Self::IS_ALNUM[b2 as usize] {
-                            self.advance(1);
-                        } else {
-                            break;
-                        }
-                    }
-                }
+                self.advance_while_limit(|b2| Self::IS_ALNUM[b2 as usize], 3);
             } else {
                 break;
             }
@@ -390,36 +463,36 @@ impl<'a> Lexer<'a> {
     /// This method first checks for multi-word keywords, then single-word keywords, and finally
     /// returns an identifier if no keyword matches.
     #[inline(always)]
-    fn read_keyword_or_identifier(&mut self) -> Token<'a> {
+    fn read_keyword_or_identifier(&mut self) -> TokenKind<'a> {
         const IF_TO_SAY: &[u8] = b"if to say";
         const IF_NOT_SO: &[u8] = b"if not so";
         const SMALL_PASS: &[u8] = b"small pass";
         if self.match_multiword(IF_TO_SAY) {
-            return Token::IfToSay;
+            return TokenKind::IfToSay;
         }
         if self.match_multiword(IF_NOT_SO) {
-            return Token::IfNotSo;
+            return TokenKind::IfNotSo;
         }
         if self.match_multiword(SMALL_PASS) {
-            return Token::SmallPass;
+            return TokenKind::SmallPass;
         }
         let ident = self.read_identifier_slice();
         // SAFETY: The identifier slice is valid for the input lifetime.
         let ident: &'a str = unsafe { std::mem::transmute::<&str, &'a str>(ident) };
         match ident {
-            "make" => Token::Make,
-            "get" => Token::Get,
-            "shout" => Token::Shout,
-            "jasi" => Token::Jasi,
-            "start" => Token::Start,
-            "end" => Token::End,
-            "add" => Token::Add,
-            "minus" => Token::Minus,
-            "times" => Token::Times,
-            "divide" => Token::Divide,
-            "na" => Token::Na,
-            "pass" => Token::Pass,
-            _ => Token::Identifier(ident),
+            "make" => TokenKind::Make,
+            "get" => TokenKind::Get,
+            "shout" => TokenKind::Shout,
+            "jasi" => TokenKind::Jasi,
+            "start" => TokenKind::Start,
+            "end" => TokenKind::End,
+            "add" => TokenKind::Add,
+            "minus" => TokenKind::Minus,
+            "times" => TokenKind::Times,
+            "divide" => TokenKind::Divide,
+            "na" => TokenKind::Na,
+            "pass" => TokenKind::Pass,
+            _ => TokenKind::Identifier(ident),
         }
     }
 
@@ -429,73 +502,63 @@ impl<'a> Lexer<'a> {
         self.skip_whitespace();
         match self.next_token_jump() {
             Some(res) => res,
-            None => Ok(Token::Eof),
+            None => Ok(Token { kind: TokenKind::Eof, span: self.single_char_span() }),
         }
     }
     /// Handles alphabetic input by reading a keyword or identifier.
     #[inline(always)]
     fn handle_alpha(&mut self) -> LexResult<'a, Token<'a>> {
-        Ok(self.read_keyword_or_identifier())
+        let start = self.position;
+        let kind = self.read_keyword_or_identifier();
+        Ok(Token { kind, span: self.span_from(start) })
     }
     /// Handles digit input by reading a number literal.
     #[inline(always)]
     fn handle_digit(&mut self) -> LexResult<'a, Token<'a>> {
-        self.read_number().map(Token::Number)
+        let start = self.position;
+        let number = self.read_number()?;
+        Ok(Token { kind: TokenKind::Number(number), span: self.span_from(start) })
     }
     /// Handles newline characters.
     #[inline(always)]
     fn handle_newline(&mut self) -> LexResult<'a, Token<'a>> {
+        let start = self.position;
         self.advance_char();
-        Ok(Token::Newline)
+        Ok(Token { kind: TokenKind::Newline, span: self.span_from(start) })
     }
     /// Handles left parenthesis.
     #[inline(always)]
     fn handle_left_paren(&mut self) -> LexResult<'a, Token<'a>> {
+        let start = self.position;
         self.advance_char();
-        Ok(Token::LeftParen)
+        Ok(Token { kind: TokenKind::LeftParen, span: self.span_from(start) })
     }
     /// Handles right parenthesis.
     #[inline(always)]
     fn handle_right_paren(&mut self) -> LexResult<'a, Token<'a>> {
+        let start = self.position;
         self.advance_char();
-        Ok(Token::RightParen)
+        Ok(Token { kind: TokenKind::RightParen, span: self.span_from(start) })
     }
     /// Handles end-of-file by marking the lexer as done.
     #[inline(always)]
     fn handle_eof(&mut self) -> LexResult<'a, Token<'a>> {
         self.done = true;
-        Ok(Token::Eof)
+        Ok(Token { kind: TokenKind::Eof, span: self.single_char_span() })
     }
     /// Handles unexpected or invalid input by producing a lexical error.
     #[inline(always)]
     fn handle_error(&mut self) -> LexResult<'a, Token<'a>> {
         let ch = self.current_char().unwrap();
-        let err = self.error(LexErrorKind::UnexpectedCharacter(ch));
+        let err =
+            self.error_with_span(LexErrorKind::UnexpectedCharacter(ch), self.single_char_span());
         self.advance_char();
         Err(err)
     }
-    /// Constructs a lexical error at the current position.
+    /// Constructs a lexical error at the current position with a given span.
     #[inline(always)]
-    fn error(&self, kind: LexErrorKind<'a>) -> LexError<'a> {
-        let (line, column) = self.calculate_line_column(self.position);
-        LexError::new(kind, line, column)
-    }
-
-    /// Returns the next token, optionally reporting errors via a diagnostic handler.
-    ///
-    /// This method is intended for use cases where error reporting should not stop lexing.
-    pub fn next_with_handler(
-        &mut self,
-        handler: Option<&mut dyn DiagnosticHandler>,
-        source: &'a str,
-    ) -> Option<LexResult<'a, Token<'a>>> {
-        let res = self.next_token_jump();
-        if let Some(Err(ref e)) = res
-            && let Some(h) = handler
-        {
-            h.report(&e.to_diagnostic(source, self.position));
-        }
-        res
+    fn error_with_span(&self, kind: LexErrorKind<'a>, span: Span) -> LexError<'a> {
+        LexError::new(kind, span, self.line, self.column)
     }
 
     /// The main lexing loop: dispatches to the appropriate handler based on the current input.
@@ -524,7 +587,10 @@ impl<'a> Lexer<'a> {
                 let ch = self.current_char().unwrap();
                 if ch.is_whitespace() {
                     self.advance_char();
-                    Some(self.next_token_jump().unwrap_or(Ok(Token::Eof)))
+                    Some(self.next_token_jump().unwrap_or(Ok(Token {
+                        kind: TokenKind::Eof,
+                        span: Span { start: self.position, end: self.position },
+                    })))
                 } else if ch.is_alphabetic() || ch == '_' {
                     return Some(self.handle_alpha());
                 } else if ch.is_numeric() {
@@ -551,13 +617,23 @@ impl<'a> Iterator for Lexer<'a> {
 mod tests {
     use super::*;
 
+    fn kind_vec(tokens: Vec<Token>) -> Vec<TokenKind> {
+        tokens.into_iter().map(|t| t.kind).collect()
+    }
+
     #[test]
     fn test_basic_tokenization() {
         let lexer = Lexer::new("make x get 5");
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(
-            tokens,
-            vec![Token::Make, Token::Identifier("x"), Token::Get, Token::Number(5.0), Token::Eof]
+            kind_vec(tokens),
+            vec![
+                TokenKind::Make,
+                TokenKind::Identifier("x"),
+                TokenKind::Get,
+                TokenKind::Number(5.0),
+                TokenKind::Eof
+            ]
         );
     }
 
@@ -566,14 +642,14 @@ mod tests {
         let lexer = Lexer::new("x add 3 times 2");
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(
-            tokens,
+            kind_vec(tokens),
             vec![
-                Token::Identifier("x"),
-                Token::Add,
-                Token::Number(3.0),
-                Token::Times,
-                Token::Number(2.0),
-                Token::Eof
+                TokenKind::Identifier("x"),
+                TokenKind::Add,
+                TokenKind::Number(3.0),
+                TokenKind::Times,
+                TokenKind::Number(2.0),
+                TokenKind::Eof
             ]
         );
     }
@@ -583,15 +659,15 @@ mod tests {
         let lexer = Lexer::new("if to say (x na 5)");
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(
-            tokens,
+            kind_vec(tokens),
             vec![
-                Token::IfToSay,
-                Token::LeftParen,
-                Token::Identifier("x"),
-                Token::Na,
-                Token::Number(5.0),
-                Token::RightParen,
-                Token::Eof
+                TokenKind::IfToSay,
+                TokenKind::LeftParen,
+                TokenKind::Identifier("x"),
+                TokenKind::Na,
+                TokenKind::Number(5.0),
+                TokenKind::RightParen,
+                TokenKind::Eof
             ]
         );
     }
@@ -612,18 +688,18 @@ mod tests {
         let mut lexer = Lexer::new("123.456.789");
         let token = lexer.next().unwrap();
         assert!(token.is_ok());
-        assert_eq!(token.unwrap(), Token::Number(123.456));
+        assert_eq!(token.unwrap().kind, TokenKind::Number(123.456));
     }
 
     #[test]
     fn test_multi_word_keywords() {
         let lexer = Lexer::new("small pass");
         let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
-        assert_eq!(tokens, vec![Token::SmallPass, Token::Eof]);
+        assert_eq!(kind_vec(tokens), vec![TokenKind::SmallPass, TokenKind::Eof]);
     }
 
     #[test]
-    fn bench_large_input_lexing() {
+    fn bench_latency() {
         let mut input = String::with_capacity(2_000_000);
         for i in 0..100_000 {
             input.push_str("make x get ");

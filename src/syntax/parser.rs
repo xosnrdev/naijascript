@@ -5,7 +5,7 @@
 use std::iter::Peekable;
 
 use super::ast::*;
-use super::lexer::{self, Lexer, Token};
+use super::lexer::{self, Lexer, Token, TokenKind};
 use crate::diagnostics::{Diagnostic, DiagnosticHandler};
 
 /// Represents a syntax error encountered during parsing.
@@ -40,7 +40,7 @@ impl<'source> ParseError<'source> {
                 };
                 Diagnostic::error("syntax error", "Wetin be dis token", source, (start, end), 0, 0)
             }
-            ParseError::LexerError(e) => e.to_diagnostic(source, 0),
+            ParseError::LexerError(e) => e.to_diagnostic(source),
         }
     }
 }
@@ -67,9 +67,9 @@ impl<'source> Parser<'source> {
     ///
     /// Returns an error if the token does not match.
     #[inline]
-    fn expect_token(&mut self, expected: Token<'source>) -> ParseResult<'source, ()> {
+    fn expect_token(&mut self, expected: TokenKind<'source>) -> ParseResult<'source, ()> {
         match self.tokens.next() {
-            Some(Ok(tok)) if tok == expected => Ok(()),
+            Some(Ok(tok)) if tok.kind == expected => Ok(()),
             Some(Ok(tok)) => Err(ParseError::UnexpectedToken(tok)),
             Some(Err(e)) => Err(ParseError::LexerError(e)),
             None => Err(ParseError::UnexpectedEof),
@@ -99,7 +99,8 @@ impl<'source> Parser<'source> {
     fn parse_statement_opt(&mut self) -> ParseResult<'source, Option<Statement<'source>>> {
         self.skip_newlines();
         match self.tokens.peek() {
-            Some(Ok(Token::Eof)) | None => Ok(None),
+            Some(Ok(tok)) if tok.kind == TokenKind::Eof => Ok(None),
+            None => Ok(None),
             _ => self.parse_statement().map(Some),
         }
     }
@@ -111,50 +112,52 @@ impl<'source> Parser<'source> {
             Ok(t) => t,
             Err(e) => return Err(ParseError::LexerError((*e).clone())),
         };
-        match token {
-            Token::Make => self.parse_assignment(),
-            Token::Shout => self.parse_output(),
-            Token::IfToSay => self.parse_if(),
-            Token::Jasi => self.parse_loop(),
+        match &token.kind {
+            TokenKind::Make => self.parse_assignment(),
+            TokenKind::Shout => self.parse_output(),
+            TokenKind::IfToSay => self.parse_if(),
+            TokenKind::Jasi => self.parse_loop(),
             _ => Err(ParseError::UnexpectedToken(token.clone())),
         }
     }
 
     /// Parses an assignment statement: `make x get expr`.
     fn parse_assignment(&mut self) -> ParseResult<'source, Statement<'source>> {
-        self.expect_token(Token::Make)?;
+        self.expect_token(TokenKind::Make)?;
         let variable = match self.tokens.next() {
-            Some(Ok(Token::Identifier(name))) => name,
-            Some(Ok(tok)) => return Err(ParseError::UnexpectedToken(tok)),
+            Some(Ok(tok)) => match &tok.kind {
+                TokenKind::Identifier(name) => *name,
+                _ => return Err(ParseError::UnexpectedToken(tok)),
+            },
             Some(Err(e)) => return Err(ParseError::LexerError(e)),
             None => return Err(ParseError::UnexpectedEof),
         };
-        self.expect_token(Token::Get)?;
+        self.expect_token(TokenKind::Get)?;
         let value = self.parse_expression()?;
         Ok(Statement::Assignment { variable, value })
     }
 
     /// Parses an output statement: `shout ( expr )`.
     fn parse_output(&mut self) -> ParseResult<'source, Statement<'source>> {
-        self.expect_token(Token::Shout)?;
-        self.expect_token(Token::LeftParen)?;
+        self.expect_token(TokenKind::Shout)?;
+        self.expect_token(TokenKind::LeftParen)?;
         let expr = self.parse_expression()?;
-        self.expect_token(Token::RightParen)?;
+        self.expect_token(TokenKind::RightParen)?;
         Ok(Statement::Output(expr))
     }
 
     /// Parses an if statement, including optional else block.
     fn parse_if(&mut self) -> ParseResult<'source, Statement<'source>> {
-        self.expect_token(Token::IfToSay)?;
-        self.expect_token(Token::LeftParen)?;
+        self.expect_token(TokenKind::IfToSay)?;
+        self.expect_token(TokenKind::LeftParen)?;
         let condition = self.parse_condition()?;
-        self.expect_token(Token::RightParen)?;
-        self.expect_token(Token::Start)?;
+        self.expect_token(TokenKind::RightParen)?;
+        self.expect_token(TokenKind::Start)?;
         let then_block = self.parse_block()?;
         let else_block = match self.tokens.peek() {
-            Some(Ok(Token::IfNotSo)) => {
+            Some(Ok(tok)) if tok.kind == TokenKind::IfNotSo => {
                 self.tokens.next();
-                self.expect_token(Token::Start)?;
+                self.expect_token(TokenKind::Start)?;
                 Some(self.parse_block()?)
             }
             _ => None,
@@ -168,11 +171,14 @@ impl<'source> Parser<'source> {
         loop {
             self.skip_newlines();
             match self.tokens.peek() {
-                Some(Ok(Token::End)) => {
+                Some(Ok(tok)) if tok.kind == TokenKind::End => {
                     self.tokens.next();
                     break;
                 }
-                Some(Ok(Token::Eof)) | None => return Err(ParseError::UnexpectedEof),
+                Some(Ok(tok)) if tok.kind == TokenKind::Eof => {
+                    return Err(ParseError::UnexpectedEof);
+                }
+                None => return Err(ParseError::UnexpectedEof),
                 _ => statements.push(self.parse_statement()?),
             }
         }
@@ -183,10 +189,12 @@ impl<'source> Parser<'source> {
     fn parse_condition(&mut self) -> ParseResult<'source, Condition<'source>> {
         let left = self.parse_expression()?;
         let op = match self.tokens.next() {
-            Some(Ok(Token::Na)) => "na",
-            Some(Ok(Token::Pass)) => "pass",
-            Some(Ok(Token::SmallPass)) => "small pass",
-            Some(Ok(tok)) => return Err(ParseError::UnexpectedToken(tok)),
+            Some(Ok(tok)) => match &tok.kind {
+                TokenKind::Na => "na",
+                TokenKind::Pass => "pass",
+                TokenKind::SmallPass => "small pass",
+                _ => return Err(ParseError::UnexpectedToken(tok)),
+            },
             Some(Err(e)) => return Err(ParseError::LexerError(e)),
             None => return Err(ParseError::UnexpectedEof),
         };
@@ -202,11 +210,11 @@ impl<'source> Parser<'source> {
 
     /// Parses a loop statement: `jasi (cond) start ... end`.
     fn parse_loop(&mut self) -> ParseResult<'source, Statement<'source>> {
-        self.expect_token(Token::Jasi)?;
-        self.expect_token(Token::LeftParen)?;
+        self.expect_token(TokenKind::Jasi)?;
+        self.expect_token(TokenKind::LeftParen)?;
         let condition = self.parse_condition()?;
-        self.expect_token(Token::RightParen)?;
-        self.expect_token(Token::Start)?;
+        self.expect_token(TokenKind::RightParen)?;
+        self.expect_token(TokenKind::Start)?;
         let body = self.parse_block()?;
         Ok(Statement::Loop { condition, body })
     }
@@ -224,31 +232,31 @@ impl<'source> Parser<'source> {
     /// `min_bp` is the minimum binding power required to continue parsing infix operators.
     #[inline]
     fn parse_expr_bp(&mut self, min_bp: u8) -> ParseResult<'source, Expression<'source>> {
-        // Parse the left-hand side (primary expression).
         let mut lhs = match self.tokens.next() {
-            Some(Ok(Token::Number(n))) => Expression::number(n),
-            Some(Ok(Token::Identifier(name))) => Expression::variable(name),
-            Some(Ok(Token::LeftParen)) => {
-                let expr = self.parse_expression()?;
-                match self.tokens.next() {
-                    Some(Ok(Token::RightParen)) => {}
-                    Some(Ok(tok)) => return Err(ParseError::UnexpectedToken(tok)),
-                    Some(Err(e)) => return Err(ParseError::LexerError(e)),
-                    None => return Err(ParseError::UnexpectedEof),
+            Some(Ok(tok)) => match &tok.kind {
+                TokenKind::Number(n) => Expression::number(*n),
+                TokenKind::Identifier(name) => Expression::variable(name),
+                TokenKind::LeftParen => {
+                    let expr = self.parse_expression()?;
+                    match self.tokens.next() {
+                        Some(Ok(tok2)) if tok2.kind == TokenKind::RightParen => {}
+                        Some(Ok(tok2)) => return Err(ParseError::UnexpectedToken(tok2)),
+                        Some(Err(e)) => return Err(ParseError::LexerError(e)),
+                        None => return Err(ParseError::UnexpectedEof),
+                    }
+                    Expression::grouping(expr)
                 }
-                Expression::grouping(expr)
-            }
-            Some(Ok(tok)) => return Err(ParseError::UnexpectedToken(tok)),
+                _ => return Err(ParseError::UnexpectedToken(tok)),
+            },
             Some(Err(e)) => return Err(ParseError::LexerError(e)),
             None => return Err(ParseError::UnexpectedEof),
         };
-        // Parse infix operators with correct precedence.
-        loop {
-            let op = match self.tokens.peek() {
-                Some(Ok(Token::Add)) => BinaryOp::Add,
-                Some(Ok(Token::Minus)) => BinaryOp::Minus,
-                Some(Ok(Token::Times)) => BinaryOp::Times,
-                Some(Ok(Token::Divide)) => BinaryOp::Divide,
+        while let Some(Ok(tok)) = self.tokens.peek() {
+            let op = match &tok.kind {
+                TokenKind::Add => BinaryOp::Add,
+                TokenKind::Minus => BinaryOp::Minus,
+                TokenKind::Times => BinaryOp::Times,
+                TokenKind::Divide => BinaryOp::Divide,
                 _ => break,
             };
             let (l_bp, r_bp) = infix_binding_power(&op);
@@ -265,9 +273,13 @@ impl<'source> Parser<'source> {
     /// Skips over any number of newline tokens, returning true if any tokens remain.
     fn skip_newlines(&mut self) -> bool {
         let mut skipped = false;
-        while let Some(Ok(Token::Newline)) = self.tokens.peek() {
-            self.tokens.next();
-            skipped = true;
+        while let Some(Ok(tok)) = self.tokens.peek() {
+            if tok.kind == TokenKind::Newline {
+                self.tokens.next();
+                skipped = true;
+            } else {
+                break;
+            }
         }
         skipped || self.tokens.peek().is_some()
     }
