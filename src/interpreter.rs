@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use crate::diagnostics::{Diagnostic, DiagnosticHandler};
 use crate::syntax::ast::*;
+use crate::syntax::offset_to_line_col;
 
 /// Represents a runtime value in NaijaScript.
 ///
@@ -48,25 +49,6 @@ impl<'source> InterpreterError<'source> {
         source: &'source str,
         filename: Option<&'source str>,
     ) -> Diagnostic<'source> {
-        // Helper: computes line and column from a byte offset.
-        fn line_col_from_offset(source: &str, offset: usize) -> (usize, usize) {
-            let mut line = 1;
-            let mut col = 1;
-            let mut count = 0;
-            for ch in source.chars() {
-                if count >= offset {
-                    break;
-                }
-                if ch == '\n' {
-                    line += 1;
-                    col = 1;
-                } else {
-                    col += 1;
-                }
-                count += ch.len_utf8();
-            }
-            (line, col)
-        }
         // Helper: finds the span of the first word in a message within the source.
         fn find_first_word_span(msg: &str, source: &str) -> (usize, usize) {
             let first_word = msg.split_whitespace().next().unwrap_or("");
@@ -104,7 +86,7 @@ impl<'source> InterpreterError<'source> {
             }
         };
 
-        let (line, col) = line_col_from_offset(source, start);
+        let (line, col) = offset_to_line_col(source, start);
 
         Diagnostic::error("runtime error", message, source, (start, end), line, col, filename)
     }
