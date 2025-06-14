@@ -73,23 +73,15 @@ impl<'source> InterpreterError<'source> {
             let span = source.find(first_word).map(|start| start..start + first_word.len());
             span.map(|r| (r.start, r.end)).unwrap_or((0, 0))
         }
-        match self {
+
+        let (message, start, end) = match self {
             InterpreterError::UndefinedVariable(name) => {
                 let (start, end) = if let Some(start) = source.find(name) {
                     (start, start + name.len())
                 } else {
                     (0, 0)
                 };
-                let (line, col) = line_col_from_offset(source, start);
-                Diagnostic::error(
-                    "runtime error",
-                    "Abeg, variable no dey defined for here o",
-                    source,
-                    (start, end),
-                    line,
-                    col,
-                    filename,
-                )
+                ("Abeg, variable no dey defined for here o", start, end)
             }
             InterpreterError::DivisionByZero => {
                 let (start, end) = if let Some(start) = source.find("divide 0") {
@@ -99,45 +91,22 @@ impl<'source> InterpreterError<'source> {
                 } else {
                     (0, 0)
                 };
-                let (line, col) = line_col_from_offset(source, start);
-                Diagnostic::error(
-                    "runtime error",
-                    "Kai! You wan divide by zero? Wahala o!",
-                    source,
-                    (start, end),
-                    line,
-                    col,
-                    filename,
-                )
+                ("Kai! You wan divide by zero? Wahala o!", start, end)
             }
             InterpreterError::TypeError(msg) => {
                 let (start, end) = find_first_word_span(msg, source);
-                let (line, col) = line_col_from_offset(source, start);
-                Diagnostic::error("runtime error", msg, source, (start, end), line, col, filename)
+                (*msg, start, end)
             }
-            InterpreterError::ScopeError => Diagnostic::error(
-                "runtime error",
-                "No environment scope found (this na bug)",
-                source,
-                (0, 0),
-                0,
-                0,
-                filename,
-            ),
+            InterpreterError::ScopeError => ("No environment scope found (this na bug)", 0, 0),
             InterpreterError::Other(msg) => {
                 let (start, end) = find_first_word_span(msg, source);
-                let (line, col) = line_col_from_offset(source, start);
-                Diagnostic::error(
-                    "runtime error",
-                    "Interpreter wahala",
-                    source,
-                    (start, end),
-                    line,
-                    col,
-                    filename,
-                )
+                ("Interpreter wahala", start, end)
             }
-        }
+        };
+
+        let (line, col) = line_col_from_offset(source, start);
+
+        Diagnostic::error("runtime error", message, source, (start, end), line, col, filename)
     }
 }
 
