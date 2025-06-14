@@ -85,7 +85,7 @@ impl std::fmt::Display for TokenKind<'_> {
             TokenKind::LeftParen => write!(f, "("),
             TokenKind::RightParen => write!(f, ")"),
             TokenKind::Newline => write!(f, "new line"),
-            TokenKind::Eof => write!(f, "end of file"),
+            TokenKind::Eof => write!(f, "end of input"),
         }
     }
 }
