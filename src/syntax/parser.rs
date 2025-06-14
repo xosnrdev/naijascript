@@ -21,7 +21,11 @@ pub enum ParseError<'source> {
 
 impl<'source> ParseError<'source> {
     /// Converts this parse error into a user-facing diagnostic.
-    pub fn to_diagnostic(&self, source: &'source str) -> Diagnostic<'source> {
+    pub fn to_diagnostic(
+        &self,
+        source: &'source str,
+        filename: Option<&'source str>,
+    ) -> Diagnostic<'source> {
         match self {
             ParseError::UnexpectedEof => Diagnostic::error(
                 "syntax error",
@@ -30,6 +34,7 @@ impl<'source> ParseError<'source> {
                 (0, 0),
                 0,
                 0,
+                filename,
             ),
             ParseError::UnexpectedToken(tok) => {
                 let tok_str = format!("{tok:?}");
@@ -38,9 +43,17 @@ impl<'source> ParseError<'source> {
                 } else {
                     (0, 0)
                 };
-                Diagnostic::error("syntax error", "Wetin be dis token", source, (start, end), 0, 0)
+                Diagnostic::error(
+                    "syntax error",
+                    "Wetin be dis token",
+                    source,
+                    (start, end),
+                    0,
+                    0,
+                    filename,
+                )
             }
-            ParseError::LexerError(e) => e.to_diagnostic(source),
+            ParseError::LexerError(e) => e.to_diagnostic(source, filename),
         }
     }
 }
@@ -289,12 +302,13 @@ impl<'source> Parser<'source> {
         &mut self,
         handler: Option<&mut dyn DiagnosticHandler>,
         source: &'source str,
+        filename: Option<&'source str>,
     ) -> ParseResult<'source, Program<'source>> {
         match self.parse_program() {
             Ok(program) => Ok(program),
             Err(e) => {
                 if let Some(h) = handler {
-                    h.report(&e.to_diagnostic(source));
+                    h.report(&e.to_diagnostic(source, filename));
                 }
                 Err(e)
             }

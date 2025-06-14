@@ -107,7 +107,7 @@ impl<'a> LexError<'a> {
     /// Converts this error into a `Diagnostic` for user-facing error reporting.
     ///
     /// The diagnostic includes a message, the relevant source span, and the line/column.
-    pub fn to_diagnostic(&self, source: &'a str) -> Diagnostic<'a> {
+    pub fn to_diagnostic(&self, source: &'a str, filename: Option<&'a str>) -> Diagnostic<'a> {
         let message = match &self.kind {
             LexErrorKind::UnexpectedCharacter(_) => "Wetin be dis character",
             LexErrorKind::InvalidNumber(_) => "Wetin be dis number",
@@ -121,6 +121,7 @@ impl<'a> LexError<'a> {
             (self.span.start, self.span.end),
             self.line,
             self.column,
+            filename,
         )
     }
 }
@@ -159,12 +160,13 @@ impl<'a> Lexer<'a> {
         &mut self,
         handler: Option<&mut dyn DiagnosticHandler>,
         source: &'a str,
+        filename: Option<&'a str>,
     ) -> Option<LexResult<'a, Token<'a>>> {
         let res = self.next_token_jump();
         if let Some(Err(ref e)) = res
             && let Some(h) = handler
         {
-            h.report(&e.to_diagnostic(source));
+            h.report(&e.to_diagnostic(source, filename));
         }
         res
     }

@@ -89,11 +89,11 @@ pub fn run() {
 fn run_eval(code: &str) -> CmdResult<()> {
     let mut handler = StderrHandler;
     let mut parser = Parser::new(Lexer::new(code));
-    match parser.parse_program_with_handler(Some(&mut handler), code) {
+    match parser.parse_program_with_handler(Some(&mut handler), code, Some("<eval>")) {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
             interpreter
-                .eval_program_with_handler(&program, Some(&mut handler), code)
+                .eval_program_with_handler(&program, Some(&mut handler), code, Some("<eval>"))
                 .map_err(|e| CmdError::Interpreter(format!("{e:?}")))
         }
         Err(e) => Err(CmdError::Parse(format!("{e:?}"))),
@@ -122,11 +122,11 @@ fn run_script(script: &str) -> CmdResult<()> {
     let src = input.as_str();
     let mut handler = StderrHandler;
     let mut parser = Parser::new(Lexer::new(src));
-    match parser.parse_program_with_handler(Some(&mut handler), src) {
+    match parser.parse_program_with_handler(Some(&mut handler), src, Some(script)) {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
             interpreter
-                .eval_program_with_handler(&program, Some(&mut handler), src)
+                .eval_program_with_handler(&program, Some(&mut handler), src, Some(script))
                 .map_err(|e| CmdError::Interpreter(format!("{e:?}")))
         }
         Err(e) => Err(CmdError::Parse(format!("{e:?}"))),
@@ -154,19 +154,24 @@ fn run_repl() -> CmdResult<()> {
             }
             Ok(_) => {
                 let trimmed = line.trim();
-                if trimmed.is_empty() {
+                if trimmed.is_empty() || trimmed.starts_with("\x1b[") {
                     continue;
                 }
                 {
                     let input = ScriptInput { source: trimmed.to_owned() };
                     let mut handler = StderrHandler;
                     if let Ok(program) = Parser::new(Lexer::new(input.as_str()))
-                        .parse_program_with_handler(Some(&mut handler), input.as_str())
+                        .parse_program_with_handler(
+                            Some(&mut handler),
+                            input.as_str(),
+                            Some("<repl>"),
+                        )
                     {
                         let _ = Interpreter::new().eval_program_with_handler(
                             &program,
                             Some(&mut handler),
                             input.as_str(),
+                            Some("<repl>"),
                         );
                     }
                 }
@@ -190,11 +195,11 @@ fn run_stdin() -> CmdResult<()> {
     let src = input.as_str();
     let mut handler = StderrHandler;
     let mut parser = Parser::new(Lexer::new(src));
-    match parser.parse_program_with_handler(Some(&mut handler), src) {
+    match parser.parse_program_with_handler(Some(&mut handler), src, Some("<stdin>")) {
         Ok(program) => {
             let mut interpreter = Interpreter::new();
             interpreter
-                .eval_program_with_handler(&program, Some(&mut handler), src)
+                .eval_program_with_handler(&program, Some(&mut handler), src, Some("<stdin>"))
                 .map_err(|e| CmdError::Interpreter(format!("{e:?}")))
         }
         Err(e) => Err(CmdError::Parse(format!("{e:?}"))),

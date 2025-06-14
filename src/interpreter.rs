@@ -43,7 +43,11 @@ impl<'source> InterpreterError<'source> {
     /// Converts this error into a `Diagnostic` for user-facing error reporting.
     ///
     /// The diagnostic includes a message, the relevant source span, and the line/column.
-    pub fn to_diagnostic(&self, source: &'source str) -> Diagnostic<'source> {
+    pub fn to_diagnostic(
+        &self,
+        source: &'source str,
+        filename: Option<&'source str>,
+    ) -> Diagnostic<'source> {
         // Helper: computes line and column from a byte offset.
         fn line_col_from_offset(source: &str, offset: usize) -> (usize, usize) {
             let mut line = 1;
@@ -84,6 +88,7 @@ impl<'source> InterpreterError<'source> {
                     (start, end),
                     line,
                     col,
+                    filename,
                 )
             }
             InterpreterError::DivisionByZero => {
@@ -102,12 +107,13 @@ impl<'source> InterpreterError<'source> {
                     (start, end),
                     line,
                     col,
+                    filename,
                 )
             }
             InterpreterError::TypeError(msg) => {
                 let (start, end) = find_first_word_span(msg, source);
                 let (line, col) = line_col_from_offset(source, start);
-                Diagnostic::error("runtime error", msg, source, (start, end), line, col)
+                Diagnostic::error("runtime error", msg, source, (start, end), line, col, filename)
             }
             InterpreterError::ScopeError => Diagnostic::error(
                 "runtime error",
@@ -116,6 +122,7 @@ impl<'source> InterpreterError<'source> {
                 (0, 0),
                 0,
                 0,
+                filename,
             ),
             InterpreterError::Other(msg) => {
                 let (start, end) = find_first_word_span(msg, source);
@@ -127,6 +134,7 @@ impl<'source> InterpreterError<'source> {
                     (start, end),
                     line,
                     col,
+                    filename,
                 )
             }
         }
@@ -170,11 +178,12 @@ impl<'source> Interpreter<'source> {
         program: &Program<'source>,
         handler: Option<&mut dyn DiagnosticHandler>,
         source: &'source str,
+        filename: Option<&'source str>,
     ) -> InterpreterResult<'source, ()> {
         for stmt in &program.statements {
             if let Err(e) = self.eval_statement(stmt) {
                 if let Some(h) = handler {
-                    h.report(&e.to_diagnostic(source));
+                    h.report(&e.to_diagnostic(source, filename));
                 }
                 return Err(e);
             }
