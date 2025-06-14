@@ -29,15 +29,15 @@ impl std::fmt::Display for Value {
 #[derive(Debug, PartialEq)]
 pub enum InterpreterError<'source> {
     /// Variable was referenced before being defined.
-    UndefinedVariable(&'source str),
+    UndefinedVariable(&'source str, (usize, usize)),
     /// Division by zero was attempted.
-    DivisionByZero,
+    DivisionByZero((usize, usize)),
     /// A type mismatch occurred during evaluation.
-    TypeError(&'static str),
+    TypeError(&'static str, (usize, usize)),
     /// No environment scope was found (internal error).
     ScopeError,
     /// Other miscellaneous error.
-    Other(String),
+    Other(String, (usize, usize)),
 }
 
 impl<'source> InterpreterError<'source> {
@@ -49,41 +49,16 @@ impl<'source> InterpreterError<'source> {
         source: &'source str,
         filename: Option<&'source str>,
     ) -> Diagnostic<'source> {
-        // Helper: finds the span of the first word in a message within the source.
-        fn find_first_word_span(msg: &str, source: &str) -> (usize, usize) {
-            let first_word = msg.split_whitespace().next().unwrap_or("");
-            let span = source.find(first_word).map(|start| start..start + first_word.len());
-            span.map(|r| (r.start, r.end)).unwrap_or((0, 0))
-        }
-
         let (message, start, end) = match self {
-            InterpreterError::UndefinedVariable(name) => {
-                let (start, end) = if let Some(start) = source.find(name) {
-                    (start, start + name.len())
-                } else {
-                    (0, 0)
-                };
-                ("Abeg, variable no dey defined for here o", start, end)
+            InterpreterError::UndefinedVariable(_, (start, end)) => {
+                ("Abeg, variable no dey defined for here o", *start, *end)
             }
-            InterpreterError::DivisionByZero => {
-                let (start, end) = if let Some(start) = source.find("divide 0") {
-                    (start, start + "divide 0".len())
-                } else if let Some(start) = source.find("0") {
-                    (start, start + 1)
-                } else {
-                    (0, 0)
-                };
-                ("Kai! You wan divide by zero? Wahala o!", start, end)
+            InterpreterError::DivisionByZero((start, end)) => {
+                ("Kai! You wan divide by zero? Wahala o!", *start, *end)
             }
-            InterpreterError::TypeError(msg) => {
-                let (start, end) = find_first_word_span(msg, source);
-                (*msg, start, end)
-            }
+            InterpreterError::TypeError(msg, (start, end)) => (*msg, *start, *end),
             InterpreterError::ScopeError => ("No environment scope found (this na bug)", 0, 0),
-            InterpreterError::Other(msg) => {
-                let (start, end) = find_first_word_span(msg, source);
-                ("Interpreter wahala", start, end)
-            }
+            InterpreterError::Other(_, (start, end)) => ("Interpreter wahala", *start, *end),
         };
 
         let (line, col) = offset_to_line_col(source, start);
@@ -148,16 +123,16 @@ impl<'source> Interpreter<'source> {
     /// expressions, blocks, or conditions.
     fn eval_statement(&mut self, stmt: &Statement<'source>) -> InterpreterResult<'source, ()> {
         match stmt {
-            Statement::Assignment { variable, value } => {
+            Statement::Assignment { variable, value, .. } => {
                 let val = self.eval_expression(value)?;
                 self.assign_variable(variable, val)
             }
-            Statement::Output(expr) => {
+            Statement::Output(expr, _) => {
                 let val = self.eval_expression(expr)?;
                 println!("{val}");
                 Ok(())
             }
-            Statement::If { condition, then_block, else_block } => {
+            Statement::If { condition, then_block, else_block, .. } => {
                 if self.eval_condition(condition)? {
                     self.eval_block(then_block)
                 } else if let Some(else_block) = else_block {
@@ -166,7 +141,7 @@ impl<'source> Interpreter<'source> {
                     Ok(())
                 }
             }
-            Statement::Loop { condition, body } => {
+            Statement::Loop { condition, body, .. } => {
                 while self.eval_condition(condition)? {
                     self.eval_block(body)?;
                 }
@@ -191,17 +166,17 @@ impl<'source> Interpreter<'source> {
     /// Recursively evaluates an expression node and returns its value.
     fn eval_expression(&mut self, expr: &Expression<'source>) -> InterpreterResult<'source, Value> {
         match expr {
-            Expression::Number(n) => Ok(Value::Number(*n)),
-            Expression::Variable(name) => {
-                let val = self.lookup_variable(name)?;
+            Expression::Number(n, _) => Ok(Value::Number(*n)),
+            Expression::Variable(name, span) => {
+                let val = self.lookup_variable(name, (span.start, span.end))?;
                 Ok(val.clone())
             }
-            Expression::Binary { left, op, right } => {
+            Expression::Binary { left, op, right, span } => {
                 let l = self.eval_expression(left)?;
                 let r = self.eval_expression(right)?;
-                self.eval_binary_op(op, &l, &r)
+                self.eval_binary_op(op, &l, &r, (span.start, span.end))
             }
-            Expression::Grouping(inner) => self.eval_expression(inner),
+            Expression::Grouping(inner, _) => self.eval_expression(inner),
         }
     }
 
@@ -213,13 +188,14 @@ impl<'source> Interpreter<'source> {
         op: &BinaryOp,
         l: &Value,
         r: &Value,
+        span: (usize, usize),
     ) -> InterpreterResult<'source, Value> {
         match (op, l, r) {
             (BinaryOp::Add, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a + b)),
             (BinaryOp::Minus, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a - b)),
             (BinaryOp::Times, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a * b)),
             (BinaryOp::Divide, Value::Number(_), Value::Number(b)) if *b == 0.0 => {
-                Err(InterpreterError::DivisionByZero)
+                Err(InterpreterError::DivisionByZero(span))
             }
             (BinaryOp::Divide, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a / b)),
         }
@@ -230,19 +206,19 @@ impl<'source> Interpreter<'source> {
     /// Each condition recursively evaluates its operands and applies the appropriate comparison.
     fn eval_condition(&mut self, cond: &Condition<'source>) -> InterpreterResult<'source, bool> {
         match cond {
-            Condition::Na(l, r) => {
+            Condition::Na(l, r, _span) => {
                 let lv = self.eval_expression(l)?;
                 let rv = self.eval_expression(r)?;
                 let (Value::Number(a), Value::Number(b)) = (&lv, &rv);
                 Ok(a == b)
             }
-            Condition::Pass(l, r) => {
+            Condition::Pass(l, r, _span) => {
                 let lv = self.eval_expression(l)?;
                 let rv = self.eval_expression(r)?;
                 let (Value::Number(a), Value::Number(b)) = (&lv, &rv);
                 Ok(a > b)
             }
-            Condition::SmallPass(l, r) => {
+            Condition::SmallPass(l, r, _span) => {
                 let lv = self.eval_expression(l)?;
                 let rv = self.eval_expression(r)?;
                 let (Value::Number(a), Value::Number(b)) = (&lv, &rv);
@@ -276,13 +252,17 @@ impl<'source> Interpreter<'source> {
     /// Looks up a variable by name, searching from innermost to outermost scope.
     ///
     /// Returns an error if the variable is not found.
-    fn lookup_variable(&self, name: &'source str) -> InterpreterResult<'source, &Value> {
+    fn lookup_variable(
+        &self,
+        name: &'source str,
+        span: (usize, usize),
+    ) -> InterpreterResult<'source, &Value> {
         for scope in self.env.iter().rev() {
             if let Some(val) = scope.get(name) {
                 return Ok(val);
             }
         }
-        Err(InterpreterError::UndefinedVariable(name))
+        Err(InterpreterError::UndefinedVariable(name, span))
     }
 }
 
@@ -299,7 +279,7 @@ mod tests {
         let program = parser.parse_program().unwrap();
         let mut interpreter = Interpreter::new();
         assert!(interpreter.eval_program(&program).is_ok());
-        assert_eq!(interpreter.lookup_variable("x").unwrap(), &Value::Number(5.0));
+        assert_eq!(interpreter.lookup_variable("x", (0, 0)).unwrap(), &Value::Number(5.0));
     }
 
     #[test]
@@ -309,7 +289,7 @@ mod tests {
         let program = parser.parse_program().unwrap();
         let mut interpreter = Interpreter::new();
         assert!(interpreter.eval_program(&program).is_ok());
-        assert_eq!(interpreter.lookup_variable("x").unwrap(), &Value::Number(3.0));
+        assert_eq!(interpreter.lookup_variable("x", (0, 0)).unwrap(), &Value::Number(3.0));
     }
 
     #[test]
@@ -319,6 +299,6 @@ mod tests {
         let program = parser.parse_program().unwrap();
         let mut interpreter = Interpreter::new();
         assert!(interpreter.eval_program(&program).is_ok());
-        assert_eq!(interpreter.lookup_variable("y").unwrap(), &Value::Number(1.0));
+        assert_eq!(interpreter.lookup_variable("y", (0, 0)).unwrap(), &Value::Number(1.0));
     }
 }

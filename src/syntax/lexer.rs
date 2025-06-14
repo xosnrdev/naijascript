@@ -62,8 +62,36 @@ pub enum TokenKind<'input> {
     Eof,
 }
 
+impl std::fmt::Display for TokenKind<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenKind::Make => write!(f, "make"),
+            TokenKind::Get => write!(f, "get"),
+            TokenKind::Shout => write!(f, "shout"),
+            TokenKind::IfToSay => write!(f, "if to say"),
+            TokenKind::IfNotSo => write!(f, "if not so"),
+            TokenKind::Jasi => write!(f, "jasi"),
+            TokenKind::Start => write!(f, "start"),
+            TokenKind::End => write!(f, "end"),
+            TokenKind::Add => write!(f, "add"),
+            TokenKind::Minus => write!(f, "minus"),
+            TokenKind::Times => write!(f, "times"),
+            TokenKind::Divide => write!(f, "divide"),
+            TokenKind::Na => write!(f, "na"),
+            TokenKind::Pass => write!(f, "pass"),
+            TokenKind::SmallPass => write!(f, "small pass"),
+            TokenKind::Identifier(ident) => write!(f, "{ident}"),
+            TokenKind::Number(num) => write!(f, "{num}"),
+            TokenKind::LeftParen => write!(f, "("),
+            TokenKind::RightParen => write!(f, ")"),
+            TokenKind::Newline => write!(f, "new line"),
+            TokenKind::Eof => write!(f, "end of file"),
+        }
+    }
+}
+
 /// Represents a span in the source input (byte offsets).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     /// The starting byte offset of the span.
     pub start: usize,
