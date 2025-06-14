@@ -4,6 +4,8 @@
 ///
 /// Each diagnostic contains relevant information such as the severity, message, and source code context.
 pub struct Diagnostic<'src> {
+    /// Optional filename or path where the diagnostic applies.
+    pub filename: Option<&'src str>,
     /// The severity or type of the diagnostic.
     pub kind: DiagnosticKind,
     /// Human-readable message describing the issue.
@@ -42,6 +44,7 @@ impl<'src> Diagnostic<'src> {
         span: (usize, usize),
         line: usize,
         column: usize,
+        filename: Option<&'src str>,
     ) -> Self {
         Diagnostic {
             kind: DiagnosticKind::Error,
@@ -52,6 +55,7 @@ impl<'src> Diagnostic<'src> {
             line,
             column,
             suggestion: None,
+            filename,
         }
     }
     /// Constructs a new warning diagnostic.
@@ -62,6 +66,7 @@ impl<'src> Diagnostic<'src> {
         span: (usize, usize),
         line: usize,
         column: usize,
+        filename: Option<&'src str>,
     ) -> Self {
         Diagnostic {
             kind: DiagnosticKind::Warning,
@@ -72,6 +77,7 @@ impl<'src> Diagnostic<'src> {
             line,
             column,
             suggestion: None,
+            filename,
         }
     }
     /// Constructs a new note diagnostic.
@@ -82,6 +88,7 @@ impl<'src> Diagnostic<'src> {
         span: (usize, usize),
         line: usize,
         column: usize,
+        filename: Option<&'src str>,
     ) -> Self {
         Diagnostic {
             kind: DiagnosticKind::Note,
@@ -92,6 +99,7 @@ impl<'src> Diagnostic<'src> {
             line,
             column,
             suggestion: None,
+            filename,
         }
     }
     /// Returns a new diagnostic with a suggestion/help message.
@@ -158,8 +166,9 @@ impl<'a> DiagnosticDisplay<'a> {
             DiagnosticKind::Note => ("\x1b[34m", "\x1b[0m"),  // Blue
         };
         // Header line
+        let filename = diag.filename.unwrap();
         output
-            .push_str(&format!("[{}] at line {}, column {}\n", diag.code, diag.line, diag.column));
+            .push_str(&format!("[{}] --> {}:{}:{}\n", diag.code, filename, diag.line, diag.column));
         // Extract context lines
         let lines: Vec<&str> = diag.source.lines().collect();
         let line_idx = diag.line.saturating_sub(1);
@@ -188,6 +197,8 @@ impl<'a> DiagnosticDisplay<'a> {
                 reset
             );
             output.push_str(&message_line);
+            // Add a separator line
+            output.push_str("     |\n");
         }
         // Next line (if any)
         if line_idx + 1 < lines.len() {
@@ -223,6 +234,7 @@ mod tests {
             (5, 6),
             1,
             6,
+            Some("test.ns"),
         );
         let mut handler = StderrHandler;
         handler.report(&diag);
