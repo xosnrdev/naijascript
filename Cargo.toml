@@ -1,6 +1,6 @@
 [package]
 name = "naijascript"
-version = "0.1.0"
+version = "0.10.1"
 edition = "2024"
 authors = ["Success Kingsley <xosnrdev@gmail.com>"]
 description = "A scripting language for learning, automation, and fun with Naija (Nigerian) lingo."
