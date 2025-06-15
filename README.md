@@ -2,66 +2,37 @@
 
 A scripting language for learning, automation, and fun with Naija (Nigerian) lingo.
 
-## Install
+## Getting Started
 
-**POSIX (Linux/macOS):**
+1. **Install the Toolchain Manager (`naijaup`)**
 
-```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.sh | sh
-```
+   - **Linux/macOS:**
+     ```sh
+     curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.sh | sh
+     ```
+   - **Windows (PowerShell):**
+     ```powershell
+     powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.ps1 | iex"
+     ```
+   - After installation, ensure `$HOME/.local/bin` (Linux/macOS) or `%USERPROFILE%\.naijascript\bin` (Windows) is in your `PATH`. Restart your terminal if needed.
 
-**Windows (PowerShell):**
+2. **Install and Set Up the Interpreter (`naija`)**
 
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.ps1 | iex"
-```
+   - Install the latest version:
+     ```sh
+     naijaup install latest
+     ```
+   - Set the installed version as default:
+     ```sh
+     naijaup default latest
+     ```
 
-## Interpreter Setup
+3. **Explore Documentation and Examples**
+   - [Toolchain Manager (`naijaup`)](./docs/naijaup.md): Installation, version management, troubleshooting, advanced usage.
+   - [Interpreter (`naija`)](./docs/naija.md): Running scripts, REPL, evaluating code, piping, CLI options, troubleshooting.
+   - [Language Design](./docs/DESIGN.md): Philosophy and architecture behind NaijaScript.
+   - [Examples](./examples): Syntax samples and practical usage.
 
-To set up the NaijaScript interpreter:
+## License
 
-1. **Install the latest version using `naijaup`:**
-
-   ```sh
-   naijaup install latest
-   ```
-
-2. **Set the latest version as the default:**
-
-   ```sh
-   naijaup default latest
-   ```
-
-Alternatively, you can manually download pre-built binaries from the [Releases page](https://github.com/xosnrdev/naijascript/releases/latest).
-
-## Usage
-
-Run a script:
-
-```sh
-naija your_script.ns
-```
-
-Start the REPL:
-
-```sh
-naija --interactive
-```
-
-Eval a code snippet:
-
-```sh
-naija --eval "make x get 5 shout ( x add 2 )"
-```
-
-Pipe from stdin:
-
-```sh
-echo "make x get 5 shout ( x add 2 )" | naija -
-```
-
-## Examples
-
-See [examples/](./examples) for runnable scripts.
-
-For technical and contributor details, see [docs/DESIGN.md](./docs/DESIGN.md).
+This project is licensed under the [MIT License](./LICENSE).
