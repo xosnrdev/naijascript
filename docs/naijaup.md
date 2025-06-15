@@ -19,7 +19,7 @@ The official toolchain manager for NaijaScript.
      powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.ps1 | iex"
      ```
 
-This command installs `naijaup` to your user-local bin directory (e.g., `$HOME/.local/bin` or `%USERPROFILE%\.naijascript\bin`).
+This command installs `naijaup` to your user-local bin directory (e.g., `$HOME/.local/bin` or `%USERPROFILE%\.naijaup\bin`).
 
 ## Usage
 

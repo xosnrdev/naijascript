@@ -4,7 +4,7 @@ A scripting language for learning, automation, and fun with Naija (Nigerian) lin
 
 ## Getting Started
 
-1. **Install the Toolchain Manager and Interpreter**
+1. **Install the Toolchain Manager (`naijaup`)**
 
    - **Linux/macOS:**
      ```sh
@@ -16,7 +16,7 @@ A scripting language for learning, automation, and fun with Naija (Nigerian) lin
      ```
    - After installation, ensure `$HOME/.local/bin` (Linux/macOS) or `%USERPROFILE%\.naijascript\bin` (Windows) is in your `PATH`. Restart your terminal if needed.
 
-2. **Install and Set Up the Interpreter**
+2. **Install and Set Up the Interpreter (`naija`)**
 
    - Install the latest version:
      ```sh

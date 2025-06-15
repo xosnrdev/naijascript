@@ -30,8 +30,8 @@ To enter interactive mode:
 naija --interactive
 ```
 
-- Type code and press Enter to execute.
-- Type `exit` or press Ctrl+D to quit.
+    - Type code and press Enter to execute.
+    - Type `exit` or press Ctrl+D to quit.
 
 ### 4. Pipe Code from Standard Input
 
