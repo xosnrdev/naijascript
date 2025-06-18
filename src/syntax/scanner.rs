@@ -63,7 +63,7 @@ pub enum Token<'input> {
 pub struct Lexer<'input> {
     src: &'input str,      // Original source text (kept for slicing)
     bytes: &'input [u8],   // Bytes view for faster processing
-    pos: usize,            // Current position in the source
+    pub pos: usize,        // Current position in the source
     errors: Vec<LexError>, // Collection of encountered errors
 }
 
@@ -73,7 +73,7 @@ impl<'input> Lexer<'input> {
     /// Using #[inline(always)] because this is a trivial constructor
     /// that gets called a lot during testing and benchmarks
     #[inline(always)]
-    pub fn new(src: &'input str) -> Self {
+    pub const fn new(src: &'input str) -> Self {
         Lexer { src, bytes: src.as_bytes(), pos: 0, errors: Vec::new() }
     }
 
@@ -100,7 +100,7 @@ impl<'input> Lexer<'input> {
     /// Uses saturating_add as a safety measure to prevent overflow,
     /// though this should never happen in practice
     #[inline(always)]
-    fn bump(&mut self) {
+    const fn bump(&mut self) {
         self.pos = self.pos.saturating_add(1);
     }
 
@@ -119,7 +119,7 @@ impl<'input> Lexer<'input> {
     ///
     /// Used for identifier and keyword detection
     #[inline(always)]
-    fn is_alpha(b: u8) -> bool {
+    const fn is_alpha(b: u8) -> bool {
         b.is_ascii_alphabetic()
     }
 
@@ -127,7 +127,7 @@ impl<'input> Lexer<'input> {
     ///
     /// Used for number literal detection
     #[inline(always)]
-    fn is_digit(b: u8) -> bool {
+    const fn is_digit(b: u8) -> bool {
         b.is_ascii_digit()
     }
 
