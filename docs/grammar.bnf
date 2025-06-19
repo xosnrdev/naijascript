@@ -2,9 +2,10 @@
 
 <statement_list> ::= <statement> | <statement> <statement_list>
 
-<statement> ::= <assignment> | <output_statement> | <if_statement> | <loop_statement>
+<statement> ::= <assignment> | <reassignment> | <output_statement> | <if_statement> | <loop_statement>
 
 <assignment> ::= "make" <variable> "get" <expression>
+<reassignment> ::= <variable> "get" <expression>
 
 <variable> ::= <identifier>
 

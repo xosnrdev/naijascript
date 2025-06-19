@@ -75,6 +75,7 @@ pub enum CmpOp {
 #[derive(Debug)]
 pub enum Stmt<'src> {
     Assign { var: &'src str, expr: ExprId }, // "make x get 5"
+    AssignExisting { var: &'src str, expr: ExprId }, // "x get 5"
     Shout { expr: ExprId },                  // "shout(x)"
     If { cond: CondId, then_b: BlockId, else_b: Option<BlockId> }, // "if to say(...) start...end"
     Loop { cond: CondId, body: BlockId },    // "jasi(...) start...end"
@@ -225,6 +226,20 @@ impl<'src> Parser<'src> {
             Token::Shout => self.parse_shout(),
             Token::IfToSay => self.parse_if(),
             Token::Jasi => self.parse_loop(),
+            Token::Identifier(var) => {
+                // Peek ahead for reassignment: <identifier> 'get' <expression>
+                self.bump();
+                if self.cur == Token::Get {
+                    self.bump();
+                    let expr = self.parse_expression(0);
+                    let sid = self.stmt_arena.alloc(Stmt::AssignExisting { var, expr });
+                    Some(sid)
+                } else {
+                    // Not a reassignment, error and do not consume
+                    self.error("expected statement (did you mean to use 'make' or 'get'?)");
+                    None
+                }
+            }
             _ => {
                 self.error("expected statement");
                 None

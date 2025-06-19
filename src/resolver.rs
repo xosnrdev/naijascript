@@ -48,7 +48,8 @@ pub struct SemAnalyzer<'src> {
 impl<'src> SemAnalyzer<'src> {
     /// Sets up a new analyzer with the AST arenas from parsing.
     /// We start with empty symbol table and error list - fresh slate for analysis.
-    pub fn new(
+    #[inline(always)]
+    pub const fn new(
         stmts: &'src Arena<Stmt<'src>>,
         exprs: &'src Arena<Expr<'src>>,
         conds: &'src Arena<Cond>,
@@ -60,6 +61,7 @@ impl<'src> SemAnalyzer<'src> {
     /// Main entry point for semantic checking.
     /// Takes the root block (representing the whole program) and recursively
     /// validates everything inside it.
+    #[inline(always)]
     pub fn analyze(&mut self, root: BlockId) {
         self.check_block(root);
     }
@@ -67,6 +69,7 @@ impl<'src> SemAnalyzer<'src> {
     /// Validates all statements within a block.
     /// Blocks in NaijaScript are wrapped with "start" and "end" keywords,
     /// but here we just process the list of statements inside.
+    #[inline(always)]
     fn check_block(&mut self, bid: BlockId) {
         let block = &self.blocks.nodes[bid.0];
         for &sid in &block.stmts {
@@ -96,6 +99,16 @@ impl<'src> SemAnalyzer<'src> {
                 }
                 // Always check the expression, even if variable was duplicate
                 // This catches more errors in one pass
+                self.check_expr(*expr);
+            }
+            // Handle variable reassignment: <variable> get <expression>
+            Stmt::AssignExisting { var, expr } => {
+                if !self.symbol_table.contains(var) {
+                    self.errors.push(SemanticError {
+                        node: NodeId::Stmt(sid.0),
+                        message: "assignment to undeclared variable",
+                    });
+                }
                 self.check_expr(*expr);
             }
             // Handle "shout(expression)" statements - just validate the expression
