@@ -1,6 +1,6 @@
 //! The lexer (or scanner) for NaijaScript.
 
-use crate::diagnostics::{AsStr, Diagnostics, Severity};
+use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
 
 /// Represents the type of lexical errors that can occur during tokenization
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,10 +68,10 @@ pub enum Token<'input> {
 /// We use a byte-based scanner for performance rather than working with Unicode
 /// characters directly. This is significantly faster for ASCII-heavy code.
 pub struct Lexer<'input> {
-    src: &'input str,    // Original source text (kept for slicing)
-    bytes: &'input [u8], // Bytes view for faster processing
-    pub pos: usize,      // Current position in the source
-    errors: Diagnostics, // Collection of encountered errors
+    pub src: &'input str,    // Original source text (kept for slicing)
+    pub bytes: &'input [u8], // Bytes view for faster processing
+    pub pos: usize,          // Current position in the source
+    pub errors: Diagnostics, // Collection of encountered errors
 }
 
 impl<'input> Lexer<'input> {
@@ -228,6 +228,7 @@ impl<'input> Lexer<'input> {
                 // Consume decimal part if present
                 if self.peek() == b'.' {
                     saw_dot = true;
+                    let dot_pos = self.pos;
                     self.bump();
                     let after_dot = self.peek();
                     if !Self::is_digit(after_dot) {
@@ -235,9 +236,12 @@ impl<'input> Lexer<'input> {
                         self.errors.emit(
                             start..self.pos,
                             Severity::Error,
-                            "lexical error",
+                            "lexical",
                             LexError::InvalidNumber.as_str(),
-                            &[],
+                            vec![Label {
+                                span: dot_pos..self.pos,
+                                message: "Number no get digit after dot",
+                            }],
                         );
                         // skip the dot so we don't hang on it
                         self.bump();
@@ -250,13 +254,14 @@ impl<'input> Lexer<'input> {
 
                 // Check for multiple dots (e.g., 1.2.3)
                 if saw_dot && self.peek() == b'.' {
+                    let extra_dot = self.pos;
                     self.bump();
                     self.errors.emit(
                         start..self.pos,
                         Severity::Error,
-                        "lexical error",
+                        "lexical",
                         LexError::InvalidNumber.as_str(),
-                        &[],
+                        vec![Label { span: extra_dot..self.pos, message: "Number get extra dot" }],
                     );
                     continue;
                 }
@@ -269,13 +274,17 @@ impl<'input> Lexer<'input> {
             // Identifiers and keywords
             if !Self::is_alpha(b) && (b != 0) {
                 // If not a letter, not a digit, not paren, it's an error
+                let err_pos = self.pos;
                 self.bump();
                 self.errors.emit(
                     start..self.pos,
                     Severity::Error,
-                    "lexical error",
+                    "lexical",
                     LexError::UnexpectedChar.as_str(),
-                    &[],
+                    vec![Label {
+                        span: err_pos..self.pos,
+                        message: "Dis character no dey grammar",
+                    }],
                 );
                 continue;
             }
@@ -339,17 +348,58 @@ impl<'input> Lexer<'input> {
                     "pass" => Token::Pass,
 
                     // If not a keyword, it's an identifier
-                    other => Token::Identifier(other),
+                    other => {
+                        // Validate identifier: must start with letter, rest can be letter/digit
+                        let mut chars = other.chars();
+                        if let Some(first) = chars.next() {
+                            if !first.is_ascii_alphabetic() {
+                                let id_start = start;
+                                let id_end = self.pos;
+                                self.errors.emit(
+                                    id_start..id_end,
+                                    Severity::Error,
+                                    "lexical",
+                                    LexError::InvalidIdentifier.as_str(),
+                                    vec![Label {
+                                        span: id_start..id_start + 1,
+                                        message: "Identifier must start with letter",
+                                    }],
+                                );
+                            } else {
+                                // Check for invalid chars in the rest
+                                let mut offset = 1;
+                                for c in chars {
+                                    if !c.is_ascii_alphanumeric() {
+                                        let bad_pos = start + offset;
+                                        self.errors.emit(
+                                            start..self.pos,
+                                            Severity::Error,
+                                            "lexical",
+                                            LexError::InvalidIdentifier.as_str(),
+                                            vec![Label {
+                                                span: bad_pos..bad_pos + 1,
+                                                message: "Identifier get invalid character",
+                                            }],
+                                        );
+                                        break;
+                                    }
+                                    offset += 1;
+                                }
+                            }
+                        }
+                        Token::Identifier(other)
+                    }
                 };
             }
             // If we got here, it's an invalid identifier start (should never happen, but for safety)
+            let bad = self.pos;
             self.bump();
             self.errors.emit(
                 start..self.pos,
                 Severity::Error,
-                "lexical error",
+                "lexical",
                 LexError::InvalidIdentifier.as_str(),
-                &[],
+                vec![Label { span: bad..self.pos, message: "Identifier no correct" }],
             );
         }
     }
