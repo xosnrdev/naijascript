@@ -91,11 +91,19 @@ pub fn run() {
 fn run_source(filename: &str, src: &str) -> CmdResult<()> {
     let mut parser = Parser::new(src);
     let (root, parse_errors) = parser.parse_program();
+
+    let has_lexer_errors = !parser.lexer.errors.diagnostics.is_empty();
+    if has_lexer_errors {
+        parser.lexer.errors.report(src, filename);
+        return Err(CmdError::Parse);
+    }
+
     let has_parse_errors = !parse_errors.diagnostics.is_empty();
     if has_parse_errors {
         parse_errors.report(src, filename);
         return Err(CmdError::Parse);
     }
+
     let mut analyzer = SemAnalyzer::new(
         &parser.stmt_arena,
         &parser.expr_arena,
@@ -108,6 +116,7 @@ fn run_source(filename: &str, src: &str) -> CmdResult<()> {
         analyzer.errors.report(src, filename);
         return Err(CmdError::Semantic);
     }
+
     let mut output = |v: f64| println!("{v}");
     let mut interp = Interpreter::with_output(
         &parser.stmt_arena,
@@ -121,7 +130,7 @@ fn run_source(filename: &str, src: &str) -> CmdResult<()> {
         Err(e) => {
             // Report runtime error with diagnostics
             let mut diag = Diagnostics::default();
-            diag.emit(e.span.clone(), Severity::Error, "runtime", e.kind.as_str(), &[]);
+            diag.emit(e.span.clone(), Severity::Error, "runtime", e.kind.as_str(), Vec::new());
             diag.report(src, filename);
             Err(CmdError::Runtime)
         }
