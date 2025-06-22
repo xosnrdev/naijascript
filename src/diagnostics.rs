@@ -69,8 +69,8 @@ impl Diagnostics {
 
     pub fn report(&self, src: &str, filename: &str) {
         for diag in &self.diagnostics {
-            let color =  diag.severity.color_code();
-            
+            let color = diag.severity.color_code();
+
             // 1) Compute line & column
             let before = &src[..diag.span.start];
             let line = before.chars().filter(|&c| c == '\n').count() + 1;
