@@ -24,7 +24,24 @@ pub struct RuntimeError<'src> {
     pub span: &'src Span,
 }
 
-pub struct Interpreter<'src, F: FnMut(f64)> {
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value<'src> {
+    Number(f64),
+    Str(&'src str),
+    Bool(bool),
+}
+
+impl std::fmt::Display for Value<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "{n}"),
+            Value::Str(s) => write!(f, "{s}"),
+            Value::Bool(b) => write!(f, "{b}"),
+        }
+    }
+}
+
+pub struct Interpreter<'src> {
     stmts: &'src Arena<Stmt<'src>>,
     exprs: &'src Arena<Expr<'src>>,
     conds: &'src Arena<Cond>,
@@ -32,16 +49,15 @@ pub struct Interpreter<'src, F: FnMut(f64)> {
 
     env: Vec<(&'src str, f64)>,
     errors: Diagnostics,
-    output: Option<F>,
+    pub output: Vec<Value<'src>>,
 }
 
-impl<'src, F: FnMut(f64)> Interpreter<'src, F> {
-    pub fn with_output(
+impl<'src> Interpreter<'src> {
+    pub fn new(
         stmts: &'src Arena<Stmt<'src>>,
         exprs: &'src Arena<Expr<'src>>,
         conds: &'src Arena<Cond>,
         blocks: &'src Arena<Block>,
-        output: F,
     ) -> Self {
         Interpreter {
             stmts,
@@ -50,7 +66,7 @@ impl<'src, F: FnMut(f64)> Interpreter<'src, F> {
             blocks,
             env: Vec::new(),
             errors: Diagnostics::default(),
-            output: Some(output),
+            output: Vec::new(),
         }
     }
 
@@ -100,11 +116,7 @@ impl<'src, F: FnMut(f64)> Interpreter<'src, F> {
             }
             Stmt::Shout { expr, .. } => {
                 let val = self.eval_expr(*expr)?;
-                if let Some(ref mut out) = self.output {
-                    out(val);
-                } else {
-                    println!("{val}");
-                }
+                self.output.push(Value::Number(val));
                 Ok(())
             }
             Stmt::If { cond, then_b, else_b, .. } => {
@@ -200,19 +212,14 @@ mod tests {
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
         assert!(parse_errors.diagnostics.is_empty());
-        let mut output = Vec::new();
-        {
-            let mut collect = |v: f64| output.push(v);
-            let mut interp = Interpreter::with_output(
-                &parser.stmt_arena,
-                &parser.expr_arena,
-                &parser.cond_arena,
-                &parser.block_arena,
-                &mut collect,
-            );
-            interp.run(root);
-        }
-        assert_eq!(output, vec![5.0]);
+        let mut interp = Interpreter::new(
+            &parser.stmt_arena,
+            &parser.expr_arena,
+            &parser.cond_arena,
+            &parser.block_arena,
+        );
+        interp.run(root);
+        assert_eq!(interp.output, vec![Value::Number(5.0)]);
     }
 
     #[test]
@@ -221,19 +228,14 @@ mod tests {
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
         assert!(parse_errors.diagnostics.is_empty());
-        let mut output = Vec::new();
-        {
-            let mut collect = |v: f64| output.push(v);
-            let mut interp = Interpreter::with_output(
-                &parser.stmt_arena,
-                &parser.expr_arena,
-                &parser.cond_arena,
-                &parser.block_arena,
-                &mut collect,
-            );
-            interp.run(root);
-        }
-        assert_eq!(output, vec![7.0]);
+        let mut interp = Interpreter::new(
+            &parser.stmt_arena,
+            &parser.expr_arena,
+            &parser.cond_arena,
+            &parser.block_arena,
+        );
+        interp.run(root);
+        assert_eq!(interp.output, vec![Value::Number(7.0)]);
     }
 
     #[test]
@@ -242,19 +244,14 @@ mod tests {
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
         assert!(parse_errors.diagnostics.is_empty());
-        let mut output = Vec::new();
-        {
-            let mut collect = |v: f64| output.push(v);
-            let mut interp = Interpreter::with_output(
-                &parser.stmt_arena,
-                &parser.expr_arena,
-                &parser.cond_arena,
-                &parser.block_arena,
-                &mut collect,
-            );
-            interp.run(root);
-        }
-        assert_eq!(output, vec![14.0]);
+        let mut interp = Interpreter::new(
+            &parser.stmt_arena,
+            &parser.expr_arena,
+            &parser.cond_arena,
+            &parser.block_arena,
+        );
+        interp.run(root);
+        assert_eq!(interp.output, vec![Value::Number(14.0)]);
     }
 
     #[test]
@@ -263,19 +260,14 @@ mod tests {
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
         assert!(parse_errors.diagnostics.is_empty());
-        let mut output = Vec::new();
-        {
-            let mut collect = |v: f64| output.push(v);
-            let mut interp = Interpreter::with_output(
-                &parser.stmt_arena,
-                &parser.expr_arena,
-                &parser.cond_arena,
-                &parser.block_arena,
-                &mut collect,
-            );
-            interp.run(root);
-        }
-        assert_eq!(output, vec![42.0]);
+        let mut interp = Interpreter::new(
+            &parser.stmt_arena,
+            &parser.expr_arena,
+            &parser.cond_arena,
+            &parser.block_arena,
+        );
+        interp.run(root);
+        assert_eq!(interp.output, vec![Value::Number(42.0)]);
     }
 
     #[test]
@@ -285,19 +277,14 @@ mod tests {
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
         assert!(parse_errors.diagnostics.is_empty());
-        let mut output = Vec::new();
-        {
-            let mut collect = |v: f64| output.push(v);
-            let mut interp = Interpreter::with_output(
-                &parser.stmt_arena,
-                &parser.expr_arena,
-                &parser.cond_arena,
-                &parser.block_arena,
-                &mut collect,
-            );
-            interp.run(root);
-        }
-        assert_eq!(output, vec![2.0]);
+        let mut interp = Interpreter::new(
+            &parser.stmt_arena,
+            &parser.expr_arena,
+            &parser.cond_arena,
+            &parser.block_arena,
+        );
+        interp.run(root);
+        assert_eq!(interp.output, vec![Value::Number(2.0)]);
     }
 
     #[test]
@@ -306,19 +293,14 @@ mod tests {
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
         assert!(parse_errors.diagnostics.is_empty());
-        let mut output = Vec::new();
-        {
-            let mut collect = |v: f64| output.push(v);
-            let mut interp = Interpreter::with_output(
-                &parser.stmt_arena,
-                &parser.expr_arena,
-                &parser.cond_arena,
-                &parser.block_arena,
-                &mut collect,
-            );
-            interp.run(root);
-        }
-        assert_eq!(output, vec![1.0, 2.0, 3.0]);
+        let mut interp = Interpreter::new(
+            &parser.stmt_arena,
+            &parser.expr_arena,
+            &parser.cond_arena,
+            &parser.block_arena,
+        );
+        interp.run(root);
+        assert_eq!(interp.output, vec![Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)]);
     }
 
     #[test]
@@ -327,14 +309,11 @@ mod tests {
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
         assert!(parse_errors.diagnostics.is_empty());
-        let mut output = Vec::new();
-        let mut collect = |v: f64| output.push(v);
-        let mut interp = Interpreter::with_output(
+        let mut interp = Interpreter::new(
             &parser.stmt_arena,
             &parser.expr_arena,
             &parser.cond_arena,
             &parser.block_arena,
-            &mut collect,
         );
         interp.run(root);
         assert!(

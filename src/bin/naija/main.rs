@@ -75,18 +75,19 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let mut output = |v: f64| println!("{v}");
-    let mut interp = Interpreter::with_output(
+    let mut interp = Interpreter::new(
         &parser.stmt_arena,
         &parser.expr_arena,
         &parser.cond_arena,
         &parser.block_arena,
-        &mut output,
     );
-    let output = interp.run(root);
-    if !output.diagnostics.is_empty() {
-        output.report(src, filename);
+    let diagnostics = interp.run(root);
+    if !diagnostics.diagnostics.is_empty() {
+        diagnostics.report(src, filename);
         return ExitCode::FAILURE;
+    }
+    for value in &interp.output {
+        println!("{value}")
     }
 
     ExitCode::SUCCESS
@@ -147,7 +148,7 @@ fn run_repl() -> ExitCode {
                 if trimmed.is_empty() || trimmed.starts_with("\x1b[") {
                     continue;
                 }
-                let _ = run_source("<repl>", trimmed);
+                run_source("<repl>", trimmed);
             }
             Err(_) => {
                 println!("Oya, bye bye!");
