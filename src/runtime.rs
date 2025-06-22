@@ -24,6 +24,8 @@ pub struct RuntimeError<'src> {
     pub span: &'src Span,
 }
 
+/// Represents a value in the NaijaScript runtime.
+/// We only support numbers for now.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value<'src> {
     Number(f64),

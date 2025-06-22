@@ -287,7 +287,10 @@ impl<'src> Parser<'src> {
                         Severity::Error,
                         "syntax",
                         SyntaxError::ExpectedStatement.as_str(),
-                        Vec::new(),
+                        vec![Label {
+                            span: start..self.lexer.pos,
+                            message: "I dey expect statement for here",
+                        }],
                     );
                     None
                 }
@@ -298,7 +301,10 @@ impl<'src> Parser<'src> {
                     Severity::Error,
                     "syntax",
                     SyntaxError::ExpectedStatement.as_str(),
-                    Vec::new(),
+                    vec![Label {
+                        span: start..self.lexer.pos,
+                        message: "I dey expect statement for here",
+                    }],
                 );
                 None
             }

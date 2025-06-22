@@ -172,7 +172,7 @@ impl Diagnostics {
 
                     // Show same-line labels
                     for l in &label_lines {
-                        eprintln!("{l}");
+                        eprintln!("{l}{RESET}");
                     }
                 }
                 _ => {
@@ -193,7 +193,7 @@ impl Diagnostics {
 
                     // Show same-line labels
                     for l in &label_lines {
-                        println!("{l}");
+                        println!("{l}{RESET}");
                     }
                 }
             }
