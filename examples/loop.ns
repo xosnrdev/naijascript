@@ -1,6 +1,6 @@
 make x get 0
 jasi (x small pass 3) start
     shout (x)
-    make x get x add 1
+    x get x add 1
 end
 shout (x)

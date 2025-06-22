@@ -458,21 +458,4 @@ mod tests {
         let errors = lexer.into_errors();
         assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
     }
-
-    #[test]
-    fn debug_latency() {
-        const MAX: usize = 100_000;
-        let line = "make x get 1\n";
-        let src = line.repeat(MAX);
-        let start = std::time::Instant::now();
-        let mut lexer = Lexer::new(&src);
-        loop {
-            let tok = lexer.next_token();
-            if tok == Token::EOF {
-                break;
-            }
-        }
-        let elapsed = start.elapsed();
-        println!("Scanned {MAX} lines in {elapsed:?} ms");
-    }
 }

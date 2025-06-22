@@ -5,8 +5,6 @@ use crate::syntax::parser::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeErrorKind {
-    UndeclaredVariable,
-    AssignmentToUndeclared,
     DivisionByZero,
     InvalidNumber,
 }
@@ -14,10 +12,6 @@ pub enum RuntimeErrorKind {
 impl AsStr for RuntimeErrorKind {
     fn as_str(&self) -> &'static str {
         match self {
-            RuntimeErrorKind::UndeclaredVariable => "I no sabi dis variable",
-            RuntimeErrorKind::AssignmentToUndeclared => {
-                "You dey try give value to variable wey I no sabi"
-            }
             RuntimeErrorKind::DivisionByZero => "You no fit divide by zero",
             RuntimeErrorKind::InvalidNumber => "Dis number no correct",
         }
@@ -41,25 +35,6 @@ pub struct Interpreter<'src, F: FnMut(f64)> {
     output: Option<F>,
 }
 
-impl<'src> Interpreter<'src, fn(f64)> {
-    pub fn new(
-        stmts: &'src Arena<Stmt<'src>>,
-        exprs: &'src Arena<Expr<'src>>,
-        conds: &'src Arena<Cond>,
-        blocks: &'src Arena<Block>,
-    ) -> Self {
-        Interpreter {
-            stmts,
-            exprs,
-            conds,
-            blocks,
-            env: Vec::new(),
-            errors: Diagnostics::default(),
-            output: None,
-        }
-    }
-}
-
 impl<'src, F: FnMut(f64)> Interpreter<'src, F> {
     pub fn with_output(
         stmts: &'src Arena<Stmt<'src>>,
@@ -79,19 +54,11 @@ impl<'src, F: FnMut(f64)> Interpreter<'src, F> {
         }
     }
 
-    pub fn run(&mut self, root: BlockId) -> Result<(), RuntimeError<'src>> {
+    pub fn run(&mut self, root: BlockId) -> &Diagnostics {
         let block = &self.blocks.nodes[root.0];
         for &sid in &block.stmts {
             if let Err(err) = self.exec_stmt(sid) {
                 let labels = match err.kind {
-                    RuntimeErrorKind::UndeclaredVariable => vec![Label {
-                        span: err.span.clone(),
-                        message: "This variable never dey before",
-                    }],
-                    RuntimeErrorKind::AssignmentToUndeclared => vec![Label {
-                        span: err.span.clone(),
-                        message: "This variable never dey before",
-                    }],
                     RuntimeErrorKind::DivisionByZero => vec![Label {
                         span: err.span.clone(),
                         message: "You divide by zero for here",
@@ -107,10 +74,10 @@ impl<'src, F: FnMut(f64)> Interpreter<'src, F> {
                     err.kind.as_str(),
                     labels,
                 );
-                return Err(err);
+                break;
             }
         }
-        Ok(())
+        &self.errors
     }
 
     fn exec_stmt(&mut self, sid: StmtId) -> Result<(), RuntimeError<'src>> {
@@ -120,14 +87,16 @@ impl<'src, F: FnMut(f64)> Interpreter<'src, F> {
                 self.insert_or_update(var, val);
                 Ok(())
             }
-            Stmt::AssignExisting { var, expr, span } => {
+            Stmt::AssignExisting { var, expr, .. } => {
                 let val = self.eval_expr(*expr)?;
-                if let Some((_, slot)) = self.env.iter_mut().find(|(name, _)| *name == *var) {
-                    *slot = val;
-                    Ok(())
-                } else {
-                    Err(RuntimeError { kind: RuntimeErrorKind::AssignmentToUndeclared, span })
-                }
+                // SAFETY: Semantic analysis guarantees variable exists
+                let slot = self
+                    .env
+                    .iter_mut()
+                    .find(|(name, _)| *name == *var)
+                    .expect("Semantic analysis should guarantee variable exists");
+                slot.1 = val;
+                Ok(())
             }
             Stmt::Shout { expr, .. } => {
                 let val = self.eval_expr(*expr)?;
@@ -181,12 +150,16 @@ impl<'src, F: FnMut(f64)> Interpreter<'src, F> {
             Expr::Number(n, span) => n
                 .parse::<f64>()
                 .map_err(|_| RuntimeError { kind: RuntimeErrorKind::InvalidNumber, span }),
-            Expr::Var(v, span) => self
-                .env
-                .iter()
-                .find(|(name, _)| *name == *v)
-                .map(|(_, val)| *val)
-                .ok_or(RuntimeError { kind: RuntimeErrorKind::UndeclaredVariable, span }),
+            Expr::Var(v, _) => {
+                // SAFETY: Semantic analysis guarantees variable exists
+                let val = self
+                    .env
+                    .iter()
+                    .find(|(name, _)| *name == *v)
+                    .map(|(_, val)| *val)
+                    .expect("Semantic analysis should guarantee all variables are declared");
+                Ok(val)
+            }
             Expr::Binary { op, lhs, rhs, span } => {
                 let l = self.eval_expr(*lhs)?;
                 let r = self.eval_expr(*rhs)?;
@@ -218,6 +191,7 @@ impl<'src, F: FnMut(f64)> Interpreter<'src, F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resolver::{SemAnalyzer, SemanticError};
     use crate::syntax::parser::Parser;
 
     #[test]
@@ -236,7 +210,7 @@ mod tests {
                 &parser.block_arena,
                 &mut collect,
             );
-            interp.run(root).unwrap();
+            interp.run(root);
         }
         assert_eq!(output, vec![5.0]);
     }
@@ -257,7 +231,7 @@ mod tests {
                 &parser.block_arena,
                 &mut collect,
             );
-            interp.run(root).unwrap();
+            interp.run(root);
         }
         assert_eq!(output, vec![7.0]);
     }
@@ -278,7 +252,7 @@ mod tests {
                 &parser.block_arena,
                 &mut collect,
             );
-            interp.run(root).unwrap();
+            interp.run(root);
         }
         assert_eq!(output, vec![14.0]);
     }
@@ -299,7 +273,7 @@ mod tests {
                 &parser.block_arena,
                 &mut collect,
             );
-            interp.run(root).unwrap();
+            interp.run(root);
         }
         assert_eq!(output, vec![42.0]);
     }
@@ -321,7 +295,7 @@ mod tests {
                 &parser.block_arena,
                 &mut collect,
             );
-            interp.run(root).unwrap();
+            interp.run(root);
         }
         assert_eq!(output, vec![2.0]);
     }
@@ -342,7 +316,7 @@ mod tests {
                 &parser.block_arena,
                 &mut collect,
             );
-            interp.run(root).unwrap();
+            interp.run(root);
         }
         assert_eq!(output, vec![1.0, 2.0, 3.0]);
     }
@@ -362,8 +336,7 @@ mod tests {
             &parser.block_arena,
             &mut collect,
         );
-        let result = interp.run(root);
-        assert!(result.is_err());
+        interp.run(root);
         assert!(
             interp
                 .errors
@@ -379,23 +352,19 @@ mod tests {
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
         assert!(parse_errors.diagnostics.is_empty());
-        let mut output = Vec::new();
-        let mut collect = |v: f64| output.push(v);
-        let mut interp = Interpreter::with_output(
+        let mut analyzer = SemAnalyzer::new(
             &parser.stmt_arena,
             &parser.expr_arena,
             &parser.cond_arena,
             &parser.block_arena,
-            &mut collect,
         );
-        let result = interp.run(root);
-        assert!(result.is_err());
+        analyzer.analyze(root);
         assert!(
-            interp
+            analyzer
                 .errors
                 .diagnostics
                 .iter()
-                .any(|e| e.message == RuntimeErrorKind::AssignmentToUndeclared.as_str())
+                .any(|e| e.message == SemanticError::AssignmentToUndeclared.as_str())
         );
     }
 
@@ -405,23 +374,19 @@ mod tests {
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
         assert!(parse_errors.diagnostics.is_empty());
-        let mut output = Vec::new();
-        let mut collect = |v: f64| output.push(v);
-        let mut interp = Interpreter::with_output(
+        let mut analyzer = SemAnalyzer::new(
             &parser.stmt_arena,
             &parser.expr_arena,
             &parser.cond_arena,
             &parser.block_arena,
-            &mut collect,
         );
-        let result = interp.run(root);
-        assert!(result.is_err());
+        analyzer.analyze(root);
         assert!(
-            interp
+            analyzer
                 .errors
                 .diagnostics
                 .iter()
-                .any(|e| e.message == RuntimeErrorKind::UndeclaredVariable.as_str())
+                .any(|e| e.message == SemanticError::UseOfUndeclared.as_str())
         );
     }
 }
