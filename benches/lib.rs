@@ -1,8 +1,8 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use naijascript::syntax::Lexer;
-use naijascript::syntax::parse::Parser;
+use naijascript::syntax::parser::Parser;
+use naijascript::syntax::scanner::Lexer;
 
 fn bench_lexer(c: &mut Criterion) {
     let input = black_box(
@@ -13,8 +13,8 @@ fn bench_lexer(c: &mut Criterion) {
     );
     c.bench_function("lexer", |b| {
         b.iter(|| {
-            let lexer = Lexer::new(input);
-            let tokens: Vec<_> = lexer.collect::<Result<Vec<_>, _>>().unwrap();
+            let mut lexer = Lexer::new(input);
+            let tokens = lexer.next_token();
             black_box(tokens);
         })
     });

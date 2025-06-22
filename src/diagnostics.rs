@@ -1,242 +1,154 @@
-//! The diagnostics infrastructure engine for NaijaScript.
+use std::ops::Range;
 
-/// Represents a diagnostic message (error, warning, or note) produced during analysis.
-///
-/// Each diagnostic contains relevant information such as the severity, message, and source code context.
-pub struct Diagnostic<'src> {
-    /// Optional filename or path where the diagnostic applies.
-    pub filename: Option<&'src str>,
-    /// The severity or type of the diagnostic.
-    pub kind: DiagnosticKind,
-    /// Human-readable message describing the issue.
-    pub message: &'static str,
-    /// Short code or label for the diagnostic (e.g., "runtime error").
-    pub code: &'static str,
-    /// The original source code where the diagnostic applies.
-    pub source: &'src str,
-    /// Byte range in the source code that the diagnostic refers to.
-    pub span: (usize, usize),
-    /// Line number (1-based).
-    pub line: usize,
-    /// Column number (1-based).
-    pub column: usize,
-    /// Optional suggestion or help message.
-    pub suggestion: Option<&'static str>,
-}
+pub type Span = Range<usize>;
 
-/// Enumerates the severity or type of a diagnostic message.
-#[derive(Debug, Clone)]
-pub enum DiagnosticKind {
-    /// Indicates a fatal error that prevents further processing.
+const BOLD: &str = "\x1b[1m";
+const RESET: &str = "\x1b[0m";
+const ERROR: &str = "\x1b[31m"; // red
+const WARNING: &str = "\x1b[33m"; // yellow
+const NOTE: &str = "\x1b[34m"; // blue
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Severity {
     Error,
-    /// Indicates a non-fatal warning.
     Warning,
-    /// Provides additional information or suggestions.
     Note,
 }
 
-impl<'src> Diagnostic<'src> {
-    /// Constructs a new error diagnostic.
-    pub fn error(
-        code: &'static str,
-        message: &'static str,
-        source: &'src str,
-        span: (usize, usize),
-        line: usize,
-        column: usize,
-        filename: Option<&'src str>,
-    ) -> Self {
-        Diagnostic {
-            kind: DiagnosticKind::Error,
-            code,
-            message,
-            source,
-            span,
-            line,
-            column,
-            suggestion: None,
-            filename,
-        }
-    }
-    /// Constructs a new warning diagnostic.
-    pub fn warning(
-        code: &'static str,
-        message: &'static str,
-        source: &'src str,
-        span: (usize, usize),
-        line: usize,
-        column: usize,
-        filename: Option<&'src str>,
-    ) -> Self {
-        Diagnostic {
-            kind: DiagnosticKind::Warning,
-            code,
-            message,
-            source,
-            span,
-            line,
-            column,
-            suggestion: None,
-            filename,
-        }
-    }
-    /// Constructs a new note diagnostic.
-    pub fn note(
-        code: &'static str,
-        message: &'static str,
-        source: &'src str,
-        span: (usize, usize),
-        line: usize,
-        column: usize,
-        filename: Option<&'src str>,
-    ) -> Self {
-        Diagnostic {
-            kind: DiagnosticKind::Note,
-            code,
-            message,
-            source,
-            span,
-            line,
-            column,
-            suggestion: None,
-            filename,
-        }
-    }
-    /// Returns a new diagnostic with a suggestion/help message.
-    pub fn with_suggestion(mut self, suggestion: &'static str) -> Self {
-        self.suggestion = Some(suggestion);
-        self
-    }
-}
-
-/// Trait for reporting diagnostics.
-///
-/// Implementors can define custom reporting strategies (e.g., stderr, file, GUI).
-pub trait DiagnosticHandler {
-    /// Reports a diagnostic message.
-    fn report(&mut self, diag: &Diagnostic);
-}
-
-/// Diagnostic handler that prints diagnostics to standard error.
-pub struct StderrHandler;
-
-impl DiagnosticHandler for StderrHandler {
-    /// Reports a diagnostic by printing it to stderr in a human-readable format.
-    fn report(&mut self, diag: &Diagnostic) {
-        let display = DiagnosticDisplay::new(diag);
-        eprintln!("{}", display.format());
-    }
-}
-
-impl DiagnosticKind {
-    /// Returns a string representation of the diagnostic kind.
-    pub fn kind_str(&self) -> &'static str {
+impl Severity {
+    #[inline(always)]
+    const fn label(self) -> &'static str {
         match self {
-            DiagnosticKind::Error => "error",
-            DiagnosticKind::Warning => "warning",
-            DiagnosticKind::Note => "note",
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+            Severity::Note => "note",
+        }
+    }
+    #[inline(always)]
+    const fn color_code(self) -> &'static str {
+        match self {
+            Severity::Error => ERROR,
+            Severity::Warning => WARNING,
+            Severity::Note => NOTE,
         }
     }
 }
 
-/// Formats diagnostics for display.
-///
-/// This struct extracts context lines, aligns carets, and produces user-friendly messages for
-/// diagnostic handlers.
-pub struct DiagnosticDisplay<'a> {
-    /// The diagnostic to format.
-    pub diag: &'a Diagnostic<'a>,
+#[derive(Debug)]
+pub struct Label {
+    pub span: Span,
+    pub message: &'static str,
 }
 
-impl<'a> DiagnosticDisplay<'a> {
-    /// Creates a new display formatter for a diagnostic.
-    pub fn new(diag: &'a Diagnostic<'a>) -> Self {
-        Self { diag }
+#[derive(Debug)]
+pub struct Diagnostic {
+    pub span: Span,
+    pub severity: Severity,
+    pub code: &'static str,
+    pub message: &'static str,
+    pub labels: &'static [Label],
+}
+
+#[derive(Debug, Default)]
+pub struct Diagnostics {
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl Diagnostics {
+    #[inline(always)]
+    pub fn emit(
+        &mut self,
+        span: Span,
+        severity: Severity,
+        code: &'static str,
+        message: &'static str,
+        labels: &'static [Label],
+    ) {
+        self.diagnostics.push(Diagnostic { span, severity, code, message, labels });
     }
 
-    /// Formats the diagnostic as a string, including context lines and a caret under the error column.
-    /// Adds ANSI color codes for error, warning, and note labels.
-    pub fn format(&self) -> String {
-        let diag = self.diag;
-        let mut output = String::new();
-        // ANSI color codes for kind labels
-        let (kind_color, reset) = match diag.kind {
-            DiagnosticKind::Error => ("\x1b[31m", "\x1b[0m"), // Red
-            DiagnosticKind::Warning => ("\x1b[33m", "\x1b[0m"), // Yellow
-            DiagnosticKind::Note => ("\x1b[34m", "\x1b[0m"),  // Blue
-        };
-        // Header line
-        let filename = diag.filename.unwrap();
-        output
-            .push_str(&format!("[{}] --> {}:{}:{}\n", diag.code, filename, diag.line, diag.column));
-        // Extract context lines
-        let lines: Vec<&str> = diag.source.lines().collect();
-        let line_idx = diag.line.saturating_sub(1);
-        // Previous line (if any)
-        if line_idx > 0 {
-            output.push_str(&format!("{:>4} | {}\n", diag.line - 1, lines[line_idx - 1]));
-        }
-        // Error line (highlighted with '>')
-        if let Some(line) = lines.get(line_idx) {
-            output.push_str(&format!(">{:>3} | {}\n", diag.line, line));
-            // Caret under the error column (1-based)
-            let caret_pos = diag.column.max(1);
-            let caret_line = format!(
-                "     | {}{}^{}\n",
-                " ".repeat(caret_pos.saturating_sub(1)),
-                kind_color,
-                reset
+    pub fn report(&self, src: &str, filename: &str) {
+        for diag in &self.diagnostics {
+            let color =  diag.severity.color_code();
+            
+            // 1) Compute line & column
+            let before = &src[..diag.span.start];
+            let line = before.chars().filter(|&c| c == '\n').count() + 1;
+            let col = before.chars().rev().take_while(|&c| c != '\n').count() + 1;
+
+            // 2) Header
+            let header = format!(
+                "{BOLD}{color}{}[{}]{RESET}: {BOLD}{}",
+                diag.severity.label(),
+                diag.code,
+                diag.message
             );
-            output.push_str(&caret_line);
-            // Diagnostic message under the caret position
-            let message_line = format!(
-                "     | {}{}{}{}\n",
-                " ".repeat(caret_pos.saturating_sub(1)),
-                kind_color,
-                diag.message,
-                reset
-            );
-            output.push_str(&message_line);
-            // Add a separator line
-            output.push_str("     |\n");
-        }
-        // Next line (if any)
-        if line_idx + 1 < lines.len() {
-            output.push_str(&format!("{:>4} | {}\n", diag.line + 1, lines[line_idx + 1]));
-        }
-        // Print snippet if span is valid and not already shown
-        let (start, end) = diag.span;
-        if start < end && end <= diag.source.len() {
-            let snippet = &diag.source[start..end];
-            if lines.get(line_idx).is_none_or(|l| !l.contains(snippet)) {
-                output.push_str(&format!("  --> {snippet}\n"));
+
+            // 3) Location
+            let location = format!(" -->{RESET} {filename}:{line}:{col}");
+
+            // 4) Source line
+            let line_start = before.rfind('\n').map_or(0, |i| i + 1);
+            let line_end = src[line_start..].find('\n').map_or(src.len(), |i| line_start + i);
+            let src_line = &src[line_start..line_end];
+            let src_line_display = format!("  {BOLD}|\n{line} | {RESET}{src_line}{BOLD}{color}");
+
+            // 5) Caret underline
+            let mut caret_line = String::new();
+            for _ in 0..(col + 2) {
+                caret_line.push(' ');
+            }
+            let caret_count = (diag.span.end.saturating_sub(diag.span.start)).max(1);
+            for _ in 0..caret_count {
+                caret_line.push('^');
+            }
+
+            // 6) Additional labels
+            let mut label_lines = Vec::new();
+            for label in diag.labels {
+                let lbl_col = label.span.start.saturating_sub(line_start) + 1;
+                let mut label_line = String::new();
+                for _ in 0..(lbl_col + 5) {
+                    label_line.push(' ');
+                }
+                let dash_count = (label.span.end.saturating_sub(label.span.start)).max(1);
+                for _ in 0..dash_count {
+                    label_line.push('-');
+                }
+                label_line.push(' ');
+                label_line.push_str(label.message);
+                label_lines.push(label_line);
+            }
+
+            // 7) Print using macros
+            match diag.severity {
+                Severity::Error => {
+                    eprintln!("{header}");
+                    eprintln!("{location}");
+                    for l in src_line_display.lines() {
+                        eprintln!("{l}");
+                    }
+                    eprintln!("{caret_line}");
+                    for l in &label_lines {
+                        eprintln!("{l}");
+                    }
+                }
+                _ => {
+                    println!("{header}");
+                    println!("{location}");
+                    for l in src_line_display.lines() {
+                        println!("{l}");
+                    }
+                    println!("{caret_line}");
+                    for l in &label_lines {
+                        println!("{l}");
+                    }
+                }
             }
         }
-        // Print suggestion/help if present
-        if let Some(suggestion) = diag.suggestion {
-            output.push_str(&format!("help: {suggestion}\n"));
-        }
-        output
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_error_diagnostic() {
-        let src = "make x get 5";
-        let diag = Diagnostic::error(
-            "runtime error",
-            "Abeg, variable no dey defined for here o",
-            src,
-            (5, 6),
-            1,
-            6,
-            Some("test.ns"),
-        );
-        let mut handler = StderrHandler;
-        handler.report(&diag);
-    }
+pub trait AsStr: 'static {
+    fn as_str(&self) -> &'static str;
 }

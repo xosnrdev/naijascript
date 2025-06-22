@@ -1,15 +1,23 @@
 //! The lexer (or scanner) for NaijaScript.
 
-use std::ops::Range;
+use crate::diagnostics::{AsStr, Diagnostics, Severity};
 
-/// Represents an error encountered during lexical analysis
-///
-/// We track both the location (span) and message so errors can be
-/// highlighted directly in the source code
-#[derive(Clone, Debug)]
-pub struct LexError {
-    pub span: Range<usize>,
-    pub message: &'static str,
+/// Represents the type of lexical errors that can occur during tokenization
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LexError {
+    UnexpectedChar,
+    InvalidNumber,
+    InvalidIdentifier,
+}
+
+impl AsStr for LexError {
+    fn as_str(&self) -> &'static str {
+        match self {
+            LexError::UnexpectedChar => "I no sabi this character",
+            LexError::InvalidNumber => "I no sabi this number",
+            LexError::InvalidIdentifier => "I no sabi this identifier",
+        }
+    }
 }
 
 /// All possible token types in NaijaScript
@@ -52,8 +60,7 @@ pub enum Token<'input> {
     Number(&'input str),     // Numeric literals
 
     // Special tokens
-    EOF,                                                 // End of file
-    Error { span: Range<usize>, message: &'static str }, // Lexical errors
+    EOF, // End of file
 }
 
 /// Our lexical analyzer that breaks source text into tokens
@@ -61,10 +68,10 @@ pub enum Token<'input> {
 /// We use a byte-based scanner for performance rather than working with Unicode
 /// characters directly. This is significantly faster for ASCII-heavy code.
 pub struct Lexer<'input> {
-    src: &'input str,      // Original source text (kept for slicing)
-    bytes: &'input [u8],   // Bytes view for faster processing
-    pub pos: usize,        // Current position in the source
-    errors: Vec<LexError>, // Collection of encountered errors
+    src: &'input str,    // Original source text (kept for slicing)
+    bytes: &'input [u8], // Bytes view for faster processing
+    pub pos: usize,      // Current position in the source
+    errors: Diagnostics, // Collection of encountered errors
 }
 
 impl<'input> Lexer<'input> {
@@ -73,8 +80,8 @@ impl<'input> Lexer<'input> {
     /// Using #[inline(always)] because this is a trivial constructor
     /// that gets called a lot during testing and benchmarks
     #[inline(always)]
-    pub const fn new(src: &'input str) -> Self {
-        Lexer { src, bytes: src.as_bytes(), pos: 0, errors: Vec::new() }
+    pub fn new(src: &'input str) -> Self {
+        Lexer { src, bytes: src.as_bytes(), pos: 0, errors: Diagnostics::default() }
     }
 
     /// Consumes the lexer and returns any accumulated errors
@@ -82,7 +89,8 @@ impl<'input> Lexer<'input> {
     /// Useful when you want to check if lexing was successful after
     /// you've finished tokenizing the entire source
     #[inline(always)]
-    pub fn into_errors(self) -> Vec<LexError> {
+    #[cfg(test)]
+    fn into_errors(self) -> Diagnostics {
         self.errors
     }
 
@@ -182,128 +190,168 @@ impl<'input> Lexer<'input> {
     /// - Words: could be keywords or identifiers
     #[inline(always)]
     pub fn next_token(&mut self) -> Token<'input> {
-        // Skip over any whitespace before the next token
-        self.skip_whitespace();
+        loop {
+            // Skip over any whitespace before the next token
+            self.skip_whitespace();
 
-        // Record starting position for spans and slicing
-        let start = self.pos;
+            // Record starting position for spans and slicing
+            let start = self.pos;
 
-        // Check for EOF first
-        let b = self.peek();
-        if b == 0 {
-            return Token::EOF;
-        }
-
-        // Single-character tokens - parentheses
-        match b {
-            b'(' => {
-                self.bump();
-                return Token::LParen;
-            }
-            b')' => {
-                self.bump();
-                return Token::RParen;
-            }
-            _ => {}
-        }
-
-        // Number literals - both integers and decimals
-        // NaijaScript follows standard number format: digits + optional decimal point + more digits
-        if Self::is_digit(b) {
-            // Consume integer part
-            while Self::is_digit(self.peek()) {
-                self.bump();
+            // Check for EOF first
+            let b = self.peek();
+            if b == 0 {
+                return Token::EOF;
             }
 
-            // Consume decimal part if present
-            if self.peek() == b'.' {
-                self.bump();
+            // Single-character tokens - parentheses
+            match b {
+                b'(' => {
+                    self.bump();
+                    return Token::LParen;
+                }
+                b')' => {
+                    self.bump();
+                    return Token::RParen;
+                }
+                _ => {}
+            }
+
+            // Number literals
+            if Self::is_digit(b) {
+                let mut saw_dot = false;
+
+                // Consume integer part
                 while Self::is_digit(self.peek()) {
                     self.bump();
                 }
+
+                // Consume decimal part if present
+                if self.peek() == b'.' {
+                    saw_dot = true;
+                    self.bump();
+                    let after_dot = self.peek();
+                    if !Self::is_digit(after_dot) {
+                        // Malformed number if no digits after dot
+                        self.errors.emit(
+                            start..self.pos,
+                            Severity::Error,
+                            "lexical error",
+                            LexError::InvalidNumber.as_str(),
+                            &[],
+                        );
+                        // skip the dot so we don't hang on it
+                        self.bump();
+                        continue;
+                    }
+                    while Self::is_digit(self.peek()) {
+                        self.bump();
+                    }
+                }
+
+                // Check for multiple dots (e.g., 1.2.3)
+                if saw_dot && self.peek() == b'.' {
+                    self.bump();
+                    self.errors.emit(
+                        start..self.pos,
+                        Severity::Error,
+                        "lexical error",
+                        LexError::InvalidNumber.as_str(),
+                        &[],
+                    );
+                    continue;
+                }
+
+                // Get the full number as a string slice - we'll parse it later during evaluation
+                let num = &self.src[start..self.pos];
+                return Token::Number(num);
             }
 
-            // Get the full number as a string slice - we'll parse it later during evaluation
-            let num = &self.src[start..self.pos];
-            return Token::Number(num);
+            // Identifiers and keywords
+            if !Self::is_alpha(b) && (b != 0) {
+                // If not a letter, not a digit, not paren, it's an error
+                self.bump();
+                self.errors.emit(
+                    start..self.pos,
+                    Severity::Error,
+                    "lexical error",
+                    LexError::UnexpectedChar.as_str(),
+                    &[],
+                );
+                continue;
+            }
+            if Self::is_alpha(b) {
+                let word = self.read_word();
+                // Handle multi-word constructs
+                // This is a bit tricky because we need to look ahead without committing
+                // to consuming more tokens until we know what we have
+
+                // "if to say" (if-statement) or "if not so" (else-statement)
+                if word == "if" {
+                    // Save position so we can rollback if needed
+                    let save = self.pos;
+
+                    // Try "if to say" = if statement
+                    if self.try_consume_word("to") && self.try_consume_word("say") {
+                        return Token::IfToSay;
+                    }
+
+                    // Try "if not so" = else statement
+                    if self.try_consume_word("not") && self.try_consume_word("so") {
+                        return Token::IfNotSo;
+                    }
+
+                    // If neither worked, it's just the identifier "if"
+                    self.pos = save;
+                    return Token::Identifier("if");
+                }
+
+                // "small pass" (greater than or equal)
+                if word == "small" {
+                    let save = self.pos;
+                    if self.try_consume_word("pass") {
+                        return Token::SmallPass;
+                    }
+                    self.pos = save;
+                    return Token::Identifier("small");
+                }
+
+                // Single-word keywords
+                // This is cleaner and faster than a big if/else chain
+                return match word {
+                    // Variable declaration and assignment
+                    "make" => Token::Make,
+                    "get" => Token::Get,
+
+                    // Arithmetic operators
+                    "add" => Token::Add,
+                    "minus" => Token::Minus,
+                    "times" => Token::Times,
+                    "divide" => Token::Divide,
+
+                    // I/O and control flow
+                    "shout" => Token::Shout,
+                    "jasi" => Token::Jasi,
+                    "start" => Token::Start,
+                    "end" => Token::End,
+
+                    // Comparison operators
+                    "na" => Token::Na,
+                    "pass" => Token::Pass,
+
+                    // If not a keyword, it's an identifier
+                    other => Token::Identifier(other),
+                };
+            }
+            // If we got here, it's an invalid identifier start (should never happen, but for safety)
+            self.bump();
+            self.errors.emit(
+                start..self.pos,
+                Severity::Error,
+                "lexical error",
+                LexError::InvalidIdentifier.as_str(),
+                &[],
+            );
         }
-        // Identifiers and keywords
-        if Self::is_alpha(b) {
-            let word = self.read_word();
-
-            // Handle multi-word constructs
-            // This is a bit tricky because we need to look ahead without committing
-            // to consuming more tokens until we know what we have
-
-            // "if to say" (if-statement) or "if not so" (else-statement)
-            if word == "if" {
-                // Save position so we can rollback if needed
-                let save = self.pos;
-
-                // Try "if to say" = if statement
-                if self.try_consume_word("to") && self.try_consume_word("say") {
-                    return Token::IfToSay;
-                }
-
-                // Try "if not so" = else statement
-                if self.try_consume_word("not") && self.try_consume_word("so") {
-                    return Token::IfNotSo;
-                }
-
-                // If neither worked, it's just the identifier "if"
-                self.pos = save;
-                return Token::Identifier("if");
-            }
-
-            // "small pass" (greater than or equal)
-            if word == "small" {
-                let save = self.pos;
-                if self.try_consume_word("pass") {
-                    return Token::SmallPass;
-                }
-                self.pos = save;
-                return Token::Identifier("small");
-            }
-
-            // Single-word keywords
-            // This is cleaner and faster than a big if/else chain
-            return match word {
-                // Variable declaration and assignment
-                "make" => Token::Make,
-                "get" => Token::Get,
-
-                // Arithmetic operators
-                "add" => Token::Add,
-                "minus" => Token::Minus,
-                "times" => Token::Times,
-                "divide" => Token::Divide,
-
-                // I/O and control flow
-                "shout" => Token::Shout,
-                "jasi" => Token::Jasi,
-                "start" => Token::Start,
-                "end" => Token::End,
-
-                // Comparison operators
-                "na" => Token::Na,
-                "pass" => Token::Pass,
-
-                // If not a keyword, it's an identifier
-                other => Token::Identifier(other),
-            };
-        }
-        // If we got here, we encountered an unexpected character
-        // We'll consume it and report an error, but keep going
-        // This gives better error recovery than just panicking
-        self.bump();
-        let span = start..self.pos;
-        let err = LexError { span: span.clone(), message: "Unexpected character" };
-
-        // Store error for later reporting
-        self.errors.push(err.clone());
-
-        // Return error token so parser can decide how to handle it
-        Token::Error { span, message: err.message }
     }
 }
 
@@ -356,20 +404,17 @@ mod tests {
         let src = "make $ get 1";
         let mut lexer = Lexer::new(src);
         assert_eq!(lexer.next_token(), Token::Make);
-        let err = lexer.next_token();
-        match err {
-            Token::Error { message, .. } => assert_eq!(message, "Unexpected character"),
-            _ => panic!("Expected error token"),
-        }
+        lexer.next_token();
+        let errors = lexer.into_errors();
+        assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
     }
 
     #[test]
     fn debug_latency() {
-        use std::time::Instant;
         const MAX: usize = 100_000;
         let line = "make x get 1\n";
         let src = line.repeat(MAX);
-        let start = Instant::now();
+        let start = std::time::Instant::now();
         let mut lexer = Lexer::new(&src);
         loop {
             let tok = lexer.next_token();

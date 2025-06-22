@@ -1,6 +1,7 @@
 //! The semantic analyzer (or resolver) for NaijaScript.
 
-use crate::syntax::parse::{Arena, Block, BlockId, Cond, CondId, Expr, ExprId, Stmt, StmtId};
+use crate::diagnostics::{AsStr, Diagnostics, Severity};
+use crate::syntax::parser::{Arena, Block, BlockId, Cond, CondId, Expr, ExprId, Stmt, StmtId};
 
 /// Identifies any node in our AST for precise error reporting.
 /// We use this instead of raw pointers because arena-based storage gives us
@@ -13,14 +14,24 @@ pub enum NodeId {
     Block(usize),
 }
 
-/// Represents a semantic error we found during analysis.
-/// We store static strings to avoid allocation overhead - these error messages
-/// are known at compile time anyway. The node reference helps us show users
-/// exactly where the problem occurred in their NaijaScript code.
-#[derive(Debug)]
-pub struct SemanticError {
-    pub node: NodeId,
-    pub message: &'static str,
+/// Represents the type of semantic errors that can occur
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SemanticError {
+    DuplicateDeclaration,
+    AssignmentToUndeclared,
+    UseOfUndeclared,
+}
+
+impl AsStr for SemanticError {
+    fn as_str(&self) -> &'static str {
+        match self {
+            SemanticError::DuplicateDeclaration => "You don declare dis variable before",
+            SemanticError::AssignmentToUndeclared => {
+                "You dey try give value to variable wey I no sabi"
+            }
+            SemanticError::UseOfUndeclared => "You dey use variable wey I no sabi",
+        }
+    }
 }
 
 /// The heart of our semantic analysis - this walks through NaijaScript code
@@ -42,20 +53,27 @@ pub struct SemAnalyzer<'src> {
     symbol_table: Vec<&'src str>,
 
     // Collect all errors instead of failing fast - gives better user experience
-    pub errors: Vec<SemanticError>,
+    pub errors: Diagnostics,
 }
 
 impl<'src> SemAnalyzer<'src> {
     /// Sets up a new analyzer with the AST arenas from parsing.
     /// We start with empty symbol table and error list - fresh slate for analysis.
     #[inline(always)]
-    pub const fn new(
+    pub fn new(
         stmts: &'src Arena<Stmt<'src>>,
         exprs: &'src Arena<Expr<'src>>,
         conds: &'src Arena<Cond>,
         blocks: &'src Arena<Block>,
     ) -> Self {
-        SemAnalyzer { stmts, exprs, conds, blocks, symbol_table: Vec::new(), errors: Vec::new() }
+        SemAnalyzer {
+            stmts,
+            exprs,
+            conds,
+            blocks,
+            symbol_table: Vec::new(),
+            errors: Diagnostics::default(),
+        }
     }
 
     /// Main entry point for semantic checking.
@@ -85,14 +103,17 @@ impl<'src> SemAnalyzer<'src> {
     fn check_stmt(&mut self, sid: StmtId) {
         match &self.stmts.nodes[sid.0] {
             // Handle "make variable get expression" statements
-            Stmt::Assign { var, expr } => {
+            Stmt::Assign { var, expr, span } => {
                 // Check for duplicate declarations first
                 // In NaijaScript, once you "make" a variable, you can't "make" it again
                 if self.symbol_table.contains(var) {
-                    self.errors.push(SemanticError {
-                        node: NodeId::Stmt(sid.0),
-                        message: "duplicate declaration",
-                    });
+                    self.errors.emit(
+                        span.clone(),
+                        Severity::Error,
+                        "semantic error",
+                        SemanticError::DuplicateDeclaration.as_str(),
+                        &[],
+                    );
                 } else {
                     // Add to our symbol table so future references know it exists
                     self.symbol_table.push(var);
@@ -102,21 +123,24 @@ impl<'src> SemAnalyzer<'src> {
                 self.check_expr(*expr);
             }
             // Handle variable reassignment: <variable> get <expression>
-            Stmt::AssignExisting { var, expr } => {
+            Stmt::AssignExisting { var, expr, span } => {
                 if !self.symbol_table.contains(var) {
-                    self.errors.push(SemanticError {
-                        node: NodeId::Stmt(sid.0),
-                        message: "assignment to undeclared variable",
-                    });
+                    self.errors.emit(
+                        span.clone(),
+                        Severity::Error,
+                        "semantic error",
+                        SemanticError::AssignmentToUndeclared.as_str(),
+                        &[],
+                    );
                 }
                 self.check_expr(*expr);
             }
             // Handle "shout(expression)" statements - just validate the expression
-            Stmt::Shout { expr } => {
+            Stmt::Shout { expr, .. } => {
                 self.check_expr(*expr);
             }
             // Handle "if to say(condition) start...end" with optional "if not so"
-            Stmt::If { cond, then_b, else_b } => {
+            Stmt::If { cond, then_b, else_b, .. } => {
                 self.check_cond(*cond);
                 self.check_block(*then_b);
                 // Else block is optional in the grammar
@@ -125,7 +149,7 @@ impl<'src> SemAnalyzer<'src> {
                 }
             }
             // Handle "jasi(condition) start...end" loop statements
-            Stmt::Loop { cond, body } => {
+            Stmt::Loop { cond, body, .. } => {
                 self.check_cond(*cond);
                 self.check_block(*body);
             }
@@ -149,14 +173,17 @@ impl<'src> SemAnalyzer<'src> {
     fn check_expr(&mut self, eid: ExprId) {
         match &self.exprs.nodes[eid.0] {
             // Numbers like 42 or 3.14 are always semantically valid
-            Expr::Number(_) => {}
+            Expr::Number(_, _) => {}
             // Variables must have been declared with "make" before use
-            Expr::Var(v) => {
+            Expr::Var(v, span) => {
                 if !self.symbol_table.contains(v) {
-                    self.errors.push(SemanticError {
-                        node: NodeId::Expr(eid.0),
-                        message: "use of undeclared variable",
-                    });
+                    self.errors.emit(
+                        span.clone(),
+                        Severity::Error,
+                        "semantic error",
+                        SemanticError::UseOfUndeclared.as_str(),
+                        &[],
+                    );
                 }
             }
             // Binary operations like "add", "minus", "times", "divide"
@@ -172,14 +199,14 @@ impl<'src> SemAnalyzer<'src> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::syntax::parse::Parser;
+    use crate::syntax::parser::Parser;
 
     #[test]
     fn test_semantic_duplicate_declaration() {
         let src = "make x get 1\nmake x get 2";
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.is_empty(), "Parse errors: {parse_errors:?}");
+        assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
         let mut analyzer = SemAnalyzer::new(
             &parser.stmt_arena,
             &parser.expr_arena,
@@ -188,7 +215,11 @@ mod tests {
         );
         analyzer.analyze(root);
         assert!(
-            analyzer.errors.iter().any(|e| e.message == "duplicate declaration"),
+            analyzer
+                .errors
+                .diagnostics
+                .iter()
+                .any(|e| e.message == SemanticError::DuplicateDeclaration.as_str()),
             "Expected duplicate declaration error"
         );
     }
@@ -198,7 +229,7 @@ mod tests {
         let src = "shout(x)";
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.is_empty(), "Parse errors: {parse_errors:?}");
+        assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
         let mut analyzer = SemAnalyzer::new(
             &parser.stmt_arena,
             &parser.expr_arena,
@@ -207,7 +238,11 @@ mod tests {
         );
         analyzer.analyze(root);
         assert!(
-            analyzer.errors.iter().any(|e| e.message == "use of undeclared variable"),
+            analyzer
+                .errors
+                .diagnostics
+                .iter()
+                .any(|e| e.message == SemanticError::UseOfUndeclared.as_str()),
             "Expected undeclared variable error"
         );
     }
@@ -217,7 +252,7 @@ mod tests {
         let src = "make x get 5\nshout(x)";
         let mut parser = Parser::new(src);
         let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.is_empty(), "Parse errors: {parse_errors:?}");
+        assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
         let mut analyzer = SemAnalyzer::new(
             &parser.stmt_arena,
             &parser.expr_arena,
@@ -226,7 +261,7 @@ mod tests {
         );
         analyzer.analyze(root);
         assert!(
-            analyzer.errors.is_empty(),
+            analyzer.errors.diagnostics.is_empty(),
             "Expected no semantic errors, got: {:#?}",
             analyzer.errors
         );

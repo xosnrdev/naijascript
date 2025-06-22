@@ -5,9 +5,9 @@ use std::io::{self, IsTerminal, Read, Write};
 use clap::Parser as ClapParser;
 use clap_cargo::style::CLAP_STYLING;
 
-use crate::diagnostics::StderrHandler;
+use crate::diagnostics::{AsStr, Diagnostics, Severity};
 use crate::interpreter::Interpreter;
-use crate::syntax::Lexer;
+use crate::resolver::SemAnalyzer;
 use crate::syntax::parser::Parser;
 
 /// Command line arguments for the NaijaScript interpreter.
@@ -35,13 +35,15 @@ pub enum CmdError {
     /// I/O error (file, stdin, etc.)
     Io(std::io::Error),
     /// Parsing error
-    Parse(String),
-    /// Interpreter error
-    Interpreter(String),
+    Parse,
+    /// Semantic analysis error
+    Semantic,
+    /// Runtime error
+    Runtime,
     /// Invalid script file extension
     InvalidScriptExtension(String),
     /// Other miscellaneous error
-    Other(String),
+    Other,
 }
 
 /// Result type for command execution.
@@ -53,7 +55,7 @@ pub type CmdResult<T> = Result<T, CmdError>;
 pub fn run() {
     let cli = Cli::parse();
     let exit_code = if let Some(code) = cli.eval {
-        match run_eval(&code) {
+        match run_source("<eval>", &code) {
             Ok(()) => 0,
             Err(_) => 1,
         }
@@ -64,7 +66,7 @@ pub fn run() {
                 Err(_) => 1,
             }
         } else {
-            match run_script(&script) {
+            match run_file(&script) {
                 Ok(()) => 0,
                 Err(_) => 1,
             }
@@ -85,52 +87,63 @@ pub fn run() {
     std::process::exit(exit_code);
 }
 
-/// Evaluates a string of code provided via the command line.
-fn run_eval(code: &str) -> CmdResult<()> {
-    let mut handler = StderrHandler;
-    let mut parser = Parser::new(Lexer::new(code));
-    match parser.parse_program_with_handler(Some(&mut handler), code, Some("<eval>")) {
-        Ok(program) => {
-            let mut interpreter = Interpreter::new();
-            interpreter
-                .eval_program_with_handler(&program, Some(&mut handler), code, Some("<eval>"))
-                .map_err(|e| CmdError::Interpreter(format!("{e:?}")))
-        }
-        Err(e) => Err(CmdError::Parse(format!("{e:?}"))),
+/// Run source code from a &str, with full diagnostics and semantic analysis.
+fn run_source(filename: &str, src: &str) -> CmdResult<()> {
+    let mut parser = Parser::new(src);
+    let (root, parse_errors) = parser.parse_program();
+    let has_parse_errors = !parse_errors.diagnostics.is_empty();
+    if has_parse_errors {
+        parse_errors.report(src, filename);
+        return Err(CmdError::Parse);
     }
-}
-
-/// Helper struct for script input, wraps the source code as a string.
-struct ScriptInput {
-    source: String,
-}
-
-impl ScriptInput {
-    /// Returns the script source as a string slice.
-    fn as_str(&self) -> &str {
-        &self.source
+    let mut analyzer = SemAnalyzer::new(
+        &parser.stmt_arena,
+        &parser.expr_arena,
+        &parser.cond_arena,
+        &parser.block_arena,
+    );
+    analyzer.analyze(root);
+    let has_semantic_errors = !analyzer.errors.diagnostics.is_empty();
+    if has_semantic_errors {
+        analyzer.errors.report(src, filename);
+        return Err(CmdError::Semantic);
+    }
+    let mut output = |v: f64| println!("{v}");
+    let mut interp = Interpreter::with_output(
+        &parser.stmt_arena,
+        &parser.expr_arena,
+        &parser.cond_arena,
+        &parser.block_arena,
+        &mut output,
+    );
+    match interp.run(root) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            // Report runtime error with diagnostics
+            let mut diag = Diagnostics::default();
+            diag.emit(e.span.clone(), Severity::Error, "runtime", e.kind.as_str(), &[]);
+            diag.report(src, filename);
+            Err(CmdError::Runtime)
+        }
     }
 }
 
 /// Runs a script file from disk.
-fn run_script(script: &str) -> CmdResult<()> {
+fn run_file(script: &str) -> CmdResult<()> {
     if !(script.ends_with(".ns") || script.ends_with(".naija")) {
         return Err(CmdError::InvalidScriptExtension(script.to_string()));
     }
     let source = std::fs::read_to_string(script).map_err(CmdError::Io)?;
-    let input = ScriptInput { source };
-    let src = input.as_str();
-    let mut handler = StderrHandler;
-    let mut parser = Parser::new(Lexer::new(src));
-    match parser.parse_program_with_handler(Some(&mut handler), src, Some(script)) {
-        Ok(program) => {
-            let mut interpreter = Interpreter::new();
-            interpreter
-                .eval_program_with_handler(&program, Some(&mut handler), src, Some(script))
-                .map_err(|e| CmdError::Interpreter(format!("{e:?}")))
-        }
-        Err(e) => Err(CmdError::Parse(format!("{e:?}"))),
+    run_source(script, &source)
+}
+
+/// Reads code from standard input and runs it as a script.
+fn run_stdin() -> CmdResult<()> {
+    let mut buffer = String::new();
+    if let Err(e) = io::stdin().read_to_string(&mut buffer) {
+        return Err(CmdError::Io(e));
     }
+    run_source("<stdin>", &buffer)
 }
 
 /// Starts the interactive Read-Eval-Print Loop (REPL).
@@ -157,24 +170,7 @@ fn run_repl() -> CmdResult<()> {
                 if trimmed.is_empty() || trimmed.starts_with("\x1b[") {
                     continue;
                 }
-                {
-                    let input = ScriptInput { source: trimmed.to_owned() };
-                    let mut handler = StderrHandler;
-                    if let Ok(program) = Parser::new(Lexer::new(input.as_str()))
-                        .parse_program_with_handler(
-                            Some(&mut handler),
-                            input.as_str(),
-                            Some("<repl>"),
-                        )
-                    {
-                        let _ = Interpreter::new().eval_program_with_handler(
-                            &program,
-                            Some(&mut handler),
-                            input.as_str(),
-                            Some("<repl>"),
-                        );
-                    }
-                }
+                let _ = run_source("<repl>", trimmed);
             }
             Err(_) => {
                 println!("Oya, bye bye!");
@@ -183,27 +179,6 @@ fn run_repl() -> CmdResult<()> {
         }
     }
     Ok(())
-}
-
-/// Reads code from standard input and runs it as a script.
-fn run_stdin() -> CmdResult<()> {
-    let mut buffer = String::new();
-    if let Err(e) = io::stdin().read_to_string(&mut buffer) {
-        return Err(CmdError::Io(e));
-    }
-    let input = ScriptInput { source: buffer };
-    let src = input.as_str();
-    let mut handler = StderrHandler;
-    let mut parser = Parser::new(Lexer::new(src));
-    match parser.parse_program_with_handler(Some(&mut handler), src, Some("<stdin>")) {
-        Ok(program) => {
-            let mut interpreter = Interpreter::new();
-            interpreter
-                .eval_program_with_handler(&program, Some(&mut handler), src, Some("<stdin>"))
-                .map_err(|e| CmdError::Interpreter(format!("{e:?}")))
-        }
-        Err(e) => Err(CmdError::Parse(format!("{e:?}"))),
-    }
 }
 
 #[test]
