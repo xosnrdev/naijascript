@@ -1,6 +1,6 @@
 //! The syntax parser for NaijaScript.
 
-use crate::diagnostics::{AsStr, Diagnostics, Severity, Span};
+use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::scanner::{Lexer, Token};
 
 /// Arena allocator for AST nodes - our answer to memory management without garbage collection.
@@ -171,7 +171,7 @@ impl AsStr for SyntaxError {
 /// next statement boundary and continue parsing. This gives users multiple error
 /// messages in one parse, which is much more helpful than stopping at the first error.
 pub struct Parser<'src> {
-    lexer: Lexer<'src>,
+    pub lexer: Lexer<'src>,
     cur: Token<'src>,    // Current token (one token lookahead)
     errors: Diagnostics, // Collect all syntax errors, don't fail fast
 
@@ -219,9 +219,9 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 self.lexer.pos..self.lexer.pos + 1,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::TrailingTokensAfterProgramEnd.as_str(),
-                &[],
+                Vec::new(),
             );
         }
         (block_id, std::mem::take(&mut self.errors))
@@ -285,9 +285,9 @@ impl<'src> Parser<'src> {
                     self.errors.emit(
                         start..self.lexer.pos,
                         Severity::Error,
-                        "syntax error",
+                        "syntax",
                         SyntaxError::ExpectedStatement.as_str(),
-                        &[],
+                        Vec::new(),
                     );
                     None
                 }
@@ -296,9 +296,9 @@ impl<'src> Parser<'src> {
                 self.errors.emit(
                     start..self.lexer.pos,
                     Severity::Error,
-                    "syntax error",
+                    "syntax",
                     SyntaxError::ExpectedStatement.as_str(),
-                    &[],
+                    Vec::new(),
                 );
                 None
             }
@@ -319,9 +319,12 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::ExpectedIdentifierAfterMake.as_str(),
-                &[],
+                vec![Label {
+                    span: self.lexer.pos..self.lexer.pos + 1,
+                    message: "I dey expect variable name for here",
+                }],
             );
             return None;
         };
@@ -330,9 +333,12 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::ExpectedGetAfterIdentifier.as_str(),
-                &[],
+                vec![Label {
+                    span: self.lexer.pos..self.lexer.pos + 1,
+                    message: "I dey expect `get` for here",
+                }],
             );
             return None;
         }
@@ -353,9 +359,12 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::ExpectedLParenAfterShout.as_str(),
-                &[],
+                vec![Label {
+                    span: self.lexer.pos..self.lexer.pos + 1,
+                    message: "I dey expect `(` for here",
+                }],
             );
             return None;
         }
@@ -365,9 +374,12 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::ExpectedRParenAfterShout.as_str(),
-                &[],
+                vec![Label {
+                    span: self.lexer.pos..self.lexer.pos + 1,
+                    message: "I dey expect `)` for here",
+                }],
             );
             return None;
         }
@@ -387,9 +399,12 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::ExpectedLParenAfterIf.as_str(),
-                &[],
+                vec![Label {
+                    span: self.lexer.pos..self.lexer.pos + 1,
+                    message: "I dey expect `(` for here",
+                }],
             );
             return None;
         }
@@ -399,9 +414,12 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::ExpectedRParenAfterIf.as_str(),
-                &[],
+                vec![Label {
+                    span: self.lexer.pos..self.lexer.pos + 1,
+                    message: "I dey expect `)` for here",
+                }],
             );
             return None;
         }
@@ -412,9 +430,12 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::ExpectedStartForThenBlock.as_str(),
-                &[],
+                vec![Label {
+                    span: self.lexer.pos..self.lexer.pos + 1,
+                    message: "I dey expect `start` for here",
+                }],
             );
             return None;
         }
@@ -426,9 +447,12 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::UnterminatedThenBlock.as_str(),
-                &[],
+                vec![Label {
+                    span: start..start + 5, // highlight 'start'
+                    message: "Block start here, but I no see `end`",
+                }],
             );
         }
 
@@ -439,9 +463,12 @@ impl<'src> Parser<'src> {
                 self.errors.emit(
                     start..self.lexer.pos,
                     Severity::Error,
-                    "syntax error",
+                    "syntax",
                     SyntaxError::ExpectedStartForElseBlock.as_str(),
-                    &[],
+                    vec![Label {
+                        span: self.lexer.pos..self.lexer.pos + 1,
+                        message: "I dey expect `start` for here",
+                    }],
                 );
                 return None;
             }
@@ -453,9 +480,12 @@ impl<'src> Parser<'src> {
                 self.errors.emit(
                     start..self.lexer.pos,
                     Severity::Error,
-                    "syntax error",
+                    "syntax",
                     SyntaxError::UnterminatedElseBlock.as_str(),
-                    &[],
+                    vec![Label {
+                        span: start..start + 5,
+                        message: "Block start here, but I no see `end`",
+                    }],
                 );
             }
             Some(b)
@@ -477,22 +507,27 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::ExpectedLParenAfterJasi.as_str(),
-                &[],
+                vec![Label {
+                    span: self.lexer.pos..self.lexer.pos + 1,
+                    message: "I dey expect `(` for here",
+                }],
             );
             return None;
         }
         self.bump();
         let cond = self.parse_condition();
         if self.cur != Token::RParen {
-            //self.error(SyntaxError::ExpectedRParenAfterJasi);
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::ExpectedRParenAfterJasi.as_str(),
-                &[],
+                vec![Label {
+                    span: self.lexer.pos..self.lexer.pos + 1,
+                    message: "I dey expect `)` for here",
+                }],
             );
             return None;
         }
@@ -501,9 +536,12 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::ExpectedStartForLoopBody.as_str(),
-                &[],
+                vec![Label {
+                    span: self.lexer.pos..self.lexer.pos + 1,
+                    message: "I dey expect `start` for here",
+                }],
             );
             return None;
         }
@@ -515,9 +553,12 @@ impl<'src> Parser<'src> {
             self.errors.emit(
                 start..self.lexer.pos,
                 Severity::Error,
-                "syntax error",
+                "syntax",
                 SyntaxError::UnterminatedLoopBody.as_str(),
-                &[],
+                vec![Label {
+                    span: start..start + 5,
+                    message: "Block start here, but I no see `end`",
+                }],
             );
         }
         let end = self.lexer.pos;
@@ -540,9 +581,12 @@ impl<'src> Parser<'src> {
                 self.errors.emit(
                     start..self.lexer.pos,
                     Severity::Error,
-                    "syntax error",
+                    "syntax",
                     SyntaxError::ExpectedComparisonOperator.as_str(),
-                    &[],
+                    vec![Label {
+                        span: self.lexer.pos..self.lexer.pos + 1,
+                        message: "I dey expect comparison operator for here",
+                    }],
                 );
                 CmpOp::Eq // fallback to something reasonable
             }
@@ -585,9 +629,12 @@ impl<'src> Parser<'src> {
                     self.errors.emit(
                         start..self.lexer.pos,
                         Severity::Error,
-                        "syntax error",
+                        "syntax",
                         SyntaxError::ExpectedRParenAfterShout.as_str(),
-                        &[],
+                        vec![Label {
+                            span: self.lexer.pos..self.lexer.pos + 1,
+                            message: "I dey expect `)` for here",
+                        }],
                     );
                 } else {
                     self.bump();
@@ -598,9 +645,12 @@ impl<'src> Parser<'src> {
                 self.errors.emit(
                     start..self.lexer.pos,
                     Severity::Error,
-                    "syntax error",
+                    "syntax",
                     SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
-                    &[],
+                    vec![Label {
+                        span: self.lexer.pos..self.lexer.pos + 1,
+                        message: "I dey expect number, variable or `(` for here",
+                    }],
                 );
                 let s = start..self.lexer.pos;
                 // Error recovery: create a dummy number and continue

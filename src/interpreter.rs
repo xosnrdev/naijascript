@@ -1,4 +1,4 @@
-use crate::diagnostics::{AsStr, Diagnostics, Severity, Span};
+use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     Arena, BinOp, Block, BlockId, CmpOp, Cond, CondId, Expr, ExprId, Stmt, StmtId,
 };
@@ -83,12 +83,29 @@ impl<'src, F: FnMut(f64)> Interpreter<'src, F> {
         let block = &self.blocks.nodes[root.0];
         for &sid in &block.stmts {
             if let Err(err) = self.exec_stmt(sid) {
+                let labels = match err.kind {
+                    RuntimeErrorKind::UndeclaredVariable => vec![Label {
+                        span: err.span.clone(),
+                        message: "This variable never dey before",
+                    }],
+                    RuntimeErrorKind::AssignmentToUndeclared => vec![Label {
+                        span: err.span.clone(),
+                        message: "This variable never dey before",
+                    }],
+                    RuntimeErrorKind::DivisionByZero => vec![Label {
+                        span: err.span.clone(),
+                        message: "You divide by zero for here",
+                    }],
+                    RuntimeErrorKind::InvalidNumber => {
+                        vec![Label { span: err.span.clone(), message: "This number no correct" }]
+                    }
+                };
                 self.errors.emit(
                     err.span.clone(),
                     Severity::Error,
-                    "runtime error",
+                    "runtime",
                     err.kind.as_str(),
-                    &[],
+                    labels,
                 );
                 return Err(err);
             }

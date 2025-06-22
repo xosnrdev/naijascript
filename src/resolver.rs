@@ -1,6 +1,6 @@
 //! The semantic analyzer (or resolver) for NaijaScript.
 
-use crate::diagnostics::{AsStr, Diagnostics, Severity};
+use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{Arena, Block, BlockId, Cond, CondId, Expr, ExprId, Stmt, StmtId};
 
 /// Identifies any node in our AST for precise error reporting.
@@ -48,9 +48,9 @@ pub struct SemAnalyzer<'src> {
     conds: &'src Arena<Cond>,
     blocks: &'src Arena<Block>,
 
-    // Simple flat scope for now - stores variable names as they're declared
+    // Simple flat scope for now - stores variable names with span as they're declared
     // Using string slices from the source code avoids unnecessary allocations
-    symbol_table: Vec<&'src str>,
+    symbol_table: Vec<(&'src str, &'src Span)>,
 
     // Collect all errors instead of failing fast - gives better user experience
     pub errors: Diagnostics,
@@ -104,19 +104,28 @@ impl<'src> SemAnalyzer<'src> {
         match &self.stmts.nodes[sid.0] {
             // Handle "make variable get expression" statements
             Stmt::Assign { var, expr, span } => {
-                // Check for duplicate declarations first
-                // In NaijaScript, once you "make" a variable, you can't "make" it again
-                if self.symbol_table.contains(var) {
+                // Find if variable already declared, and get its span if so
+                if let Some((_, orig_span)) = self.symbol_table.iter().find(|(name, _)| name == var)
+                {
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
-                        "semantic error",
+                        "semantic",
                         SemanticError::DuplicateDeclaration.as_str(),
-                        &[],
+                        vec![
+                            Label {
+                                span: (*orig_span).clone(),
+                                message: "First time you declare am here",
+                            },
+                            Label {
+                                span: span.clone(),
+                                message: "You try declare am again for here",
+                            },
+                        ],
                     );
                 } else {
                     // Add to our symbol table so future references know it exists
-                    self.symbol_table.push(var);
+                    self.symbol_table.push((var, span));
                 }
                 // Always check the expression, even if variable was duplicate
                 // This catches more errors in one pass
@@ -124,13 +133,16 @@ impl<'src> SemAnalyzer<'src> {
             }
             // Handle variable reassignment: <variable> get <expression>
             Stmt::AssignExisting { var, expr, span } => {
-                if !self.symbol_table.contains(var) {
+                if !self.symbol_table.iter().any(|(name, _)| name == var) {
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
-                        "semantic error",
+                        "semantic",
                         SemanticError::AssignmentToUndeclared.as_str(),
-                        &[],
+                        vec![Label {
+                            span: span.clone(),
+                            message: "This variable never dey before",
+                        }],
                     );
                 }
                 self.check_expr(*expr);
@@ -176,13 +188,16 @@ impl<'src> SemAnalyzer<'src> {
             Expr::Number(_, _) => {}
             // Variables must have been declared with "make" before use
             Expr::Var(v, span) => {
-                if !self.symbol_table.contains(v) {
+                if !self.symbol_table.iter().any(|(name, _)| name == v) {
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
-                        "semantic error",
+                        "semantic",
                         SemanticError::UseOfUndeclared.as_str(),
-                        &[],
+                        vec![Label {
+                            span: span.clone(),
+                            message: "This variable never dey before",
+                        }],
                     );
                 }
             }
