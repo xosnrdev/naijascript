@@ -46,7 +46,7 @@ pub struct Diagnostic {
     pub severity: Severity,
     pub code: &'static str,
     pub message: &'static str,
-    pub labels: &'static [Label],
+    pub labels: Vec<Label>,
 }
 
 #[derive(Debug, Default)]
@@ -62,7 +62,7 @@ impl Diagnostics {
         severity: Severity,
         code: &'static str,
         message: &'static str,
-        labels: &'static [Label],
+        labels: Vec<Label>,
     ) {
         self.diagnostics.push(Diagnostic { span, severity, code, message, labels });
     }
@@ -95,7 +95,9 @@ impl Diagnostics {
 
             // 5) Caret underline
             let mut caret_line = String::new();
-            for _ in 0..(col + 2) {
+            // Account for line number prefix: "{line} | "
+            let line_prefix_len = format!("{line} | ").len();
+            for _ in 0..(line_prefix_len + col - 1) {
                 caret_line.push(' ');
             }
             let caret_count = (diag.span.end.saturating_sub(diag.span.start)).max(1);
@@ -105,7 +107,7 @@ impl Diagnostics {
 
             // 6) Additional labels
             let mut label_lines = Vec::new();
-            for label in diag.labels {
+            for label in &diag.labels {
                 let lbl_col = label.span.start.saturating_sub(line_start) + 1;
                 let mut label_line = String::new();
                 for _ in 0..(lbl_col + 5) {
