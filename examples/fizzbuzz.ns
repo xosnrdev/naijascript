@@ -2,10 +2,10 @@ make x get 1
 jasi (x small pass 16) start
     make fizz get 0
     if to say (x divide 3 na 0) start
-        make fizz get fizz add 1
+        fizz get fizz add 1
     end
     if to say (x divide 5 na 0) start
-        make fizz get fizz add 2
+        fizz get fizz add 2
     end
     if to say (fizz na 0) start
         shout (x)
@@ -19,5 +19,5 @@ jasi (x small pass 16) start
     if to say (fizz na 3) start
         shout (333)
     end
-    make x get x add 1
+    x get x add 1
 end

@@ -4,7 +4,7 @@ make i get 0
 jasi ( i small pass 10 ) start
     shout ( a )
     make temp get a add b
-    make a get b
-    make b get temp
-    make i get i add 1
+    a get b
+    b get temp
+    i get i add 1
 end
