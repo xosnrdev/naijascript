@@ -1,13 +1,17 @@
+//! The diagnostics system for NaijaScript.
+
 use std::ops::Range;
 
+/// Byte-range span within source text.
 pub type Span = Range<usize>;
 
-pub const BOLD: &str = "\x1b[1m";
-pub const RESET: &str = "\x1b[0m";
-pub const ERROR: &str = "\x1b[31m"; // red
-const WARNING: &str = "\x1b[33m"; // yellow
+const BOLD: &str = "\x1b[1m";
+const RESET: &str = "\x1b[0m";
+const ERROR: &str = "\x1b[31m"; // red
+const WARNING: &str = "\x1b[33m"; // yellow  
 const NOTE: &str = "\x1b[34m"; // blue
 
+/// Diagnostic severity levels that determine display style and output routing.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Severity {
     Error,
@@ -32,8 +36,18 @@ impl Severity {
             Severity::Note => NOTE,
         }
     }
+
+    #[inline(always)]
+    /// Print a diagnostic line to the appropriate output stream.
+    fn print_line(&self, s: &str) {
+        match self {
+            Severity::Error => eprintln!("{s}"),
+            _ => println!("{s}"),
+        }
+    }
 }
 
+/// Secondary annotation attached to a diagnostic.
 #[derive(Debug)]
 pub struct Label {
     pub span: Span,
@@ -49,12 +63,14 @@ pub struct Diagnostic {
     pub labels: Vec<Label>,
 }
 
+/// Collection of diagnostics with batch reporting capabilities.
 #[derive(Debug, Default)]
 pub struct Diagnostics {
     pub diagnostics: Vec<Diagnostic>,
 }
 
 impl Diagnostics {
+    /// Add a new diagnostic to the collection.
     #[inline(always)]
     pub fn emit(
         &mut self,
@@ -67,139 +83,172 @@ impl Diagnostics {
         self.diagnostics.push(Diagnostic { span, severity, code, message, labels });
     }
 
-    pub fn report(&self, src: &str, filename: &str) {
+    /// Render all collected diagnostics to the terminal with rich formatting.
+    pub fn render(&self, src: &str, filename: &str) {
         for diag in &self.diagnostics {
             let color = diag.severity.color_code();
-
-            // 1) Compute line & column
             let (line, col, line_start, line_end) = Self::line_col_from_span(src, diag.span.start);
-
-            // 2) Header
-            let header = format!(
-                "{BOLD}{color}{}[{}]{RESET}: {BOLD}{}",
-                diag.severity.label(),
-                diag.code,
-                diag.message
-            );
-
-            // 3) Location
-            let location = format!(" -->{RESET} {filename}:{line}:{col}");
-
-            // 4) Source line
+            let header = Self::render_header(diag.severity, diag.code, diag.message);
+            let location = Self::render_location(filename, line, col, color);
             let src_line = &src[line_start..line_end];
-            let gutter = format!("{line} | ");
-            let plain_gutter = "  | ";
-
-            // 5) Caret underline
-            let mut caret_line = String::new();
-            caret_line.push_str(plain_gutter);
-            for _ in 0..(col - 1) {
-                caret_line.push(' ');
-            }
+            let gutter = Self::render_gutter(line, color);
+            let plain_gutter = Self::render_plain_gutter(color);
             let caret_count = (diag.span.end.saturating_sub(diag.span.start)).max(1);
-            for _ in 0..caret_count {
-                caret_line.push('^');
-            }
+            let caret_line = Self::render_caret_line(col, caret_count, color, &plain_gutter);
 
-            // 6) Additional labels
             let main_line = line;
+            // Partition labels based on whether they're on the same line as the main diagnostic.
+            // This affects how we render them - same-line labels appear as underlines below
+            // the source line, while cross-line labels get their own source context.
             let (same_line_labels, cross_line_labels): (Vec<_>, Vec<_>) =
                 diag.labels.iter().partition(|label| {
                     let (label_line, _, _, _) = Self::line_col_from_span(src, label.span.start);
                     label_line == main_line
                 });
 
-            // Render same-line labels
+            // Render same-line labels as underlines with dashes
             let mut label_lines = Vec::new();
             for label in same_line_labels {
+                // Convert absolute span to column position relative to line start
                 let lbl_col = label.span.start.saturating_sub(line_start) + 1;
-                let mut label_line = String::new();
-                label_line.push_str(plain_gutter);
-                for _ in 0..(lbl_col - 1) {
-                    label_line.push(' ');
-                }
                 let dash_count = (label.span.end.saturating_sub(label.span.start)).max(1);
-                for _ in 0..dash_count {
-                    label_line.push('-');
-                }
-                label_line.push(' ');
-                label_line.push_str(label.message);
-                label_lines.push(label_line);
+                label_lines.push(Self::render_label_line(
+                    lbl_col,
+                    dash_count,
+                    color,
+                    label.message,
+                    &plain_gutter,
+                ));
             }
 
-            // Render cross-line labels
+            // Handle cross-line labels by showing their complete source context
             let mut cross_line_displays = Vec::new();
             for label in cross_line_labels {
                 let (label_line, label_col, label_line_start, label_line_end) =
                     Self::line_col_from_span(src, label.span.start);
-
                 let label_src_line = &src[label_line_start..label_line_end];
-                let label_gutter = format!("{label_line} | ");
-                let line_display = format!("{label_gutter}{RESET}{label_src_line}{BOLD}{color}");
-
-                let mut label_underline = String::new();
-                label_underline.push_str(plain_gutter);
-                for _ in 0..(label_col - 1) {
-                    label_underline.push(' ');
-                }
+                let label_gutter = Self::render_gutter(label_line, color);
+                let line_display = format!("{label_gutter}{label_src_line}");
                 let dash_count = (label.span.end.saturating_sub(label.span.start)).max(1);
-                for _ in 0..dash_count {
-                    label_underline.push('-');
-                }
-                label_underline.push(' ');
-                label_underline.push_str(label.message);
-
+                let label_underline = Self::render_label_line(
+                    label_col,
+                    dash_count,
+                    color,
+                    label.message,
+                    &plain_gutter,
+                );
                 cross_line_displays.push((line_display, label_underline));
             }
 
-            // 7) Pretty print the diagnostic
-            match diag.severity {
-                Severity::Error => {
-                    eprintln!("{header}");
-                    eprintln!("{location}");
-                    eprintln!("  {BOLD}|");
-
-                    // Show cross-line labels first
-                    for (line_display, label_underline) in &cross_line_displays {
-                        eprintln!("{line_display}");
-                        eprintln!("{label_underline}");
-                        eprintln!("  {BOLD}|");
-                    }
-
-                    // Show main diagnostic line
-                    eprintln!("{gutter}{RESET}{src_line}{BOLD}{color}");
-                    eprintln!("{caret_line}");
-
-                    // Show same-line labels
-                    for l in &label_lines {
-                        eprintln!("{l}{RESET}");
-                    }
-                }
-                _ => {
-                    println!("{header}");
-                    println!("{location}");
-                    println!("  {BOLD}|");
-
-                    // Show cross-line labels first
-                    for (line_display, label_underline) in &cross_line_displays {
-                        println!("{line_display}");
-                        println!("{label_underline}");
-                        println!("  {BOLD}|");
-                    }
-
-                    // Show main diagnostic line
-                    println!("{gutter}{RESET}{src_line}{BOLD}{color}");
-                    println!("{caret_line}");
-
-                    // Show same-line labels
-                    for l in &label_lines {
-                        println!("{l}{RESET}");
-                    }
-                }
+            // Output the complete diagnostic in the expected order:
+            // 1. Header with severity and message
+            // 2. File location pointer
+            // 3. Cross-line labels with their source context
+            // 4. Main diagnostic line with source
+            // 5. Caret line pointing to the error
+            // 6. Same-line labels with explanations
+            diag.severity.print_line(&header);
+            diag.severity.print_line(&location);
+            diag.severity.print_line(&plain_gutter);
+            for (line_display, label_underline) in &cross_line_displays {
+                diag.severity.print_line(line_display);
+                diag.severity.print_line(label_underline);
+                diag.severity.print_line(&plain_gutter);
+            }
+            diag.severity.print_line(&format!("{gutter}{src_line}"));
+            diag.severity.print_line(&caret_line);
+            for l in &label_lines {
+                diag.severity.print_line(&format!("{l}{RESET}"));
             }
         }
     }
 
+    #[inline(always)]
+    fn render_header(severity: Severity, code: &str, message: &str) -> String {
+        let color = severity.color_code();
+        format!("{BOLD}{color}{}[{code}]{RESET}: {BOLD}{message}{RESET}", severity.label())
+    }
+
+    #[inline(always)]
+    fn render_location(filename: &str, line: usize, col: usize, color: &str) -> String {
+        format!(" {BOLD}{color}-->{RESET} {filename}:{line}:{col}")
+    }
+
+    #[inline(always)]
+    fn render_gutter(line: usize, color: &str) -> String {
+        format!("{BOLD}{color}{line} |{RESET} ")
+    }
+
+    #[inline(always)]
+    fn render_plain_gutter(color: &str) -> String {
+        format!("{BOLD}{color}  |{RESET} ")
+    }
+
+    /// Build the caret line that points to the error location.
+    ///
+    /// This creates the "^^^" line that appears under the source code.
+    /// The tricky part is getting the column alignment right - we need to account
+    /// for the gutter width and ensure the carets line up precisely with the
+    /// problematic source text.
+    #[inline(always)]
+    fn render_caret_line(col: usize, len: usize, color: &str, plain_gutter: &str) -> String {
+        let mut caret_line = String::with_capacity(plain_gutter.len() + col + len + 8);
+        caret_line.push_str(plain_gutter);
+        for _ in 0..(col - 1) {
+            caret_line.push(' ');
+        }
+        caret_line.push_str(BOLD);
+        caret_line.push_str(color);
+        for _ in 0..len {
+            caret_line.push('^');
+        }
+        caret_line.push_str(RESET);
+        caret_line
+    }
+
+    /// Build a label underline with dashes and explanatory text.
+    ///
+    /// Labels use dashes instead of carets to distinguish them from the main
+    /// diagnostic. The horizontal alignment needs to match the source text
+    /// exactly, which requires careful column calculation.
+    #[inline(always)]
+    fn render_label_line(
+        lbl_col: usize,
+        dash_count: usize,
+        color: &str,
+        message: &str,
+        plain_gutter: &str,
+    ) -> String {
+        let mut label_line =
+            String::with_capacity(plain_gutter.len() + lbl_col + dash_count + message.len() + 16);
+        label_line.push_str(plain_gutter);
+        for _ in 0..(lbl_col - 1) {
+            label_line.push(' ');
+        }
+        label_line.push_str(BOLD);
+        label_line.push_str(color);
+        for _ in 0..dash_count {
+            label_line.push('-');
+        }
+        label_line.push_str(RESET);
+        label_line.push(' ');
+        label_line.push_str(BOLD);
+        label_line.push_str(message);
+        label_line.push_str(RESET);
+        label_line
+    }
+
+    /// Convert a byte offset to line/column coordinates and line boundaries.
+    ///
+    /// This is the foundation of our source mapping system. We need four pieces
+    /// of information: the line number (1-based), column number (1-based),
+    /// and the byte offsets for the start and end of that line. The line
+    /// boundaries are crucial for extracting the source text to display.
+    ///
+    /// The algorithm works by scanning backwards from the target position to
+    /// count newlines (for line number) and find the line start. Then we scan
+    /// forward to find the line end. It's not the most efficient possible
+    /// approach, but it's simple and works well for typical error reporting.
     #[inline(always)]
     fn line_col_from_span(src: &str, span_start: usize) -> (usize, usize, usize, usize) {
         let before = &src[..span_start];
@@ -211,6 +260,10 @@ impl Diagnostics {
     }
 }
 
+/// Trait for error types that can be converted to display strings.
+///
+/// This provides a consistent interface for all our error enums across the
+/// interpreter.
 pub trait AsStr: 'static {
     fn as_str(&self) -> &'static str;
 }

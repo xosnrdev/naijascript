@@ -54,12 +54,12 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
     let (root, parse_errors) = parser.parse_program();
 
     if !parser.lexer.errors.diagnostics.is_empty() {
-        parser.lexer.errors.report(src, filename);
+        parser.lexer.errors.render(src, filename);
         return ExitCode::FAILURE;
     }
 
     if !parse_errors.diagnostics.is_empty() {
-        parse_errors.report(src, filename);
+        parse_errors.render(src, filename);
         return ExitCode::FAILURE;
     }
 
@@ -71,7 +71,7 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
     );
     analyzer.analyze(root);
     if !analyzer.errors.diagnostics.is_empty() {
-        analyzer.errors.report(src, filename);
+        analyzer.errors.render(src, filename);
         return ExitCode::FAILURE;
     }
 
@@ -83,7 +83,7 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
     );
     let diagnostics = interp.run(root);
     if !diagnostics.diagnostics.is_empty() {
-        diagnostics.report(src, filename);
+        diagnostics.render(src, filename);
         return ExitCode::FAILURE;
     }
     for value in &interp.output {
