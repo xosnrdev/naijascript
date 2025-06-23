@@ -8,7 +8,7 @@ pub type Span = Range<usize>;
 const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
 const ERROR: &str = "\x1b[31m"; // red
-const WARNING: &str = "\x1b[33m"; // yellow  
+const WARNING: &str = "\x1b[33m"; // yellow
 const NOTE: &str = "\x1b[34m"; // blue
 
 /// Diagnostic severity levels that determine display style and output routing.
@@ -38,8 +38,8 @@ impl Severity {
     }
 
     #[inline]
-    /// Print a diagnostic line to the appropriate output stream.
-    fn print_line(&self, s: &str) {
+    /// Writes a diagnostic line to the appropriate output stream.
+    fn write_to_stream(&self, s: &str) {
         match self {
             Severity::Error => eprintln!("{s}"),
             _ => println!("{s}"),
@@ -147,18 +147,18 @@ impl Diagnostics {
             // 4. Main diagnostic line with source
             // 5. Caret line pointing to the error
             // 6. Same-line labels with explanations
-            diag.severity.print_line(&header);
-            diag.severity.print_line(&location);
-            diag.severity.print_line(&plain_gutter);
+            diag.severity.write_to_stream(&header);
+            diag.severity.write_to_stream(&location);
+            diag.severity.write_to_stream(&plain_gutter);
             for (line_display, label_underline) in &cross_line_displays {
-                diag.severity.print_line(line_display);
-                diag.severity.print_line(label_underline);
-                diag.severity.print_line(&plain_gutter);
+                diag.severity.write_to_stream(line_display);
+                diag.severity.write_to_stream(label_underline);
+                diag.severity.write_to_stream(&plain_gutter);
             }
-            diag.severity.print_line(&format!("{gutter}{src_line}"));
-            diag.severity.print_line(&caret_line);
+            diag.severity.write_to_stream(&format!("{gutter}{src_line}"));
+            diag.severity.write_to_stream(&caret_line);
             for l in &label_lines {
-                diag.severity.print_line(&format!("{l}{RESET}"));
+                diag.severity.write_to_stream(l);
             }
         }
     }
@@ -252,10 +252,10 @@ impl Diagnostics {
     #[inline]
     fn line_col_from_span(src: &str, span_start: usize) -> (usize, usize, usize, usize) {
         let before = &src[..span_start];
-        let line = before.chars().filter(|&c| c == '\n').count() + 1;
-        let col = before.chars().rev().take_while(|&c| c != '\n').count() + 1;
         let line_start = before.rfind('\n').map_or(0, |i| i + 1);
         let line_end = src[line_start..].find('\n').map_or(src.len(), |i| line_start + i);
+        let line = before.bytes().filter(|&b| b == b'\n').count() + 1;
+        let col = span_start - line_start + 1;
         (line, col, line_start, line_end)
     }
 }
