@@ -20,7 +20,7 @@ pub enum Severity {
 }
 
 impl Severity {
-    #[inline(always)]
+    #[inline]
     const fn label(self) -> &'static str {
         match self {
             Severity::Error => "error",
@@ -28,7 +28,7 @@ impl Severity {
             Severity::Note => "note",
         }
     }
-    #[inline(always)]
+    #[inline]
     const fn color_code(self) -> &'static str {
         match self {
             Severity::Error => ERROR,
@@ -37,7 +37,7 @@ impl Severity {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     /// Print a diagnostic line to the appropriate output stream.
     fn print_line(&self, s: &str) {
         match self {
@@ -71,7 +71,7 @@ pub struct Diagnostics {
 
 impl Diagnostics {
     /// Add a new diagnostic to the collection.
-    #[inline(always)]
+    #[inline]
     pub fn emit(
         &mut self,
         span: Span,
@@ -163,23 +163,23 @@ impl Diagnostics {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn render_header(severity: Severity, code: &str, message: &str) -> String {
         let color = severity.color_code();
         format!("{BOLD}{color}{}[{code}]{RESET}: {BOLD}{message}{RESET}", severity.label())
     }
 
-    #[inline(always)]
+    #[inline]
     fn render_location(filename: &str, line: usize, col: usize, color: &str) -> String {
         format!(" {BOLD}{color}-->{RESET} {filename}:{line}:{col}")
     }
 
-    #[inline(always)]
+    #[inline]
     fn render_gutter(line: usize, color: &str) -> String {
         format!("{BOLD}{color}{line} |{RESET} ")
     }
 
-    #[inline(always)]
+    #[inline]
     fn render_plain_gutter(color: &str) -> String {
         format!("{BOLD}{color}  |{RESET} ")
     }
@@ -190,7 +190,7 @@ impl Diagnostics {
     /// The tricky part is getting the column alignment right - we need to account
     /// for the gutter width and ensure the carets line up precisely with the
     /// problematic source text.
-    #[inline(always)]
+    #[inline]
     fn render_caret_line(col: usize, len: usize, color: &str, plain_gutter: &str) -> String {
         let mut caret_line = String::with_capacity(plain_gutter.len() + col + len + 8);
         caret_line.push_str(plain_gutter);
@@ -211,7 +211,7 @@ impl Diagnostics {
     /// Labels use dashes instead of carets to distinguish them from the main
     /// diagnostic. The horizontal alignment needs to match the source text
     /// exactly, which requires careful column calculation.
-    #[inline(always)]
+    #[inline]
     fn render_label_line(
         lbl_col: usize,
         dash_count: usize,
@@ -249,7 +249,7 @@ impl Diagnostics {
     /// count newlines (for line number) and find the line start. Then we scan
     /// forward to find the line end. It's not the most efficient possible
     /// approach, but it's simple and works well for typical error reporting.
-    #[inline(always)]
+    #[inline]
     fn line_col_from_span(src: &str, span_start: usize) -> (usize, usize, usize, usize) {
         let before = &src[..span_start];
         let line = before.chars().filter(|&c| c == '\n').count() + 1;
