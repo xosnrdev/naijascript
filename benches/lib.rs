@@ -14,7 +14,9 @@ fn bench_lexer(c: &mut Criterion) {
     c.bench_function("lexer", |b| {
         b.iter(|| {
             let mut lexer = Lexer::new(input);
-            black_box(lexer.next_token());
+            while let Some(token) = lexer.next_token() {
+                black_box(token);
+            }
         })
     });
 }
