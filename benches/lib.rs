@@ -14,8 +14,7 @@ fn bench_lexer(c: &mut Criterion) {
     c.bench_function("lexer", |b| {
         b.iter(|| {
             let mut lexer = Lexer::new(input);
-            let tokens = lexer.next_token();
-            black_box(tokens);
+            black_box(lexer.next_token());
         })
     });
 }
@@ -30,8 +29,7 @@ fn bench_parser(c: &mut Criterion) {
     c.bench_function("parser", |b| {
         b.iter(|| {
             let mut parser = Parser::new(input);
-            let (bid, _) = parser.parse_program();
-            black_box(bid);
+            black_box(parser.parse_program());
         })
     });
 }
