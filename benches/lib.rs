@@ -30,7 +30,8 @@ fn bench_parser(c: &mut Criterion) {
     c.bench_function("parser", |b| {
         b.iter(|| {
             let mut parser = Parser::new(input);
-            let _ = parser.parse_program();
+            let (bid, _) = parser.parse_program();
+            black_box(bid);
         })
     });
 }
