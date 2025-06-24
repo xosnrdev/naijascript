@@ -137,26 +137,24 @@ pub enum SyntaxError {
 impl AsStr for SyntaxError {
     fn as_str(&self) -> &'static str {
         match self {
-            SyntaxError::ExpectedStatement => "I dey expect statement for here",
-            SyntaxError::ExpectedIdentifierAfterMake => "I dey expect variable name after `make`",
-            SyntaxError::ExpectedGetAfterIdentifier => "I dey expect `get` after variable name",
-            SyntaxError::ExpectedLParenAfterShout => "I dey expect `(` after `shout`",
-            SyntaxError::ExpectedRParenAfterShout => "I dey expect `)` after shout expression",
-            SyntaxError::ExpectedLParenAfterIf => "I dey expect `(` after `if to say`",
-            SyntaxError::ExpectedRParenAfterIf => "I dey expect `)` after if condition",
-            SyntaxError::ExpectedStartForThenBlock => "I dey expect `start` for then-block",
-            SyntaxError::UnterminatedThenBlock => "I no see `end` for then-block",
-            SyntaxError::ExpectedStartForElseBlock => "I dey expect `start` for else-block",
-            SyntaxError::UnterminatedElseBlock => "I no see `end` for else-block",
-            SyntaxError::ExpectedLParenAfterJasi => "I dey expect `(` after `jasi`",
-            SyntaxError::ExpectedRParenAfterJasi => "I dey expect `)` after loop condition",
-            SyntaxError::ExpectedStartForLoopBody => "I dey expect `start` for loop body",
-            SyntaxError::UnterminatedLoopBody => "I no see `end` for loop body",
-            SyntaxError::ExpectedComparisonOperator => {
-                "I dey expect comparison operator (`na`/`pass`/`small pass`)"
-            }
-            SyntaxError::ExpectedNumberOrVariableOrLParen => "I dey expect number, variable or `(`",
-            SyntaxError::TrailingTokensAfterProgramEnd => "I see extra tokens after program end",
+            SyntaxError::ExpectedStatement => "Statement syntax no correct",
+            SyntaxError::ExpectedIdentifierAfterMake => "Assignment syntax no complete",
+            SyntaxError::ExpectedGetAfterIdentifier => "Assignment syntax no correct",
+            SyntaxError::ExpectedLParenAfterShout => "Shout syntax no complete",
+            SyntaxError::ExpectedRParenAfterShout => "Shout syntax no complete",
+            SyntaxError::ExpectedLParenAfterIf => "If statement syntax no complete",
+            SyntaxError::ExpectedRParenAfterIf => "If statement syntax no complete",
+            SyntaxError::ExpectedStartForThenBlock => "If block syntax no complete",
+            SyntaxError::UnterminatedThenBlock => "If block syntax no complete",
+            SyntaxError::ExpectedStartForElseBlock => "Else block syntax no complete",
+            SyntaxError::UnterminatedElseBlock => "Else block syntax no complete",
+            SyntaxError::ExpectedLParenAfterJasi => "Loop syntax no complete",
+            SyntaxError::ExpectedRParenAfterJasi => "Loop syntax no complete",
+            SyntaxError::ExpectedStartForLoopBody => "Loop block syntax no complete",
+            SyntaxError::UnterminatedLoopBody => "Loop block syntax no complete",
+            SyntaxError::ExpectedComparisonOperator => "Condition syntax no complete",
+            SyntaxError::ExpectedNumberOrVariableOrLParen => "Expression syntax no complete",
+            SyntaxError::TrailingTokensAfterProgramEnd => "Program syntax no complete",
         }
     }
 }
@@ -285,13 +283,13 @@ impl<'src> Parser<'src> {
                     let mut message = "I dey expect statement for here";
                     // Suggest a keyword if close to a known one
                     if Self::suggest_keyword(var, "make").is_some() {
-                        message = "I dey expect statement for here. You fit mean `make`?";
+                        message = "You fit mean `make`?";
                     } else if Self::suggest_keyword(var, "shout").is_some() {
-                        message = "I dey expect statement for here. You fit mean `shout`?";
+                        message = "You fit mean `shout`?";
                     } else if Self::suggest_keyword(var, "jasi").is_some() {
-                        message = "I dey expect statement for here. You fit mean `jasi`?";
+                        message = "You fit mean `jasi`?";
                     } else if Self::suggest_keyword(var, "if").is_some() {
-                        message = "I dey expect statement for here. You fit mean `if to say`?";
+                        message = "You fit mean `if to say`?";
                     }
                     self.errors.emit(
                         start..self.lexer.pos,
@@ -311,7 +309,7 @@ impl<'src> Parser<'src> {
                     SyntaxError::ExpectedStatement.as_str(),
                     vec![Label {
                         span: start..self.lexer.pos,
-                        message: "I dey expect statement for here",
+                        message: "I dey expect `make`, `shout`, `if to say`, `jasi`, or variable reassignment for here",
                     }],
                 );
                 None
@@ -337,7 +335,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::ExpectedIdentifierAfterMake.as_str(),
                 vec![Label {
                     span: self.lexer.pos..self.lexer.pos + 1,
-                    message: "I dey expect variable name for here",
+                    message: "Put variable name after `make` for here",
                 }],
             );
             return None;
@@ -351,7 +349,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::ExpectedGetAfterIdentifier.as_str(),
                 vec![Label {
                     span: self.lexer.pos..self.lexer.pos + 1,
-                    message: "I dey expect `get` for here",
+                    message: "Put `get` after variable name for here",
                 }],
             );
             return None;
@@ -377,7 +375,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::ExpectedLParenAfterShout.as_str(),
                 vec![Label {
                     span: self.lexer.pos..self.lexer.pos + 1,
-                    message: "I dey expect `(` for here",
+                    message: "Put `(` after `shout` for here",
                 }],
             );
             return None;
@@ -392,7 +390,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::ExpectedRParenAfterShout.as_str(),
                 vec![Label {
                     span: self.lexer.pos..self.lexer.pos + 1,
-                    message: "I dey expect `)` for here",
+                    message: "Close shout with `)` for here",
                 }],
             );
             return None;
@@ -417,7 +415,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::ExpectedLParenAfterIf.as_str(),
                 vec![Label {
                     span: self.lexer.pos..self.lexer.pos + 1,
-                    message: "I dey expect `(` for here",
+                    message: "Put `(` after `if to say` for here",
                 }],
             );
             return None;
@@ -432,7 +430,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::ExpectedRParenAfterIf.as_str(),
                 vec![Label {
                     span: self.lexer.pos..self.lexer.pos + 1,
-                    message: "I dey expect `)` for here",
+                    message: "Close condition with `)` for here",
                 }],
             );
             return None;
@@ -448,7 +446,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::ExpectedStartForThenBlock.as_str(),
                 vec![Label {
                     span: self.lexer.pos..self.lexer.pos + 1,
-                    message: "I dey expect `start` for here",
+                    message: "Begin block with `start` for here",
                 }],
             );
             return None;
@@ -465,7 +463,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::UnterminatedThenBlock.as_str(),
                 vec![Label {
                     span: start..start + 5, // highlight 'start'
-                    message: "Block start here, but I no see `end`",
+                    message: "Dis block start here, but I no see `end`",
                 }],
             );
         }
@@ -481,7 +479,7 @@ impl<'src> Parser<'src> {
                     SyntaxError::ExpectedStartForElseBlock.as_str(),
                     vec![Label {
                         span: self.lexer.pos..self.lexer.pos + 1,
-                        message: "I dey expect `start` for here",
+                        message: "Begin else block with `start` for here",
                     }],
                 );
                 return None;
@@ -498,7 +496,7 @@ impl<'src> Parser<'src> {
                     SyntaxError::UnterminatedElseBlock.as_str(),
                     vec![Label {
                         span: start..start + 5,
-                        message: "Block start here, but I no see `end`",
+                        message: "Dis else block start here, but I no see `end`",
                     }],
                 );
             }
@@ -525,7 +523,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::ExpectedLParenAfterJasi.as_str(),
                 vec![Label {
                     span: self.lexer.pos..self.lexer.pos + 1,
-                    message: "I dey expect `(` for here",
+                    message: "Put `(` after `jasi` for here",
                 }],
             );
             return None;
@@ -540,7 +538,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::ExpectedRParenAfterJasi.as_str(),
                 vec![Label {
                     span: self.lexer.pos..self.lexer.pos + 1,
-                    message: "I dey expect `)` for here",
+                    message: "Close loop condition with `)` for here",
                 }],
             );
             return None;
@@ -554,7 +552,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::ExpectedStartForLoopBody.as_str(),
                 vec![Label {
                     span: self.lexer.pos..self.lexer.pos + 1,
-                    message: "I dey expect `start` for here",
+                    message: "Begin loop body with `start` for here",
                 }],
             );
             return None;
@@ -571,7 +569,7 @@ impl<'src> Parser<'src> {
                 SyntaxError::UnterminatedLoopBody.as_str(),
                 vec![Label {
                     span: start..start + 5,
-                    message: "Block start here, but I no see `end`",
+                    message: "Dis loop body start here, but I no see `end`",
                 }],
             );
         }
@@ -599,7 +597,7 @@ impl<'src> Parser<'src> {
                     SyntaxError::ExpectedComparisonOperator.as_str(),
                     vec![Label {
                         span: self.lexer.pos..self.lexer.pos + 1,
-                        message: "I dey expect comparison operator for here",
+                        message: "Use `na`, `pass`, or `small pass` to compare for here",
                     }],
                 );
                 CmpOp::Eq // fallback to something reasonable
@@ -647,7 +645,7 @@ impl<'src> Parser<'src> {
                         SyntaxError::ExpectedRParenAfterShout.as_str(),
                         vec![Label {
                             span: self.lexer.pos..self.lexer.pos + 1,
-                            message: "I dey expect `)` for here",
+                            message: "Close expression with `)` for here",
                         }],
                     );
                 } else {
@@ -663,7 +661,7 @@ impl<'src> Parser<'src> {
                     SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                     vec![Label {
                         span: self.lexer.pos..self.lexer.pos + 1,
-                        message: "I dey expect number, variable or `(` for here",
+                        message: "Use number, variable name, or `(` for expression for here",
                     }],
                 );
                 let s = start..self.lexer.pos;
