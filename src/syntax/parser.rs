@@ -282,15 +282,23 @@ impl<'src> Parser<'src> {
                     Some(sid)
                 } else {
                     // Not a reassignment, error and do not consume
+                    let mut message = "I dey expect statement for here";
+                    // Suggest a keyword if close to a known one
+                    if Self::suggest_keyword(var, "make").is_some() {
+                        message = "I dey expect statement for here. You fit mean `make`?";
+                    } else if Self::suggest_keyword(var, "shout").is_some() {
+                        message = "I dey expect statement for here. You fit mean `shout`?";
+                    } else if Self::suggest_keyword(var, "jasi").is_some() {
+                        message = "I dey expect statement for here. You fit mean `jasi`?";
+                    } else if Self::suggest_keyword(var, "if").is_some() {
+                        message = "I dey expect statement for here. You fit mean `if to say`?";
+                    }
                     self.errors.emit(
                         start..self.lexer.pos,
                         Severity::Error,
                         "syntax",
                         SyntaxError::ExpectedStatement.as_str(),
-                        vec![Label {
-                            span: start..self.lexer.pos,
-                            message: "I dey expect statement for here",
-                        }],
+                        vec![Label { span: start..self.lexer.pos, message }],
                     );
                     None
                 }
@@ -692,6 +700,34 @@ impl<'src> Parser<'src> {
             lhs = self.expr_arena.alloc(Expr::Binary { op, lhs, rhs, span: start..end });
         }
         lhs
+    }
+
+    /// Suggests a statement keyword if the identifier is a likely typo, using a single-edit heuristic.
+    #[inline(always)]
+    fn suggest_keyword<'a>(ident: &str, expected: &'a str) -> Option<&'a str> {
+        // Only check for single-char edit distance or prefix (very cheap, no alloc)
+        if ident.len() == expected.len() {
+            // One substitution: e.g., 'mak' vs 'make'
+            let mut diff = 0;
+            for (a, b) in ident.bytes().zip(expected.bytes()) {
+                if a != b {
+                    diff += 1;
+                    if diff > 1 {
+                        break;
+                    }
+                }
+            }
+            if diff == 1 {
+                return Some(expected);
+            }
+        } else if ident.len() + 1 == expected.len() && expected.starts_with(ident) {
+            // Missing last char: e.g., 'mak' vs 'make'
+            return Some(expected);
+        } else if ident.len() == expected.len() + 1 && ident.starts_with(expected) {
+            // Extra last char: e.g., 'makee' vs 'make'
+            return Some(expected);
+        }
+        None
     }
 }
 
