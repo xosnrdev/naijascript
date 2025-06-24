@@ -280,7 +280,7 @@ impl<'src> Parser<'src> {
                     Some(sid)
                 } else {
                     // Not a reassignment, error and do not consume
-                    let mut message = "I dey expect statement for here";
+                    let mut message = "Statement syntax no complete";
                     // Suggest a keyword if close to a known one
                     if Self::suggest_keyword(var, "make").is_some() {
                         message = "You fit mean `make`?";
