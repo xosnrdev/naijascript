@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use naijascript::syntax::parser::Parser;
-use naijascript::syntax::scanner::Lexer;
+use naijascript::syntax::scanner::{Lexer, Token};
 
 fn bench_lexer(c: &mut Criterion) {
     let input = black_box(
@@ -14,8 +14,13 @@ fn bench_lexer(c: &mut Criterion) {
     c.bench_function("lexer", |b| {
         b.iter(|| {
             let mut lexer = Lexer::new(input);
-            let tokens = lexer.next_token();
-            black_box(tokens);
+            loop {
+                let token = lexer.next_token();
+                if token == Token::EOF {
+                    break;
+                }
+                black_box(token);
+            }
         })
     });
 }
@@ -30,7 +35,7 @@ fn bench_parser(c: &mut Criterion) {
     c.bench_function("parser", |b| {
         b.iter(|| {
             let mut parser = Parser::new(input);
-            let _ = parser.parse_program();
+            black_box(parser.parse_program());
         })
     });
 }
