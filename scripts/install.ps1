@@ -76,5 +76,5 @@ Write-Host "If you wan install NaijaScript interpreter, run: naijaup install lat
 Write-Host "Oya, you fit enjoy NaijaScript now!"
 
 # --- Cleanup ---
-Set-Location $HOME
+Set-Location $env:USERPROFILE
 Remove-Item -Recurse -Force $tmp
