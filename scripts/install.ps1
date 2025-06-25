@@ -22,7 +22,8 @@ $repo = "xosnrdev/naijascript"
 try {
   $latest = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest"
   $tag = $latest.tag_name
-} catch {
+}
+catch {
   Write-Error "Wahala! I no fit find latest version for GitHub. Check your network."; exit 1
 }
 
@@ -57,7 +58,8 @@ Write-Host "I don put naijaup for $installDir. Make I check am..."
 try {
   & "$installDir\naijaup.exe" --version | Out-Null
   Write-Host "Naijaup don land gidigba!"
-} catch {
+}
+catch {
   Write-Error "E get as e be. Naijaup no run. Check your PATH or try again."; exit 1
 }
 
@@ -68,7 +70,8 @@ if ($paths -notcontains $installDir) {
   $newPath = if ($path -and $path.Trim() -ne "") { $path + ";" + $installDir } else { $installDir }
   [System.Environment]::SetEnvironmentVariable("Path", $newPath, "User")
   Write-Host "Oga, I don add $installDir to your user PATH permanently. Restart your terminal to use 'naijaup' anywhere."
-} else {
+}
+else {
   Write-Host "$installDir already dey your PATH."
 }
 
