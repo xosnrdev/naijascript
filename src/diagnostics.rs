@@ -165,22 +165,6 @@ impl Diagnostics {
         }
     }
 
-    /// Computes the gutter width needed for all diagnostics and labels.
-    ///
-    /// This ensures that the vertical bar and code are always aligned, even for large files.
-    fn compute_gutter_width(diagnostics: &[Diagnostic], src: &str) -> usize {
-        let mut max_line = 1;
-        for diag in diagnostics {
-            let (line, _, _, _) = Self::line_col_from_span(src, diag.span.start);
-            max_line = max_line.max(line);
-            for label in &diag.labels {
-                let (label_line, _, _, _) = Self::line_col_from_span(src, label.span.start);
-                max_line = max_line.max(label_line);
-            }
-        }
-        max_line.to_string().len()
-    }
-
     #[inline]
     fn render_header(severity: Severity, code: &str, message: &str) -> String {
         let color = severity.color_code();
@@ -275,6 +259,23 @@ impl Diagnostics {
         let line = before.bytes().filter(|&b| b == b'\n').count() + 1;
         let col = span_start - line_start + 1;
         (line, col, line_start, line_end)
+    }
+
+    /// Computes the gutter width needed for all diagnostics and labels.
+    ///
+    /// This ensures that the vertical bar and code are always aligned, even for large scripts.
+    #[inline]
+    fn compute_gutter_width(diagnostics: &[Diagnostic], src: &str) -> usize {
+        let mut max_line = 1;
+        for diag in diagnostics {
+            let (line, _, _, _) = Self::line_col_from_span(src, diag.span.start);
+            max_line = max_line.max(line);
+            for label in &diag.labels {
+                let (label_line, _, _, _) = Self::line_col_from_span(src, label.span.start);
+                max_line = max_line.max(label_line);
+            }
+        }
+        max_line.to_string().len()
     }
 }
 
