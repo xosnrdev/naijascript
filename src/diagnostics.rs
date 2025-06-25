@@ -85,14 +85,16 @@ impl Diagnostics {
 
     /// Render all collected diagnostics to the terminal with rich formatting.
     pub fn render(&self, src: &str, filename: &str) {
+        let gutter_width = Self::compute_gutter_width(&self.diagnostics, src);
+
         for diag in &self.diagnostics {
             let color = diag.severity.color_code();
             let (line, col, line_start, line_end) = Self::line_col_from_span(src, diag.span.start);
             let header = Self::render_header(diag.severity, diag.code, diag.message);
             let location = Self::render_location(filename, line, col, color);
             let src_line = &src[line_start..line_end];
-            let gutter = Self::render_gutter(line, color);
-            let plain_gutter = Self::render_plain_gutter(color);
+            let gutter = Self::render_gutter(line, color, gutter_width);
+            let plain_gutter = Self::render_plain_gutter(color, gutter_width);
             let caret_count = (diag.span.end.saturating_sub(diag.span.start)).max(1);
             let caret_line = Self::render_caret_line(col, caret_count, color, &plain_gutter);
 
@@ -127,7 +129,7 @@ impl Diagnostics {
                 let (label_line, label_col, label_line_start, label_line_end) =
                     Self::line_col_from_span(src, label.span.start);
                 let label_src_line = &src[label_line_start..label_line_end];
-                let label_gutter = Self::render_gutter(label_line, color);
+                let label_gutter = Self::render_gutter(label_line, color, gutter_width);
                 let line_display = format!("{label_gutter}{label_src_line}");
                 let dash_count = (label.span.end.saturating_sub(label.span.start)).max(1);
                 let label_underline = Self::render_label_line(
@@ -163,6 +165,22 @@ impl Diagnostics {
         }
     }
 
+    /// Computes the gutter width needed for all diagnostics and labels.
+    ///
+    /// This ensures that the vertical bar and code are always aligned, even for large files.
+    fn compute_gutter_width(diagnostics: &[Diagnostic], src: &str) -> usize {
+        let mut max_line = 1;
+        for diag in diagnostics {
+            let (line, _, _, _) = Self::line_col_from_span(src, diag.span.start);
+            max_line = max_line.max(line);
+            for label in &diag.labels {
+                let (label_line, _, _, _) = Self::line_col_from_span(src, label.span.start);
+                max_line = max_line.max(label_line);
+            }
+        }
+        max_line.to_string().len()
+    }
+
     #[inline]
     fn render_header(severity: Severity, code: &str, message: &str) -> String {
         let color = severity.color_code();
@@ -175,13 +193,13 @@ impl Diagnostics {
     }
 
     #[inline]
-    fn render_gutter(line: usize, color: &str) -> String {
-        format!("{BOLD}{color}{line} |{RESET} ")
+    fn render_gutter(line: usize, color: &str, width: usize) -> String {
+        format!("{BOLD}{color}{line:>width$} |{RESET} ")
     }
 
     #[inline]
-    fn render_plain_gutter(color: &str) -> String {
-        format!("{BOLD}{color}  |{RESET} ")
+    fn render_plain_gutter(color: &str, width: usize) -> String {
+        format!("{BOLD}{color}{:>width$} |{RESET} ", "", width = width)
     }
 
     /// Build the caret line that points to the error location.
