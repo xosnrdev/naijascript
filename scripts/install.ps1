@@ -15,7 +15,7 @@ switch ($arch) {
   default { Write-Error 'Oga, your machine arch no dey supported. Abeg use x86_64 or aarch64.'; exit 1 }
 }
 
-$bin = "naijaup-$platform-$arch.exe"
+$bin = "naijaup-$platform-$arch"
 $repo = "xosnrdev/naijascript"
 
 # --- Fetch Latest Version ---
@@ -76,5 +76,5 @@ Write-Host "If you wan install NaijaScript interpreter, run: naijaup install lat
 Write-Host "Oya, you fit enjoy NaijaScript now!"
 
 # --- Cleanup ---
-Set-Location $HOME
+Set-Location $env:USERPROFILE
 Remove-Item -Recurse -Force $tmp
