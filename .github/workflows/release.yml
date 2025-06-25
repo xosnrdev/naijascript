@@ -78,10 +78,7 @@ jobs:
             *) echo "Unknown target"; exit 1 ;;
           esac
 
-          EXT=""
-          if [ "$PLATFORM" = "windows" ]; then EXT=".exe"; fi
-
-          BIN_NAME="${{ matrix.bin_target }}-$PLATFORM-$ARCH$EXT"
+          BIN_NAME="${{ matrix.bin_target }}-$PLATFORM-$ARCH"
           echo "bin_name=$BIN_NAME" >> $GITHUB_OUTPUT
       - name: Rename binary
         shell: bash
