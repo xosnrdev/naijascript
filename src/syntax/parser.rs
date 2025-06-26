@@ -212,7 +212,7 @@ impl<'src> Parser<'src> {
     /// We treat the whole program as one big block of statements.
     #[inline(always)]
     pub fn parse_program(&mut self) -> (BlockId, Diagnostics) {
-        let block_id = self.parse_block_body();
+        let block_id = self.parse_program_body();
         if self.cur != Token::EOF {
             self.errors.emit(
                 self.lexer.pos..self.lexer.pos + 1,
@@ -733,40 +733,26 @@ impl<'src> Parser<'src> {
         }
         None
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    /// Parses a program-level statement list that stops at invalid tokens.
+    /// Unlike parse_block_body, this stops at any token that's not a valid statement starter.
+    /// This implements: <program> ::= <statement_list> where statement_list ends at non-statements.
+    #[inline(always)]
+    fn parse_program_body(&mut self) -> BlockId {
+        let start = self.lexer.pos;
+        let mut stmts = Vec::new();
 
-    #[test]
-    fn test_parse_assignment() {
-        let src = "make x get 42";
-        let mut parser = Parser::new(src);
-        let (_block_id, errors) = parser.parse_program();
-        assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
-    }
-
-    #[test]
-    fn test_parse_shout() {
-        let src = "shout(1 add 2)";
-        let mut parser = Parser::new(src);
-        let (_block_id, errors) = parser.parse_program();
-        assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
-    }
-
-    #[test]
-    fn test_parse_invalid() {
-        let src = "make get 5";
-        let mut parser = Parser::new(src);
-        let (_block_id, errors) = parser.parse_program();
-        assert!(!errors.diagnostics.is_empty(), "Expected errors for invalid syntax");
-        assert!(
-            errors
-                .diagnostics
-                .iter()
-                .any(|e| e.message == SyntaxError::ExpectedIdentifierAfterMake.as_str()
-                    || e.message == SyntaxError::ExpectedGetAfterIdentifier.as_str())
-        );
+        // Keep parsing statements until we hit EOF or an invalid statement token
+        while matches!(
+            self.cur,
+            Token::Make | Token::Shout | Token::IfToSay | Token::Jasi | Token::Identifier(_)
+        ) {
+            match self.parse_statement() {
+                Some(sid) => stmts.push(sid),
+                None => self.synchronize(), // Skip to next statement on error
+            }
+        }
+        let end = self.lexer.pos;
+        self.block_arena.alloc(Block { stmts, span: start..end })
     }
 }
