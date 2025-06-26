@@ -73,14 +73,6 @@ fn test_parse_expression_minus_times_divide() {
 }
 
 #[test]
-fn test_parse_string_factor() {
-    let src = "make s get \"hello\"";
-    let mut parser = Parser::new(src);
-    let (_block_id, errors) = parser.parse_program();
-    assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
-}
-
-#[test]
 fn test_parse_variable_factor() {
     let src = "make x get 1\nshout(x)";
     let mut parser = Parser::new(src);
@@ -174,4 +166,68 @@ fn test_parse_trailing_tokens() {
             .iter()
             .any(|e| e.message == SyntaxError::TrailingTokensAfterProgramEnd.as_str())
     );
+}
+
+#[test]
+fn test_parse_assignment_string() {
+    let src = r#"make x get "hello""#;
+    let mut parser = Parser::new(src);
+    let (_block_id, errors) = parser.parse_program();
+    assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
+}
+
+#[test]
+fn test_parse_reassignment_string() {
+    let src = r#"x get "world""#;
+    let mut parser = Parser::new(src);
+    let (_block_id, errors) = parser.parse_program();
+    assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
+}
+
+#[test]
+fn test_parse_shout_string() {
+    let src = r#"shout("hi")"#;
+    let mut parser = Parser::new(src);
+    let (_block_id, errors) = parser.parse_program();
+    assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
+}
+
+#[test]
+fn test_parse_if_condition_string() {
+    let src = r#"if to say (x na "foo") start end"#;
+    let mut parser = Parser::new(src);
+    let (_block_id, errors) = parser.parse_program();
+    assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
+}
+
+#[test]
+fn test_parse_if_string_left_side() {
+    let src = r#"if to say ("foo" na x) start end"#;
+    let mut parser = Parser::new(src);
+    let (_block_id, errors) = parser.parse_program();
+    assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
+}
+
+#[test]
+fn test_parse_if_string_both_sides() {
+    let src = r#"if to say ("foo" na "bar") start end"#;
+    let mut parser = Parser::new(src);
+    let (_block_id, errors) = parser.parse_program();
+    assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
+}
+
+#[test]
+fn test_parse_parenthesized_string() {
+    let src = r#"shout(("hello"))"#;
+    let mut parser = Parser::new(src);
+    let (_block_id, errors) = parser.parse_program();
+    assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
+}
+
+#[test]
+fn test_parse_loop_condition_string() {
+    let src = r#"jasi ("foo" na x) start shout(x) end"#;
+    let mut parser = Parser::new(src);
+    let (_block_id, errors) = parser.parse_program();
+    assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
 }
