@@ -19,7 +19,11 @@
 
 <term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor>
 
-<factor> ::= <number> | <variable> | "(" <expression> ")"
+<factor> ::= <number> | <string> | <variable> | "(" <expression> ")"
+
+<string> ::= "\"" { <string_char> } "\""
+<string_char> ::= any character except "\"" or "\\" | "\\" <escape_sequence>
+<escape_sequence> ::= "\"" | "\\" | "n" | "t"
 
 <number> ::= <digit>+ ("." <digit>+)?
 

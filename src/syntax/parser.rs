@@ -82,12 +82,12 @@ pub enum Stmt<'src> {
     Loop { cond: CondId, body: BlockId, span: Span }, // "jasi(...) start...end"
 }
 
-/// Expression AST nodes - the building blocks of NaijaScript arithmetic.
-/// We store numbers as string slices to preserve the original formatting
-/// (useful for error messages and potential future features like hex literals).
+/// Expression AST nodes for NaijaScript.
+/// Numbers and string literals are stored as string slices to preserve original formatting.
 #[derive(Debug)]
 pub enum Expr<'src> {
     Number(&'src str, Span),                                    // 42, 3.14, etc.
+    String(&'src str, Span),                                    // "hello", etc.
     Var(&'src str, Span),                                       // variable references
     Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span }, // arithmetic operations
 }
@@ -628,6 +628,12 @@ impl<'src> Parser<'src> {
                 self.bump();
                 id
             }
+            Token::String(sval) => {
+                let s = start..self.lexer.pos + sval.len() + 2; // +2 for quotes
+                let id = self.expr_arena.alloc(Expr::String(sval, s));
+                self.bump();
+                id
+            }
             Token::Identifier(v) => {
                 let s = start..self.lexer.pos + v.len();
                 let id = self.expr_arena.alloc(Expr::Var(v, s));
@@ -661,7 +667,7 @@ impl<'src> Parser<'src> {
                     SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                     vec![Label {
                         span: self.lexer.pos..self.lexer.pos + 1,
-                        message: "Use number, variable name, or `(` for expression for here",
+                        message: "Use number, variable name, string, or `(` for expression for here",
                     }],
                 );
                 let s = start..self.lexer.pos;

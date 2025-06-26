@@ -1,0 +1,20 @@
+make a get "foo"
+make b get "bar"
+make c get "foo"
+make d get "baz"
+make count get 0
+
+if to say (a na "foo") start
+    count get count add 1
+end
+if to say (b na "foo") start
+    count get count add 1
+end
+if to say (c na "foo") start
+    count get count add 1
+end
+if to say (d na "foo") start
+    count get count add 1
+end
+
+shout(count)

@@ -1,7 +1,9 @@
 //! The semantic analyzer (or resolver) for NaijaScript.
 
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
-use crate::syntax::parser::{Arena, Block, BlockId, Cond, CondId, Expr, ExprId, Stmt, StmtId};
+use crate::syntax::parser::{
+    Arena, BinOp, Block, BlockId, Cond, CondId, Expr, ExprId, Stmt, StmtId,
+};
 
 /// Identifies any node in our AST for precise error reporting.
 /// We use this instead of raw pointers because arena-based storage gives us
@@ -20,6 +22,8 @@ pub enum SemanticError {
     DuplicateDeclaration,
     AssignmentToUndeclared,
     UseOfUndeclared,
+    TypeMismatch,
+    InvalidStringOperation,
 }
 
 impl AsStr for SemanticError {
@@ -30,6 +34,8 @@ impl AsStr for SemanticError {
                 "You dey try give value to variable wey I no sabi"
             }
             SemanticError::UseOfUndeclared => "You dey use variable wey I no sabi",
+            SemanticError::TypeMismatch => "You dey try use wrong type for operation",
+            SemanticError::InvalidStringOperation => "You no fit do dis operation for string",
         }
     }
 }
@@ -176,6 +182,28 @@ impl<'src> SemAnalyzer<'src> {
         let cond = &self.conds.nodes[cid.0];
         self.check_expr(cond.lhs);
         self.check_expr(cond.rhs);
+        // Let's make sure our comparisons make sense:
+        // Only compare strings with strings, or numbers with numbers.
+        // If you try to compare a string to a number (or vice versa), that's a semantic error.
+        let lhs = &self.exprs.nodes[cond.lhs.0];
+        let rhs = &self.exprs.nodes[cond.rhs.0];
+        match (lhs, rhs) {
+            (Expr::String(_, _), Expr::String(_, _)) | (Expr::Number(_, _), Expr::Number(_, _)) => {
+            }
+            (Expr::String(_, _), Expr::Number(_, _)) | (Expr::Number(_, _), Expr::String(_, _)) => {
+                self.errors.emit(
+                    cond.span.clone(),
+                    Severity::Error,
+                    "semantic",
+                    SemanticError::TypeMismatch.as_str(),
+                    vec![Label {
+                        span: cond.span.clone(),
+                        message: "You no fit compare string and number together",
+                    }],
+                );
+            }
+            _ => {}
+        }
     }
 
     /// Recursively validates expressions - the core of our semantic checking.
@@ -185,7 +213,7 @@ impl<'src> SemAnalyzer<'src> {
     fn check_expr(&mut self, eid: ExprId) {
         match &self.exprs.nodes[eid.0] {
             // Numbers like 42 or 3.14 are always semantically valid
-            Expr::Number(_, _) => {}
+            Expr::Number(_, _) | Expr::String(_, _) => {}
             // Variables must have been declared with "make" before use
             Expr::Var(v, span) => {
                 if !self.symbol_table.iter().any(|(name, _)| name == v) {
@@ -203,9 +231,71 @@ impl<'src> SemAnalyzer<'src> {
             }
             // Binary operations like "add", "minus", "times", "divide"
             // Both operands must be valid expressions (recursive validation)
-            Expr::Binary { lhs, rhs, .. } => {
+            Expr::Binary { op, lhs, rhs, span } => {
                 self.check_expr(*lhs);
                 self.check_expr(*rhs);
+                let l = &self.exprs.nodes[lhs.0];
+                let r = &self.exprs.nodes[rhs.0];
+                match op {
+                    BinOp::Add => match (l, r) {
+                        (Expr::Number(_, _), Expr::Number(_, _)) => {}
+                        (Expr::String(_, _), Expr::String(_, _)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::InvalidStringOperation.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: "You no fit add string for here",
+                                }],
+                            );
+                        }
+                        (Expr::String(_, _), Expr::Number(_, _))
+                        | (Expr::Number(_, _), Expr::String(_, _)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: "You no fit add string and number together",
+                                }],
+                            );
+                        }
+                        _ => {}
+                    },
+                    BinOp::Minus | BinOp::Times | BinOp::Divide => match (l, r) {
+                        (Expr::Number(_, _), Expr::Number(_, _)) => {}
+                        (Expr::String(_, _), Expr::String(_, _)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::InvalidStringOperation.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: "You no fit minus/times/divide string for here",
+                                }],
+                            );
+                        }
+                        (Expr::String(_, _), Expr::Number(_, _))
+                        | (Expr::Number(_, _), Expr::String(_, _)) => {
+                            self.errors.emit(
+                                    span.clone(),
+                                    Severity::Error,
+                                    "semantic",
+                                    SemanticError::TypeMismatch.as_str(),
+                                    vec![Label {
+                                        span: span.clone(),
+                                        message: "You no fit do arithmetic with string and number together",
+                                    }],
+                                );
+                        }
+                        _ => {}
+                    },
+                }
             }
         }
     }

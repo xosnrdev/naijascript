@@ -58,6 +58,7 @@ pub enum Token<'input> {
     // Variable length tokens
     Identifier(&'input str), // Variable names
     Number(&'input str),     // Numeric literals
+    String(&'input str),     // String literals
 
     // Special tokens
     EOF, // End of file
@@ -201,6 +202,81 @@ impl<'input> Lexer<'input> {
             let b = self.peek();
             if b == 0 {
                 return Token::EOF;
+            }
+
+            // String literals
+            if b == b'"' {
+                self.bump(); // skip opening quote
+                let str_start = self.pos;
+                let mut end = self.pos;
+                let mut error_emitted = false;
+                while end < self.bytes.len() {
+                    let c = self.bytes[end];
+                    if c == b'"' {
+                        // End of string
+                        let s = &self.src[str_start..end];
+                        self.pos = end + 1;
+                        return Token::String(s);
+                    } else if c == b'\\' {
+                        // Escape sequence
+                        if end + 1 >= self.bytes.len() {
+                            // Unterminated escape at end of input
+                            self.errors.emit(
+                                str_start - 1..self.bytes.len(),
+                                Severity::Error,
+                                "lexical",
+                                "String no close with quote",
+                                vec![Label {
+                                    span: str_start - 1..self.bytes.len(),
+                                    message: "String no get ending quote",
+                                }],
+                            );
+                            self.pos = self.bytes.len();
+                            return Token::String(&self.src[str_start..self.bytes.len()]);
+                        }
+                        let esc = self.bytes[end + 1];
+                        match esc {
+                            b'"' | b'\\' | b'n' | b't' => {
+                                // Valid escape, skip both
+                                end += 2;
+                                continue;
+                            }
+                            _ => {
+                                // Invalid escape, emit error but continue
+                                if !error_emitted {
+                                    self.errors.emit(
+                                        end..end + 2,
+                                        Severity::Error,
+                                        "lexical",
+                                        "I no sabi this escape for string",
+                                        vec![Label {
+                                            span: end..end + 2,
+                                            message: "Escape wey no correct",
+                                        }],
+                                    );
+                                    error_emitted = true;
+                                }
+                                end += 2;
+                                continue;
+                            }
+                        }
+                    } else {
+                        end += 1;
+                    }
+                }
+                // Unterminated string
+                self.errors.emit(
+                    str_start - 1..self.bytes.len(),
+                    Severity::Error,
+                    "lexical",
+                    "String no close with quote",
+                    vec![Label {
+                        span: str_start - 1..self.bytes.len(),
+                        message: "String no get ending quote",
+                    }],
+                );
+                self.pos = self.bytes.len();
+                return Token::String(&self.src[str_start..self.bytes.len()]);
             }
 
             // Single-character tokens - parentheses
