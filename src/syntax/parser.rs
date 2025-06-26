@@ -1,5 +1,7 @@
 //! The syntax parser for NaijaScript.
 
+use std::borrow::Cow;
+
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::scanner::{Lexer, Token};
 
@@ -87,7 +89,7 @@ pub enum Stmt<'src> {
 #[derive(Debug)]
 pub enum Expr<'src> {
     Number(&'src str, Span),                                    // 42, 3.14, etc.
-    String(&'src str, Span),                                    // "hello", etc.
+    String(Cow<'src, str>, Span),                               // "hello", etc.
     Var(&'src str, Span),                                       // variable references
     Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span }, // arithmetic operations
 }
@@ -629,8 +631,9 @@ impl<'src> Parser<'src> {
                 id
             }
             Token::String(sval) => {
-                let s = start..self.lexer.pos + sval.len() + 2; // +2 for quotes
-                let id = self.expr_arena.alloc(Expr::String(sval, s));
+                let len = sval.len();
+                let s = start..self.lexer.pos + len + 2; // +2 for quotes
+                let id = self.expr_arena.alloc(Expr::String(sval.clone(), s));
                 self.bump();
                 id
             }
@@ -648,7 +651,7 @@ impl<'src> Parser<'src> {
                         start..self.lexer.pos,
                         Severity::Error,
                         "syntax",
-                        SyntaxError::ExpectedRParenAfterShout.as_str(),
+                        SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                         vec![Label {
                             span: self.lexer.pos..self.lexer.pos + 1,
                             message: "Close expression with `)` for here",
@@ -667,11 +670,10 @@ impl<'src> Parser<'src> {
                     SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                     vec![Label {
                         span: self.lexer.pos..self.lexer.pos + 1,
-                        message: "Use number, variable name, string, or `(` for expression for here",
+                        message: "I dey expect number, variable, or ( for here",
                     }],
                 );
                 let s = start..self.lexer.pos;
-                // Error recovery: create a dummy number and continue
                 let id = self.expr_arena.alloc(Expr::Number("0", s));
                 self.bump();
                 id

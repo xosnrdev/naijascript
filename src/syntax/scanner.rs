@@ -1,5 +1,7 @@
 //! The lexer (or scanner) for NaijaScript.
 
+use std::borrow::Cow;
+
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
 
 /// Represents the type of lexical errors that can occur during tokenization
@@ -60,9 +62,9 @@ pub enum Token<'input> {
     RParen, // ")"
 
     // Variable length tokens
-    Identifier(&'input str), // Variable names
-    Number(&'input str),     // Numeric literals
-    String(&'input str),     // String literals
+    Identifier(&'input str),  // Variable names
+    Number(&'input str),      // Numeric literals
+    String(Cow<'input, str>), // String literals
 
     // Special tokens
     EOF, // End of file
@@ -225,19 +227,26 @@ impl<'input> Lexer<'input> {
         self.bump(); // Skip the opening quote
         let start = self.pos;
         let mut end = self.pos;
-        let mut error_emitted = false;
+        let mut has_escape = false;
+        let mut owned = String::new();
         while end < self.bytes.len() {
             let c = self.bytes[end];
             if c == b'"' {
-                // We found the closing quote for the string, so let's grab the contents and return the string token.
-                let s = &self.src[start..end];
-                self.pos = end + 1;
-                return Token::String(s);
+                // Closing quote
+                if has_escape {
+                    self.pos = end + 1;
+                    return Token::String(Cow::Owned(owned));
+                } else {
+                    let s = &self.src[start..end];
+                    self.pos = end + 1;
+                    return Token::String(Cow::Borrowed(s));
+                }
             } else if c == b'\\' {
-                // Let's handle escape sequences here.
-                // If we see a backslash, we need to check what comes next.
-                // We'll support common escapes like \", \\, \n, and \t.
-                // If it's something else, we'll report an error but keep going so users get all the feedback at once.
+                has_escape = true;
+                // Push everything up to this point if first escape
+                if owned.is_empty() {
+                    owned.push_str(&self.src[start..end]);
+                }
                 if end + 1 >= self.bytes.len() {
                     // Looks like we've hit the end of the input right after a backslash.
                     // This means the string ends with an incomplete escape sequence, which is an error.
@@ -252,36 +261,31 @@ impl<'input> Lexer<'input> {
                         }],
                     );
                     self.pos = self.bytes.len();
-                    return Token::String(&self.src[start..self.bytes.len()]);
+                    return Token::String(Cow::Owned(owned));
                 }
                 let esc = self.bytes[end + 1];
                 match esc {
-                    b'"' | b'\\' | b'n' | b't' => {
-                        // This is a valid escape sequence (like \", \\, \n, or \t), so let's just skip both the backslash and the escaped character.
-                        end += 2;
-                        continue;
-                    }
+                    b'"' => owned.push('"'),
+                    b'\\' => owned.push('\\'),
+                    b'n' => owned.push('\n'),
+                    b't' => owned.push('\t'),
                     _ => {
-                        // Oops, we hit an invalid escape sequence here.
-                        // Let's let the user know, but we'll keep scanning so we can catch more errors later.
-                        if !error_emitted {
-                            self.errors.emit(
-                                end..end + 2,
-                                Severity::Error,
-                                "lexical",
-                                LexError::InvalidStringEscape.as_str(),
-                                vec![Label {
-                                    span: end..end + 2,
-                                    message: "Escape wey no correct",
-                                }],
-                            );
-                            error_emitted = true;
-                        }
-                        end += 2;
-                        continue;
+                        self.errors.emit(
+                            end..end + 2,
+                            Severity::Error,
+                            "lexical",
+                            LexError::InvalidStringEscape.as_str(),
+                            vec![Label { span: end..end + 2, message: "Escape wey no correct" }],
+                        );
+                        // Append the invalid escape character
+                        owned.push(esc as char);
                     }
                 }
+                end += 2;
             } else {
+                if has_escape {
+                    owned.push(c as char);
+                }
                 end += 1;
             }
         }
@@ -298,7 +302,11 @@ impl<'input> Lexer<'input> {
             }],
         );
         self.pos = self.bytes.len();
-        Token::String(&self.src[start..self.bytes.len()])
+        if has_escape {
+            Token::String(Cow::Owned(owned))
+        } else {
+            Token::String(Cow::Borrowed(&self.src[start..self.bytes.len()]))
+        }
     }
 
     #[inline(always)]
