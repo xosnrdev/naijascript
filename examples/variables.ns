@@ -1,4 +1,0 @@
-make x get 10
-shout (x)
-make y get x add 5
-shout (y)
