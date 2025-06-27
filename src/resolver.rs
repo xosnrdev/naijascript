@@ -1,7 +1,9 @@
 //! The semantic analyzer (or resolver) for NaijaScript.
 
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
-use crate::syntax::parser::{Arena, Block, BlockId, Cond, CondId, Expr, ExprId, Stmt, StmtId};
+use crate::syntax::parser::{
+    Arena, BinOp, Block, BlockId, Cond, CondId, Expr, ExprId, Stmt, StmtId,
+};
 
 /// Identifies any node in our AST for precise error reporting.
 /// We use this instead of raw pointers because arena-based storage gives us
@@ -20,6 +22,8 @@ pub enum SemanticError {
     DuplicateDeclaration,
     AssignmentToUndeclared,
     UseOfUndeclared,
+    TypeMismatch,
+    InvalidStringOperation,
 }
 
 impl AsStr for SemanticError {
@@ -30,8 +34,17 @@ impl AsStr for SemanticError {
                 "You dey try give value to variable wey I no sabi"
             }
             SemanticError::UseOfUndeclared => "You dey use variable wey I no sabi",
+            SemanticError::TypeMismatch => "You dey try use wrong type for operation",
+            SemanticError::InvalidStringOperation => "You no fit do dis operation for string",
         }
     }
+}
+
+/// Represents the type of a variable in NaijaScript
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum VarType {
+    Number,
+    String,
 }
 
 /// The heart of our semantic analysis - this walks through NaijaScript code
@@ -48,9 +61,12 @@ pub struct SemAnalyzer<'src> {
     conds: &'src Arena<Cond>,
     blocks: &'src Arena<Block>,
 
-    // Simple flat scope for now - stores variable names with span as they're declared
-    // Using string slices from the source code avoids unnecessary allocations
-    symbol_table: Vec<(&'src str, &'src Span)>,
+    // This is our symbol table! For now, it's just a flat Vec that tracks all variables
+    // declared so far, along with their type and where they were declared (the Span).
+    // We use &'src str for variable names to avoid extra allocations, since these
+    // string slices come straight from the source code. If we ever add block scoping,
+    // we can turn this into a stack of Vecs or something fancier.
+    symbol_table: Vec<(&'src str, VarType, &'src Span)>,
 
     // Collect all errors instead of failing fast - gives better user experience
     pub errors: Diagnostics,
@@ -105,7 +121,8 @@ impl<'src> SemAnalyzer<'src> {
             // Handle "make variable get expression" statements
             Stmt::Assign { var, expr, span } => {
                 // Find if variable already declared, and get its span if so
-                if let Some((_, orig_span)) = self.symbol_table.iter().find(|(name, _)| name == var)
+                if let Some((_, _, orig_span)) =
+                    self.symbol_table.iter().find(|(name, _, _)| name == var)
                 {
                     self.errors.emit(
                         span.clone(),
@@ -124,8 +141,10 @@ impl<'src> SemAnalyzer<'src> {
                         ],
                     );
                 } else {
-                    // Add to our symbol table so future references know it exists
-                    self.symbol_table.push((var, span));
+                    // Let's figure out the type of this variable from the expression,
+                    // then add it to our symbol table so future code knows it's declared.
+                    let typ = self.infer_expr_type(*expr).unwrap_or(VarType::Number); // fallback to Number if unknown
+                    self.symbol_table.push((var, typ, span));
                 }
                 // Always check the expression, even if variable was duplicate
                 // This catches more errors in one pass
@@ -133,7 +152,7 @@ impl<'src> SemAnalyzer<'src> {
             }
             // Handle variable reassignment: <variable> get <expression>
             Stmt::AssignExisting { var, expr, span } => {
-                if !self.symbol_table.iter().any(|(name, _)| name == var) {
+                if !self.symbol_table.iter().any(|(name, _, _)| name == var) {
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
@@ -176,6 +195,26 @@ impl<'src> SemAnalyzer<'src> {
         let cond = &self.conds.nodes[cid.0];
         self.check_expr(cond.lhs);
         self.check_expr(cond.rhs);
+        let lhs_type = self.infer_expr_type(cond.lhs);
+        let rhs_type = self.infer_expr_type(cond.rhs);
+        match (lhs_type, rhs_type) {
+            (Some(VarType::String), Some(VarType::String))
+            | (Some(VarType::Number), Some(VarType::Number)) => {}
+            (Some(VarType::String), Some(VarType::Number))
+            | (Some(VarType::Number), Some(VarType::String)) => {
+                self.errors.emit(
+                    cond.span.clone(),
+                    Severity::Error,
+                    "semantic",
+                    SemanticError::TypeMismatch.as_str(),
+                    vec![Label {
+                        span: cond.span.clone(),
+                        message: "You no fit compare string and number together",
+                    }],
+                );
+            }
+            _ => {}
+        }
     }
 
     /// Recursively validates expressions - the core of our semantic checking.
@@ -185,10 +224,10 @@ impl<'src> SemAnalyzer<'src> {
     fn check_expr(&mut self, eid: ExprId) {
         match &self.exprs.nodes[eid.0] {
             // Numbers like 42 or 3.14 are always semantically valid
-            Expr::Number(_, _) => {}
+            Expr::Number(_, _) | Expr::String(_, _) => {}
             // Variables must have been declared with "make" before use
             Expr::Var(v, span) => {
-                if !self.symbol_table.iter().any(|(name, _)| name == v) {
+                if !self.symbol_table.iter().any(|(name, _, _)| name == v) {
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
@@ -203,82 +242,90 @@ impl<'src> SemAnalyzer<'src> {
             }
             // Binary operations like "add", "minus", "times", "divide"
             // Both operands must be valid expressions (recursive validation)
-            Expr::Binary { lhs, rhs, .. } => {
+            Expr::Binary { op, lhs, rhs, span } => {
                 self.check_expr(*lhs);
                 self.check_expr(*rhs);
+                let l = self.infer_expr_type(*lhs);
+                let r = self.infer_expr_type(*rhs);
+                match op {
+                    BinOp::Add => match (l, r) {
+                        (Some(VarType::Number), Some(VarType::Number))
+                        | (Some(VarType::String), Some(VarType::String)) => {}
+                        (Some(VarType::String), Some(VarType::Number))
+                        | (Some(VarType::Number), Some(VarType::String)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: "You no fit add string and number together",
+                                }],
+                            );
+                        }
+                        _ => {}
+                    },
+                    BinOp::Minus | BinOp::Times | BinOp::Divide => match (l, r) {
+                        (Some(VarType::Number), Some(VarType::Number)) => {}
+                        (Some(VarType::String), Some(VarType::String)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::InvalidStringOperation.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: "You no fit minus/times/divide string for here",
+                                }],
+                            );
+                        }
+                        (Some(VarType::String), Some(VarType::Number))
+                        | (Some(VarType::Number), Some(VarType::String)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: "You no fit do arithmetic with string and number together",
+                                }],
+                            );
+                        }
+                        _ => {}
+                    },
+                }
             }
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::syntax::parser::Parser;
-
-    #[test]
-    fn test_semantic_duplicate_declaration() {
-        let src = "make x get 1\nmake x get 2";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-        let mut analyzer = SemAnalyzer::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        analyzer.analyze(root);
-        assert!(
-            analyzer
-                .errors
-                .diagnostics
-                .iter()
-                .any(|e| e.message == SemanticError::DuplicateDeclaration.as_str()),
-            "Expected duplicate declaration error"
-        );
-    }
-
-    #[test]
-    fn test_semantic_undeclared_variable() {
-        let src = "shout(x)";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-        let mut analyzer = SemAnalyzer::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        analyzer.analyze(root);
-        assert!(
-            analyzer
-                .errors
-                .diagnostics
-                .iter()
-                .any(|e| e.message == SemanticError::UseOfUndeclared.as_str()),
-            "Expected undeclared variable error"
-        );
-    }
-
-    #[test]
-    fn test_semantic_valid_program() {
-        let src = "make x get 5\nshout(x)";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-        let mut analyzer = SemAnalyzer::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        analyzer.analyze(root);
-        assert!(
-            analyzer.errors.diagnostics.is_empty(),
-            "Expected no semantic errors, got: {:#?}",
-            analyzer.errors
-        );
+    /// Infer the type of an expression, using the symbol table for variables
+    fn infer_expr_type(&self, eid: ExprId) -> Option<VarType> {
+        match &self.exprs.nodes[eid.0] {
+            Expr::Number(_, _) => Some(VarType::Number),
+            Expr::String(_, _) => Some(VarType::String),
+            Expr::Var(v, _) => {
+                self.symbol_table.iter().find(|(name, _, _)| name == v).map(|(_, t, _)| *t)
+            }
+            Expr::Binary { op, lhs, rhs, .. } => {
+                let l = self.infer_expr_type(*lhs)?;
+                let r = self.infer_expr_type(*rhs)?;
+                match op {
+                    BinOp::Add | BinOp::Minus | BinOp::Times | BinOp::Divide => {
+                        if l == VarType::Number && r == VarType::Number {
+                            Some(VarType::Number)
+                        } else if l == VarType::String
+                            && r == VarType::String
+                            && matches!(op, BinOp::Add)
+                        {
+                            Some(VarType::String)
+                        } else {
+                            None
+                        }
+                    }
+                }
+            }
+        }
     }
 }

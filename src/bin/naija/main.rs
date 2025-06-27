@@ -21,7 +21,7 @@ use naijascript::syntax::parser::Parser;
 struct Cli {
     /// Script file wey you wan run, e.g. naija script.ns
     pub script: Option<String>,
-    /// Code wey you wan run sharp sharp, e.g. naija --eval "shout(1)"
+    /// Code wey you wan run sharp sharp, e.g. naija --eval "shout("hello world")"
     #[arg(short, long)]
     pub eval: Option<String>,
     /// Enter REPL mode to dey run code one by one (naija --interactive)

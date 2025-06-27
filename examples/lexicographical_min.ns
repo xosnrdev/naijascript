@@ -1,0 +1,14 @@
+make a get "zebra"
+make b get "apple"
+make c get "banana"
+make min get a
+
+if to say (b small pass min) start
+    min get b
+end
+
+if to say (c small pass min) start
+    min get c
+end
+
+shout(min)

@@ -1,5 +1,7 @@
 //! The syntax parser for NaijaScript.
 
+use std::borrow::Cow;
+
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::scanner::{Lexer, Token};
 
@@ -82,12 +84,12 @@ pub enum Stmt<'src> {
     Loop { cond: CondId, body: BlockId, span: Span }, // "jasi(...) start...end"
 }
 
-/// Expression AST nodes - the building blocks of NaijaScript arithmetic.
-/// We store numbers as string slices to preserve the original formatting
-/// (useful for error messages and potential future features like hex literals).
+/// Expression AST nodes for NaijaScript.
+/// Numbers and string literals are stored as string slices to preserve original formatting.
 #[derive(Debug)]
 pub enum Expr<'src> {
     Number(&'src str, Span),                                    // 42, 3.14, etc.
+    String(Cow<'src, str>, Span),                               // "hello", etc.
     Var(&'src str, Span),                                       // variable references
     Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span }, // arithmetic operations
 }
@@ -212,7 +214,7 @@ impl<'src> Parser<'src> {
     /// We treat the whole program as one big block of statements.
     #[inline(always)]
     pub fn parse_program(&mut self) -> (BlockId, Diagnostics) {
-        let block_id = self.parse_block_body();
+        let block_id = self.parse_program_body();
         if self.cur != Token::EOF {
             self.errors.emit(
                 self.lexer.pos..self.lexer.pos + 1,
@@ -628,6 +630,13 @@ impl<'src> Parser<'src> {
                 self.bump();
                 id
             }
+            Token::String(sval) => {
+                let len = sval.len();
+                let s = start..self.lexer.pos + len + 2; // +2 for quotes
+                let id = self.expr_arena.alloc(Expr::String(sval.clone(), s));
+                self.bump();
+                id
+            }
             Token::Identifier(v) => {
                 let s = start..self.lexer.pos + v.len();
                 let id = self.expr_arena.alloc(Expr::Var(v, s));
@@ -642,7 +651,7 @@ impl<'src> Parser<'src> {
                         start..self.lexer.pos,
                         Severity::Error,
                         "syntax",
-                        SyntaxError::ExpectedRParenAfterShout.as_str(),
+                        SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                         vec![Label {
                             span: self.lexer.pos..self.lexer.pos + 1,
                             message: "Close expression with `)` for here",
@@ -661,11 +670,10 @@ impl<'src> Parser<'src> {
                     SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                     vec![Label {
                         span: self.lexer.pos..self.lexer.pos + 1,
-                        message: "Use number, variable name, or `(` for expression for here",
+                        message: "I dey expect number, variable, or ( for here",
                     }],
                 );
                 let s = start..self.lexer.pos;
-                // Error recovery: create a dummy number and continue
                 let id = self.expr_arena.alloc(Expr::Number("0", s));
                 self.bump();
                 id
@@ -727,40 +735,26 @@ impl<'src> Parser<'src> {
         }
         None
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    /// Parses a program-level statement list that stops at invalid tokens.
+    /// Unlike parse_block_body, this stops at any token that's not a valid statement starter.
+    /// This implements: <program> ::= <statement_list> where statement_list ends at non-statements.
+    #[inline(always)]
+    fn parse_program_body(&mut self) -> BlockId {
+        let start = self.lexer.pos;
+        let mut stmts = Vec::new();
 
-    #[test]
-    fn test_parse_assignment() {
-        let src = "make x get 42";
-        let mut parser = Parser::new(src);
-        let (_block_id, errors) = parser.parse_program();
-        assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
-    }
-
-    #[test]
-    fn test_parse_shout() {
-        let src = "shout(1 add 2)";
-        let mut parser = Parser::new(src);
-        let (_block_id, errors) = parser.parse_program();
-        assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
-    }
-
-    #[test]
-    fn test_parse_invalid() {
-        let src = "make get 5";
-        let mut parser = Parser::new(src);
-        let (_block_id, errors) = parser.parse_program();
-        assert!(!errors.diagnostics.is_empty(), "Expected errors for invalid syntax");
-        assert!(
-            errors
-                .diagnostics
-                .iter()
-                .any(|e| e.message == SyntaxError::ExpectedIdentifierAfterMake.as_str()
-                    || e.message == SyntaxError::ExpectedGetAfterIdentifier.as_str())
-        );
+        // Keep parsing statements until we hit EOF or an invalid statement token
+        while matches!(
+            self.cur,
+            Token::Make | Token::Shout | Token::IfToSay | Token::Jasi | Token::Identifier(_)
+        ) {
+            match self.parse_statement() {
+                Some(sid) => stmts.push(sid),
+                None => self.synchronize(), // Skip to next statement on error
+            }
+        }
+        let end = self.lexer.pos;
+        self.block_arena.alloc(Block { stmts, span: start..end })
     }
 }

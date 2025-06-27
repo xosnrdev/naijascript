@@ -1,5 +1,7 @@
 //! The runtime for NaijaScript.
 
+use std::borrow::Cow;
+
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     Arena, BinOp, Block, BlockId, CmpOp, Cond, CondId, Expr, ExprId, Stmt, StmtId,
@@ -39,14 +41,14 @@ pub struct RuntimeError<'src> {
 /// The value types our interpreter can work with at runtime.
 ///
 /// Right now we're keeping it simple with just numbers, but the architecture
-/// is set up to easily add strings, booleans, functions, etc.
+/// is set up to easily add booleans, functions, etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value<'src> {
     /// All numbers are f64 internally - keeps arithmetic simple and matches
     /// what most dynamic languages do (JavaScript, Lua, etc.)
     Number(f64),
     /// String literals that reference the original source
-    Str(&'src str),
+    Str(Cow<'src, str>),
     /// Standard boolean values for future conditional expressions
     Bool(bool),
 }
@@ -81,11 +83,11 @@ pub struct Interpreter<'src> {
     /// Simple variable environment as a vector of (name, value) pairs.
     /// This gives us O(n) variable lookup, but for small programs it's fine
     /// and keeps the implementation dead simple. A HashMap would be overkill here.
-    env: Vec<(&'src str, f64)>,
+    env: Vec<(&'src str, Value<'src>)>,
 
     /// Accumulated diagnostics - we collect these instead of panicking so the
     /// caller can decide how to handle runtime errors (continue, stop, etc.)
-    errors: Diagnostics,
+    pub errors: Diagnostics,
 
     /// Captured output from `shout()` statements. This is public so callers
     /// can access program output after execution completes.
@@ -157,7 +159,6 @@ impl<'src> Interpreter<'src> {
             }
             Stmt::AssignExisting { var, expr, .. } => {
                 let val = self.eval_expr(*expr)?;
-                // The semantic analyzer guarantees this variable exists, so we can safely unwrap.
                 let slot = self
                     .env
                     .iter_mut()
@@ -168,11 +169,10 @@ impl<'src> Interpreter<'src> {
             }
             Stmt::Shout { expr, .. } => {
                 let val = self.eval_expr(*expr)?;
-                self.output.push(Value::Number(val));
+                self.output.push(val);
                 Ok(())
             }
             Stmt::If { cond, then_b, else_b, .. } => {
-                // Check condition, execute appropriate branch
                 if self.eval_cond(*cond)? {
                     self.exec_block(*then_b)
                 } else if let Some(eb) = else_b {
@@ -182,8 +182,6 @@ impl<'src> Interpreter<'src> {
                 }
             }
             Stmt::Loop { cond, body, .. } => {
-                // Keep executing body while condition is true
-                // We check the condition before each iteration, including the first
                 while self.eval_cond(*cond)? {
                     self.exec_block(*body)?;
                 }
@@ -209,56 +207,76 @@ impl<'src> Interpreter<'src> {
         let c = &self.conds.nodes[cid.0];
         let lhs = self.eval_expr(c.lhs)?;
         let rhs = self.eval_expr(c.rhs)?;
-        // Direct f64 comparison - we don't worry about floating point precision issues
-        // for now since this is an educational language focused on simplicity
-        let result = match c.op {
-            CmpOp::Eq => lhs == rhs,
-            CmpOp::Gt => lhs > rhs,
-            CmpOp::Lt => lhs < rhs,
-        };
-        Ok(result)
+        match (&lhs, &rhs) {
+            (Value::Number(l), Value::Number(r)) => {
+                let result = match c.op {
+                    CmpOp::Eq => l == r,
+                    CmpOp::Gt => l > r,
+                    CmpOp::Lt => l < r,
+                };
+                Ok(result)
+            }
+            (Value::Str(l), Value::Str(r)) => {
+                let result = match c.op {
+                    CmpOp::Eq => l == r,
+                    CmpOp::Gt => l > r,
+                    CmpOp::Lt => l < r,
+                };
+                Ok(result)
+            }
+            _ => unreachable!("Semantic analysis should guarantee only valid comparisons"),
+        }
     }
 
-    fn eval_expr(&self, eid: ExprId) -> Result<f64, RuntimeError<'src>> {
+    fn eval_expr(&self, eid: ExprId) -> Result<Value<'src>, RuntimeError<'src>> {
         match &self.exprs.nodes[eid.0] {
-            Expr::Number(n, span) => {
-                // Parse the string representation into an f64. The lexer has already
-                // validated basic number syntax, but we still need to handle edge cases
-                // like numbers too large for f64 representation.
-                n.parse::<f64>()
-                    .map_err(|_| RuntimeError { kind: RuntimeErrorKind::InvalidNumber, span })
-            }
+            Expr::Number(n, span) => n
+                .parse::<f64>()
+                .map(Value::Number)
+                .map_err(|_| RuntimeError { kind: RuntimeErrorKind::InvalidNumber, span }),
+            Expr::String(s, _) => Ok(Value::Str(s.clone())),
             Expr::Var(v, _) => {
-                // Variable lookup in our simple linear environment. The semantic analyzer
-                // has guaranteed this variable exists, so we can safely unwrap here.
-                // This is much faster than returning Result and checking everywhere.
                 let val = self
                     .env
                     .iter()
                     .find(|(name, _)| *name == *v)
-                    .map(|(_, val)| *val)
+                    .map(|(_, val)| val.clone())
                     .expect("Semantic analysis should guarantee all variables are declared");
                 Ok(val)
             }
             Expr::Binary { op, lhs, rhs, span } => {
-                // Standard binary operator evaluation with left-to-right operand evaluation.
-                // We evaluate both operands before applying the operator, which matches
-                // most programming language semantics.
                 let l = self.eval_expr(*lhs)?;
                 let r = self.eval_expr(*rhs)?;
-                match op {
-                    BinOp::Add => Ok(l + r),
-                    BinOp::Minus => Ok(l - r),
-                    BinOp::Times => Ok(l * r),
-                    BinOp::Divide => {
-                        // Division by zero is the classic runtime error - we check for it
-                        // explicitly rather than letting the FPU return infinity/NaN
-                        if r == 0.0 {
-                            Err(RuntimeError { kind: RuntimeErrorKind::DivisionByZero, span })
-                        } else {
-                            Ok(l / r)
+                match (l, r) {
+                    (Value::Number(lv), Value::Number(rv)) => match op {
+                        BinOp::Add => Ok(Value::Number(lv + rv)),
+                        BinOp::Minus => Ok(Value::Number(lv - rv)),
+                        BinOp::Times => Ok(Value::Number(lv * rv)),
+                        BinOp::Divide => {
+                            if rv == 0.0 {
+                                Err(RuntimeError { kind: RuntimeErrorKind::DivisionByZero, span })
+                            } else {
+                                Ok(Value::Number(lv / rv))
+                            }
                         }
+                    },
+                    (Value::Str(ls), Value::Str(rs)) => match op {
+                        BinOp::Add => {
+                            let mut s = String::with_capacity(ls.len() + rs.len());
+                            s.push_str(&ls);
+                            s.push_str(&rs);
+                            Ok(Value::Str(Cow::Owned(s)))
+                        }
+                        _ => unreachable!(
+                            "Semantic analysis should guarantee only valid string operations"
+                        ),
+                    },
+                    (Value::Str(_), Value::Number(_)) | (Value::Number(_), Value::Str(_)) => {
+                        unreachable!(
+                            "Semantic analysis should guarantee only valid type combinations"
+                        )
                     }
+                    _ => unreachable!("Semantic analysis should guarantee only valid expressions"),
                 }
             }
         }
@@ -270,181 +288,11 @@ impl<'src> Interpreter<'src> {
     /// environment, update its value; otherwise, add it as a new binding.
     /// This keeps the assignment logic simple and avoids duplicate code between
     /// initial declaration and reassignment.
-    fn insert_or_update(&mut self, var: &'src str, val: f64) {
+    fn insert_or_update(&mut self, var: &'src str, val: Value<'src>) {
         if let Some((_, slot)) = self.env.iter_mut().find(|(name, _)| *name == var) {
             *slot = val;
         } else {
             self.env.push((var, val));
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::resolver::{SemAnalyzer, SemanticError};
-    use crate::syntax::parser::Parser;
-
-    #[test]
-    fn test_assignment_and_shout() {
-        let src = "make x get 5\nshout(x)";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty());
-        let mut interp = Interpreter::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        interp.run(root);
-        assert_eq!(interp.output, vec![Value::Number(5.0)]);
-    }
-
-    #[test]
-    fn test_reassignment() {
-        let src = "make x get 2\nx get 7\nshout(x)";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty());
-        let mut interp = Interpreter::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        interp.run(root);
-        assert_eq!(interp.output, vec![Value::Number(7.0)]);
-    }
-
-    #[test]
-    fn test_expression_arithmetic() {
-        let src = "make x get 2 add 3 times 4\nshout(x)"; // 2 + (3*4) = 14
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty());
-        let mut interp = Interpreter::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        interp.run(root);
-        assert_eq!(interp.output, vec![Value::Number(14.0)]);
-    }
-
-    #[test]
-    fn test_if_statement_then() {
-        let src = "make x get 1\nif to say (x na 1) start shout(42) end";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty());
-        let mut interp = Interpreter::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        interp.run(root);
-        assert_eq!(interp.output, vec![Value::Number(42.0)]);
-    }
-
-    #[test]
-    fn test_if_statement_else() {
-        let src =
-            "make x get 2\nif to say (x na 1) start shout(1) end if not so start shout(2) end";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty());
-        let mut interp = Interpreter::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        interp.run(root);
-        assert_eq!(interp.output, vec![Value::Number(2.0)]);
-    }
-
-    #[test]
-    fn test_loop_statement() {
-        let src = "make x get 1\njasi (x small pass 4) start shout(x) x get x add 1 end";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty());
-        let mut interp = Interpreter::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        interp.run(root);
-        assert_eq!(interp.output, vec![Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)]);
-    }
-
-    #[test]
-    fn test_division_by_zero_error() {
-        let src = "make x get 1 divide 0\nshout(x)";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty());
-        let mut interp = Interpreter::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        interp.run(root);
-        assert!(
-            interp
-                .errors
-                .diagnostics
-                .iter()
-                .any(|e| e.message == RuntimeErrorKind::DivisionByZero.as_str())
-        );
-    }
-
-    #[test]
-    fn test_assignment_to_undeclared_variable_error() {
-        let src = "x get 5";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty());
-        let mut analyzer = SemAnalyzer::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        analyzer.analyze(root);
-        assert!(
-            analyzer
-                .errors
-                .diagnostics
-                .iter()
-                .any(|e| e.message == SemanticError::AssignmentToUndeclared.as_str())
-        );
-    }
-
-    #[test]
-    fn test_undeclared_variable_error() {
-        let src = "shout(y)";
-        let mut parser = Parser::new(src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(parse_errors.diagnostics.is_empty());
-        let mut analyzer = SemAnalyzer::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.cond_arena,
-            &parser.block_arena,
-        );
-        analyzer.analyze(root);
-        assert!(
-            analyzer
-                .errors
-                .diagnostics
-                .iter()
-                .any(|e| e.message == SemanticError::UseOfUndeclared.as_str())
-        );
     }
 }

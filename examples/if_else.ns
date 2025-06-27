@@ -1,7 +1,0 @@
-make x get 5
-if to say (x na 5) start
-    shout (100)
-end
-if to say (x na 10) start
-    shout (200)
-end
