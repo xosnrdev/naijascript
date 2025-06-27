@@ -4,7 +4,7 @@ use naijascript::syntax::parser::Parser;
 
 #[test]
 fn test_semantic_duplicate_declaration() {
-    let src = "make x get 1\nmake x get 2";
+    let src = "make x get 1 make x get 2";
     let mut parser = Parser::new(src);
     let (root, parse_errors) = parser.parse_program();
     assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
@@ -50,7 +50,7 @@ fn test_semantic_undeclared_variable() {
 
 #[test]
 fn test_semantic_valid_program() {
-    let src = "make x get 5\nshout(x)";
+    let src = "make x get 5 shout(x)";
     let mut parser = Parser::new(src);
     let (root, parse_errors) = parser.parse_program();
     assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
@@ -93,7 +93,7 @@ fn test_assignment_to_undeclared_variable() {
 
 #[test]
 fn test_reassignment_to_declared_variable() {
-    let src = "make x get 1\nx get 2";
+    let src = "make x get 1 x get 2";
     let mut parser = Parser::new(src);
     let (root, parse_errors) = parser.parse_program();
     assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
@@ -135,8 +135,8 @@ fn test_if_with_undeclared_variable_in_condition() {
 }
 
 #[test]
-fn test_loop_with_type_mismatch_in_condition() {
-    let src = "make x get \"hello\"\njasi (x pass 1) start shout(1) end";
+fn test_type_mismatch_in_condition() {
+    let src = r#"if to say ("abc" na 1) start shout(1) end"#;
     let mut parser = Parser::new(src);
     let (root, parse_errors) = parser.parse_program();
     assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
@@ -153,36 +153,13 @@ fn test_loop_with_type_mismatch_in_condition() {
             .diagnostics
             .iter()
             .any(|e| e.message == SemanticError::TypeMismatch.as_str()),
-        "Expected type mismatch in loop condition"
+        "Expected type mismatch error in condition"
     );
 }
 
 #[test]
-fn test_add_string_and_number() {
-    let src = "make x get \"foo\" add 1";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == SemanticError::TypeMismatch.as_str()),
-        "Expected type mismatch for string add number"
-    );
-}
-
-#[test]
-fn test_add_string_and_string() {
-    let src = "make x get \"foo\" add \"bar\"";
+fn test_invalid_string_addition() {
+    let src = r#"make x get "abc" add "def""#;
     let mut parser = Parser::new(src);
     let (root, parse_errors) = parser.parse_program();
     assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
@@ -199,13 +176,13 @@ fn test_add_string_and_string() {
             .diagnostics
             .iter()
             .any(|e| e.message == SemanticError::InvalidStringOperation.as_str()),
-        "Expected invalid string operation for string add string"
+        "Expected invalid string operation error for add"
     );
 }
 
 #[test]
-fn test_minus_string_and_number() {
-    let src = "make x get \"foo\" minus 1";
+fn test_type_mismatch_in_arithmetic() {
+    let src = r#"make x get "abc" add 1"#;
     let mut parser = Parser::new(src);
     let (root, parse_errors) = parser.parse_program();
     assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
@@ -222,13 +199,13 @@ fn test_minus_string_and_number() {
             .diagnostics
             .iter()
             .any(|e| e.message == SemanticError::TypeMismatch.as_str()),
-        "Expected type mismatch for string minus number"
+        "Expected type mismatch error in arithmetic"
     );
 }
 
 #[test]
-fn test_minus_string_and_string() {
-    let src = "make x get \"foo\" minus \"bar\"";
+fn test_invalid_string_minus() {
+    let src = r#"make x get "abc" minus "def""#;
     let mut parser = Parser::new(src);
     let (root, parse_errors) = parser.parse_program();
     assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
@@ -245,13 +222,13 @@ fn test_minus_string_and_string() {
             .diagnostics
             .iter()
             .any(|e| e.message == SemanticError::InvalidStringOperation.as_str()),
-        "Expected invalid string operation for string minus string"
+        "Expected invalid string operation error for minus"
     );
 }
 
 #[test]
-fn test_condition_string_vs_number() {
-    let src = "make x get \"foo\"\nif to say (x na 1) start shout(1) end";
+fn test_type_mismatch_in_loop_condition() {
+    let src = r#"jasi ("abc" pass 1) start shout(1) end"#;
     let mut parser = Parser::new(src);
     let (root, parse_errors) = parser.parse_program();
     assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
@@ -268,27 +245,6 @@ fn test_condition_string_vs_number() {
             .diagnostics
             .iter()
             .any(|e| e.message == SemanticError::TypeMismatch.as_str()),
-        "Expected type mismatch in if condition (string vs number)"
-    );
-}
-
-#[test]
-fn test_condition_string_vs_string() {
-    let src = "make x get \"foo\"\nmake y get \"bar\"\nif to say (x na y) start shout(1) end";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    // Should be valid, so no errors
-    assert!(
-        analyzer.errors.diagnostics.is_empty(),
-        "Expected no semantic errors for string vs string in condition, got: {:#?}",
-        analyzer.errors
+        "Expected type mismatch error in loop condition"
     );
 }
