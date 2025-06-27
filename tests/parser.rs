@@ -74,7 +74,7 @@ fn test_parse_expression_minus_times_divide() {
 
 #[test]
 fn test_parse_variable_factor() {
-    let src = "make x get 1\nshout(x)";
+    let src = "make x get 1 shout(x)";
     let mut parser = Parser::new(src);
     let (_block_id, errors) = parser.parse_program();
     assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
@@ -90,7 +90,7 @@ fn test_parse_parenthesized_expression() {
 
 #[test]
 fn test_parse_condition_operators() {
-    let src = "if to say (x na 1) start end\nif to say (x pass 1) start end\nif to say (x small pass 1) start end";
+    let src = "if to say (x na 1) start end if to say (x pass 1) start end if to say (x small pass 1) start end";
     let mut parser = Parser::new(src);
     let (_block_id, errors) = parser.parse_program();
     assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
