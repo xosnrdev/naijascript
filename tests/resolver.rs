@@ -158,29 +158,6 @@ fn test_type_mismatch_in_condition() {
 }
 
 #[test]
-fn test_invalid_string_addition() {
-    let src = r#"make x get "abc" add "def""#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == SemanticError::InvalidStringOperation.as_str()),
-        "Expected invalid string operation error for add"
-    );
-}
-
-#[test]
 fn test_type_mismatch_in_arithmetic() {
     let src = r#"make x get "abc" add 1"#;
     let mut parser = Parser::new(src);

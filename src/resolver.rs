@@ -249,19 +249,8 @@ impl<'src> SemAnalyzer<'src> {
                 let r = self.infer_expr_type(*rhs);
                 match op {
                     BinOp::Add => match (l, r) {
-                        (Some(VarType::Number), Some(VarType::Number)) => {}
-                        (Some(VarType::String), Some(VarType::String)) => {
-                            self.errors.emit(
-                                span.clone(),
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::InvalidStringOperation.as_str(),
-                                vec![Label {
-                                    span: span.clone(),
-                                    message: "You no fit add string for here",
-                                }],
-                            );
-                        }
+                        (Some(VarType::Number), Some(VarType::Number))
+                        | (Some(VarType::String), Some(VarType::String)) => {}
                         (Some(VarType::String), Some(VarType::Number))
                         | (Some(VarType::Number), Some(VarType::String)) => {
                             self.errors.emit(

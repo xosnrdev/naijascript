@@ -1,5 +1,7 @@
 //! The runtime for NaijaScript.
 
+use std::borrow::Cow;
+
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     Arena, BinOp, Block, BlockId, CmpOp, Cond, CondId, Expr, ExprId, Stmt, StmtId,
@@ -46,7 +48,7 @@ pub enum Value<'src> {
     /// what most dynamic languages do (JavaScript, Lua, etc.)
     Number(f64),
     /// String literals that reference the original source
-    Str(&'src str),
+    Str(Cow<'src, str>),
     /// Standard boolean values for future conditional expressions
     Bool(bool),
 }
@@ -232,7 +234,7 @@ impl<'src> Interpreter<'src> {
                 .parse::<f64>()
                 .map(Value::Number)
                 .map_err(|_| RuntimeError { kind: RuntimeErrorKind::InvalidNumber, span }),
-            Expr::String(s, _) => Ok(Value::Str(s)),
+            Expr::String(s, _) => Ok(Value::Str(s.clone())),
             Expr::Var(v, _) => {
                 let val = self
                     .env
@@ -258,9 +260,17 @@ impl<'src> Interpreter<'src> {
                             }
                         }
                     },
-                    (Value::Str(_), Value::Str(_)) => unreachable!(
-                        "Semantic analysis should guarantee only valid string operations"
-                    ),
+                    (Value::Str(ls), Value::Str(rs)) => match op {
+                        BinOp::Add => {
+                            let mut s = String::with_capacity(ls.len() + rs.len());
+                            s.push_str(&ls);
+                            s.push_str(&rs);
+                            Ok(Value::Str(Cow::Owned(s)))
+                        }
+                        _ => unreachable!(
+                            "Semantic analysis should guarantee only valid string operations"
+                        ),
+                    },
                     (Value::Str(_), Value::Number(_)) | (Value::Number(_), Value::Str(_)) => {
                         unreachable!(
                             "Semantic analysis should guarantee only valid type combinations"

@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use naijascript::diagnostics::AsStr;
 use naijascript::resolver::SemAnalyzer;
 use naijascript::runtime::{Interpreter, RuntimeErrorKind, Value};
@@ -142,7 +144,7 @@ fn test_string_assignment_and_output() {
         &parser.block_arena,
     );
     interp.run(root);
-    assert_eq!(interp.output, vec![Value::Str("hello")]);
+    assert_eq!(interp.output, vec![Value::Str(Cow::Borrowed("hello"))]);
 }
 
 #[test]
@@ -247,7 +249,7 @@ fn test_shout_string_literal() {
         &parser.block_arena,
     );
     interp.run(root);
-    assert_eq!(interp.output, vec![Value::Str("direct")]);
+    assert_eq!(interp.output, vec![Value::Str(Cow::Borrowed("direct"))]);
 }
 
 #[test]
@@ -272,7 +274,7 @@ shout(s)"#;
         &parser.block_arena,
     );
     interp.run(root);
-    assert_eq!(interp.output, vec![Value::Str("line1\nline2")]);
+    assert_eq!(interp.output, vec![Value::Str(Cow::Borrowed("line1\nline2"))]);
 }
 
 #[test]
@@ -298,4 +300,28 @@ if to say (s na "def") start shout(1) end if not so start shout(2) end"#;
     );
     interp.run(root);
     assert_eq!(interp.output, vec![Value::Number(2.0)]);
+}
+
+#[test]
+fn test_string_concatenation_literals() {
+    let src = r#"make s get "foo" add "bar" shout(s)"#;
+    let mut parser = Parser::new(src);
+    let (root, parse_errors) = parser.parse_program();
+    assert!(parse_errors.diagnostics.is_empty());
+    let mut analyzer = SemAnalyzer::new(
+        &parser.stmt_arena,
+        &parser.expr_arena,
+        &parser.cond_arena,
+        &parser.block_arena,
+    );
+    analyzer.analyze(root);
+    assert!(analyzer.errors.diagnostics.is_empty());
+    let mut interp = Interpreter::new(
+        &parser.stmt_arena,
+        &parser.expr_arena,
+        &parser.cond_arena,
+        &parser.block_arena,
+    );
+    interp.run(root);
+    assert_eq!(interp.output, vec![Value::Str(Cow::Owned("foobar".to_string()))]);
 }
