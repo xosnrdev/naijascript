@@ -76,7 +76,6 @@ pub enum Token<'input> {
 /// characters directly. This is significantly faster for ASCII-heavy code.
 pub struct Lexer<'input> {
     pub src: &'input str,    // Original source text (kept for slicing)
-    pub bytes: &'input [u8], // Bytes view for faster processing
     pub pos: usize,          // Current position in the source
     pub errors: Diagnostics, // Collection of encountered errors
 }
@@ -88,7 +87,7 @@ impl<'input> Lexer<'input> {
     /// that gets called a lot during testing and benchmarks
     #[inline(always)]
     pub fn new(src: &'input str) -> Self {
-        Lexer { src, bytes: src.as_bytes(), pos: 0, errors: Diagnostics::default() }
+        Lexer { src, pos: 0, errors: Diagnostics::default() }
     }
 
     /// Returns the next token from the input.
@@ -142,7 +141,7 @@ impl<'input> Lexer<'input> {
     /// than panicking and lets us simplify our main tokenization loop
     #[inline(always)]
     fn peek(&self) -> u8 {
-        *self.bytes.get(self.pos).unwrap_or(&0)
+        *self.src.as_bytes().get(self.pos).unwrap_or(&0)
     }
 
     /// Moves the scanner position forward by one byte
@@ -193,7 +192,7 @@ impl<'input> Lexer<'input> {
         while Self::is_alpha(self.peek()) || Self::is_digit(self.peek()) {
             self.bump();
         }
-        unsafe { std::str::from_utf8_unchecked(&self.bytes[start..self.pos]) }
+        unsafe { std::str::from_utf8_unchecked(&self.src.as_bytes()[start..self.pos]) }
     }
 
     /// Try to consume a specific word at current position
@@ -207,14 +206,15 @@ impl<'input> Lexer<'input> {
     fn try_consume_word(&mut self, word: &str) -> bool {
         // Skip any whitespace before the word
         let mut p = self.pos;
-        while self.bytes.get(p).copied().unwrap_or(0).is_ascii_whitespace() {
+        let bytes = self.src.as_bytes();
+        while bytes.get(p).copied().unwrap_or(0).is_ascii_whitespace() {
             p += 1;
         }
 
         let end = p + word.len();
-        if end <= self.bytes.len()
-            && &self.bytes[p..end] == word.as_bytes()
-            && (end == self.bytes.len() || !Self::is_alpha(self.bytes[end]))
+        if end <= bytes.len()
+            && &bytes[p..end] == word.as_bytes()
+            && (end == bytes.len() || !Self::is_alpha(bytes[end]))
         {
             self.pos = end;
             return true;
@@ -229,8 +229,8 @@ impl<'input> Lexer<'input> {
         let mut end = self.pos;
         let mut has_escape = false;
         let mut owned = String::new();
-        while end < self.bytes.len() {
-            let c = self.bytes[end];
+        while end < self.src.len() {
+            let c = self.src.as_bytes()[end];
             if c == b'"' {
                 // Closing quote
                 if has_escape {
@@ -247,23 +247,23 @@ impl<'input> Lexer<'input> {
                 if owned.is_empty() {
                     owned.push_str(&self.src[start..end]);
                 }
-                if end + 1 >= self.bytes.len() {
+                if end + 1 >= self.src.len() {
                     // Looks like we've hit the end of the input right after a backslash.
                     // This means the string ends with an incomplete escape sequence, which is an error.
                     self.errors.emit(
-                        start - 1..self.bytes.len(),
+                        start - 1..self.src.len(),
                         Severity::Error,
                         "lexical",
                         LexError::UnterminatedString.as_str(),
                         vec![Label {
-                            span: start - 1..self.bytes.len(),
+                            span: start - 1..self.src.len(),
                             message: "String no get ending quote",
                         }],
                     );
-                    self.pos = self.bytes.len();
+                    self.pos = self.src.len();
                     return Token::String(Cow::Owned(owned));
                 }
-                let esc = self.bytes[end + 1];
+                let esc = self.src.as_bytes()[end + 1];
                 match esc {
                     b'"' => owned.push('"'),
                     b'\\' => owned.push('\\'),
@@ -292,20 +292,17 @@ impl<'input> Lexer<'input> {
         // Looks like we reached the end of the input without finding a closing quote.
         // We'll emit an error to let the user know their string is unterminated.
         self.errors.emit(
-            start - 1..self.bytes.len(),
+            start - 1..self.src.len(),
             Severity::Error,
             "lexical",
             LexError::UnterminatedString.as_str(),
-            vec![Label {
-                span: start - 1..self.bytes.len(),
-                message: "String no get ending quote",
-            }],
+            vec![Label { span: start - 1..self.src.len(), message: "String no get ending quote" }],
         );
-        self.pos = self.bytes.len();
+        self.pos = self.src.len();
         if has_escape {
             Token::String(Cow::Owned(owned))
         } else {
-            Token::String(Cow::Borrowed(&self.src[start..self.bytes.len()]))
+            Token::String(Cow::Borrowed(&self.src[start..self.src.len()]))
         }
     }
 
