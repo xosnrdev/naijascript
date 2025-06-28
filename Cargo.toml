@@ -11,12 +11,9 @@ clap-cargo = { version = "0.15.2", features = ["clap"] }
 dirs = "6.0.0"
 flate2 = "1.1.1"
 regex-lite = "0.1.6"
-reqwest = { version = "0.12.19", features = ["blocking"] }
+reqwest = { version = "0.12.19", default-features = false, features = ["rustls-tls", "blocking", "json"] }
 tar = "0.4.44"
 zip = "4.0.0"
-
-[target.aarch64-unknown-linux-gnu.dependencies]
-openssl = { version = "0.10.73", features = ["vendored"] }
 
 [dev-dependencies]
 criterion = { version = "0.6.0", features = ["html_reports"] }
