@@ -2,8 +2,8 @@ name: Publish Docs
 
 on:
   pull_request:
-    branches:
-      - master
+    # branches:
+    #   - master
   workflow_dispatch:
 
 #   push:
