@@ -1,44 +1,44 @@
-# NaijaScript Interpreter (`naija`)
+# Naija - The Interpreter CLI
 
-The official command-line interpreter for NaijaScript.
+Na the main command-line tool wey dey run NaijaScript.
 
-## Usage
+## How to Use Am
 
-Run `naija --help` to see all available options and commands.
+Run `naija --help` make you see everything wey you fit do.
 
-### 1. Run a Script File
+### 1. How to Run Your Script File
 
-To execute a NaijaScript file (must end with `.ns` or `.naija`):
-
-```sh
-naija your_script.ns
-```
-
-### 2. Evaluate Code from the Command Line
-
-To evaluate a code snippet directly:
+To run your NaijaScript file (e must end with `.ns` or `.naija`):
 
 ```sh
-naija --eval "make x get 5 shout ( x add 2 )"
+naija example.ns
 ```
 
-### 3. Start the Interactive REPL
+### 2. How to Run Code Straight from Command Line
 
-To enter interactive mode:
+To run small code sharp sharp:
+
+```sh
+naija --eval "make x get 5 shout(x add 2)"
+```
+
+### 3. How to Enter REPL (The Play-Play Ground)
+
+To enter the interactive mode:
 
 ```sh
 naija --interactive
 ```
 
-- Type code and press Enter to execute.
-- Type `exit` or press Ctrl+D to quit.
+- Just type your code, press Enter, and e go run.
+- Type `exit` or press Ctrl+D to comot.
 
-### 4. Pipe Code from Standard Input
+### 4. How to Send Code from Another Place
 
-To run code piped from another command or file:
+To run code wey you send from another command or file:
 
 ```sh
-echo "make x get 5 shout ( x add 2 )" | naija -
+echo "make x get 5 shout(x add 2)" | naija -
 ```
 
 Or:
@@ -47,18 +47,18 @@ Or:
 cat your_script.ns | naija -
 ```
 
-## Command-Line Options
+## All the Command-Line Options
 
-- `--eval <code>`, `-e <code>`: Evaluate the provided code string.
-- `--interactive`, `-i`: Start the interactive REPL.
-- `<script>`: Path to a script file to execute (must end with `.ns` or `.naija`).
-- `-h`, `--help`: Show help information.
-- `-V`, `--version`: Show version information.
+- `--eval <code>`, `-e <code>`: E go run the code wey you give am inside the quote.
+- `--interactive`, `-i`: E go start the REPL for you.
+- `<script>`: The path to the script file wey you wan run.
+- `-h`, `--help`: E go show you help message.
+- `-V`, `--version`: E go show you the version of `naija` wey you get.
 
-## Script File Requirements
+## Wetin Your Script File Need
 
-- Script files must have a `.ns` or `.naija` extension.
-- If you pass `-` as the script argument, code will be read from standard input.
+- Your script file must end with `.ns` or `.naija`.
+- If you use `-` as the script name, `naija` go read code from standard input.
 
 ## Examples
 
@@ -67,19 +67,19 @@ cat your_script.ns | naija -
 ```naijascript
 make x get 10
 make y get 20
-shout ( x add y )
+shout(x add y)
 ```
 
-Run it:
+Run am like this:
 
 ```sh
 naija sum.ns
 ```
 
-### Example: Evaluate a Snippet
+### Example: Run Small Code
 
 ```sh
-naija --eval "make x get 2 shout ( x times 3 )"
+naija --eval "make x get 2 shout(x times 3)"
 ```
 
 ### Example: REPL
@@ -88,14 +88,14 @@ naija --eval "make x get 2 shout ( x times 3 )"
 naija --interactive
 ```
 
-## Troubleshooting
+## If Wahala Happen (Troubleshooting)
 
-- **Script Not Running:**
-  - Ensure your script file ends with `.ns` or `.naija`.
-- **Command Not Found:**
-  - Make sure the `naija` binary is in your `PATH`. See the [naijaup toolchain manager documentation](./naijaup.md) for setup and troubleshooting.
-  - If you continue to have issues, please [open an issue on GitHub](https://github.com/xosnrdev/naijascript/issues).
-- **REPL Not Starting:**
+- **Script No Wan Run:**
+  - Check say your script file end with `.ns` or `.naija`.
+- **Command No Dey:**
+  - Make sure say the `naija` program dey your `PATH`. Check the [naijaup documentation](./naijaup.md) to learn how to set am up.
+  - If the wahala still dey, abeg [open issue for us for GitHub](https://github.com/xosnrdev/naijascript/issues).
+- **REPL No Wan Start:**
   - Use `naija --interactive`.
-- **Piping Not Working:**
+- **Piping No Dey Work:**
   - Use `naija -` to read from standard input.
