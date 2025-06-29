@@ -1,0 +1,5 @@
+[book]
+authors = ["Success Kingsley"]
+language = "en"
+src = "./"
+title = "The NaijaScript Interpreter"
