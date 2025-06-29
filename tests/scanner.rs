@@ -3,106 +3,80 @@ use std::borrow::Cow;
 use naijascript::diagnostics::AsStr;
 use naijascript::syntax::scanner::{LexError, Lexer, Token};
 
-#[test]
-fn test_minus_and_divide_keywords() {
-    let src = "minus divide";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::Minus);
-    assert_eq!(lexer.next_token().token, Token::Divide);
-    assert_eq!(lexer.next_token().token, Token::EOF);
+macro_rules! assert_tokens {
+    ($lexer:expr, $($expected:expr),+ $(,)?) => {{
+        let mut lexer = $lexer;
+        $(
+            assert_eq!(&lexer.next_token().token, &$expected);
+        )+
+    }};
 }
 
-#[test]
-fn test_shout_and_jasi_keywords() {
-    let src = "shout jasi";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::Shout);
-    assert_eq!(lexer.next_token().token, Token::Jasi);
-    assert_eq!(lexer.next_token().token, Token::EOF);
-}
+//------------------------------------------------------------------------
+// KEYWORDS
+//------------------------------------------------------------------------
 
 #[test]
-fn test_pass_and_small_pass_keywords() {
-    let src = "pass small pass";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::Pass);
-    assert_eq!(lexer.next_token().token, Token::SmallPass);
-    assert_eq!(lexer.next_token().token, Token::EOF);
+fn test_keywords() {
+    let src = "make get add minus times divide shout jasi start end na pass small pass if to say if not so";
+    assert_tokens!(
+        Lexer::new(src),
+        Token::Make,
+        Token::Get,
+        Token::Add,
+        Token::Minus,
+        Token::Times,
+        Token::Divide,
+        Token::Shout,
+        Token::Jasi,
+        Token::Start,
+        Token::End,
+        Token::Na,
+        Token::Pass,
+        Token::SmallPass,
+        Token::IfToSay,
+        Token::IfNotSo,
+        Token::EOF
+    );
 }
 
-#[test]
-fn test_if_not_so_keyword() {
-    let src = "if not so";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::IfNotSo);
-    assert_eq!(lexer.next_token().token, Token::EOF);
-}
+//------------------------------------------------------------------------
+// PUNCTUATION
+//------------------------------------------------------------------------
 
 #[test]
-fn test_make_get_add_times_keywords() {
-    let src = "make get add times";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::Make);
-    assert_eq!(lexer.next_token().token, Token::Get);
-    assert_eq!(lexer.next_token().token, Token::Add);
-    assert_eq!(lexer.next_token().token, Token::Times);
-    assert_eq!(lexer.next_token().token, Token::EOF);
-}
-
-#[test]
-fn test_start_end_na_if_to_say_keywords() {
-    let src = "start end na if to say";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::Start);
-    assert_eq!(lexer.next_token().token, Token::End);
-    assert_eq!(lexer.next_token().token, Token::Na);
-    assert_eq!(lexer.next_token().token, Token::IfToSay);
-    assert_eq!(lexer.next_token().token, Token::EOF);
-}
-
-#[test]
-fn test_parentheses() {
+fn test_punctuation() {
     let src = "( )";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::LParen);
-    assert_eq!(lexer.next_token().token, Token::RParen);
-    assert_eq!(lexer.next_token().token, Token::EOF);
+    assert_tokens!(Lexer::new(src), Token::LParen, Token::RParen, Token::EOF);
 }
 
-#[test]
-fn test_integer_number() {
-    let src = "42";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::Number("42"));
-    assert_eq!(lexer.next_token().token, Token::EOF);
-}
+//------------------------------------------------------------------------
+// IDENTIFIERS
+//------------------------------------------------------------------------
 
 #[test]
-fn test_number_with_decimal() {
-    let src = "3.14 0.5";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::Number("3.14"));
-    assert_eq!(lexer.next_token().token, Token::Number("0.5"));
-    assert_eq!(lexer.next_token().token, Token::EOF);
+fn test_variable_length_tokens() {
+    let src = r#"foo bar foo1 bar2 42 3.14 0.5 "hello world""#;
+    let mut src_owned = String::from(src);
+    src_owned.push_str(r#" """#); // Add empty string
+    assert_tokens!(
+        Lexer::new(&src_owned),
+        Token::Identifier("foo"),
+        Token::Identifier("bar"),
+        Token::Identifier("foo1"),
+        Token::Identifier("bar2"),
+        Token::Number("42"),
+        Token::Number("3.14"),
+        Token::Number("0.5"),
+        Token::String(Cow::Borrowed("hello world")),
+        Token::String(Cow::Borrowed("")),
+        Token::EOF
+    );
 }
 
-#[test]
-fn test_identifier_letters_only() {
-    let src = "foo bar";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::Identifier("foo"));
-    assert_eq!(lexer.next_token().token, Token::Identifier("bar"));
-    assert_eq!(lexer.next_token().token, Token::EOF);
-}
-
-#[test]
-fn test_identifier_with_digits() {
-    let src = "foo1 bar2";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::Identifier("foo1"));
-    assert_eq!(lexer.next_token().token, Token::Identifier("bar2"));
-    assert_eq!(lexer.next_token().token, Token::EOF);
-}
+//------------------------------------------------------------------------
+// STRING LITERALS
+//------------------------------------------------------------------------
 
 #[test]
 fn test_string_with_invalid_escape() {
@@ -149,103 +123,91 @@ fn test_invalid_number() {
 }
 
 #[test]
-fn test_whitespace_between_tokens() {
-    let src = "make   x   get   1";
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::Make);
-    assert_eq!(lexer.next_token().token, Token::Identifier("x"));
-    assert_eq!(lexer.next_token().token, Token::Get);
-    assert_eq!(lexer.next_token().token, Token::Number("1"));
-    assert_eq!(lexer.next_token().token, Token::EOF);
-}
-
-#[test]
 fn test_plain_string() {
     let src = r#""hello world""#;
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::String(Cow::Borrowed("hello world")));
-    assert_eq!(lexer.next_token().token, Token::EOF);
+    assert_tokens!(Lexer::new(src), Token::String(Cow::Borrowed("hello world")), Token::EOF);
 }
 
 #[test]
 fn test_string_with_newline_escape() {
     let src = r#""line\nnext""#;
-    let mut lexer = Lexer::new(src);
-    assert_eq!(
-        lexer.next_token().token,
-        Token::String(Cow::Owned("line\nnext".replace("\\n", "\n")))
+    assert_tokens!(
+        Lexer::new(src),
+        Token::String(Cow::Owned("line\nnext".replace("\\n", "\n"))),
+        Token::EOF
     );
-    assert_eq!(lexer.next_token().token, Token::EOF);
 }
 
 #[test]
 fn test_string_with_tab_escape() {
     let src = r#""tab\tend""#;
-    let mut lexer = Lexer::new(src);
-    assert_eq!(
-        lexer.next_token().token,
-        Token::String(Cow::Owned("tab\tend".replace("\\t", "\t")))
+    assert_tokens!(
+        Lexer::new(src),
+        Token::String(Cow::Owned("tab\tend".replace("\\t", "\t"))),
+        Token::EOF
     );
-    assert_eq!(lexer.next_token().token, Token::EOF);
 }
 
 #[test]
 fn test_string_with_escaped_quote() {
     let src = r#""foo\"bar""#;
-    let mut lexer = Lexer::new(src);
-    assert_eq!(
-        lexer.next_token().token,
-        Token::String(Cow::Owned("foo\"bar".replace("\\\"", "\"")))
+    assert_tokens!(
+        Lexer::new(src),
+        Token::String(Cow::Owned("foo\"bar".replace("\\\"", "\""))),
+        Token::EOF
     );
-    assert_eq!(lexer.next_token().token, Token::EOF);
 }
 
 #[test]
 fn test_string_with_escaped_backslash() {
     let src = r#""foo\\bar""#;
-    let mut lexer = Lexer::new(src);
-    assert_eq!(
-        lexer.next_token().token,
-        Token::String(Cow::Owned("foo\\bar".replace("\\\\", "\\")))
+    assert_tokens!(
+        Lexer::new(src),
+        Token::String(Cow::Owned("foo\\bar".replace("\\\\", "\\"))),
+        Token::EOF
     );
-    assert_eq!(lexer.next_token().token, Token::EOF);
 }
 
 #[test]
 fn test_empty_string() {
-    let src = r#"""#;
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::String(Cow::Borrowed("")));
-    assert_eq!(lexer.next_token().token, Token::EOF);
+    let src = r#""""#;
+    assert_tokens!(Lexer::new(src), Token::String(Cow::Borrowed("")), Token::EOF);
 }
 
 #[test]
 fn test_string_with_only_quote() {
     let src = r#""\"""#;
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::String(Cow::Owned("\"".replace("\\\"", "\""))));
-    assert_eq!(lexer.next_token().token, Token::EOF);
+    assert_tokens!(
+        Lexer::new(src),
+        Token::String(Cow::Owned("\"".replace("\\\"", "\""))),
+        Token::EOF
+    );
 }
 
 #[test]
 fn test_string_with_only_backslash() {
     let src = r#""\\""#;
-    let mut lexer = Lexer::new(src);
-    assert_eq!(lexer.next_token().token, Token::String(Cow::Owned("\\".replace("\\\\", "\\"))));
-    assert_eq!(lexer.next_token().token, Token::EOF);
+    assert_tokens!(
+        Lexer::new(src),
+        Token::String(Cow::Owned("\\".replace("\\\\", "\\"))),
+        Token::EOF
+    );
 }
 
 #[test]
 fn test_string_with_all_valid_escapes() {
     let src = r#""\n\t\"\\""#;
-    let mut lexer = Lexer::new(src);
-    let expected = "\n\t\"\\"
-        .replace("\\n", "\n")
-        .replace("\\t", "\t")
-        .replace("\\\"", "\"")
-        .replace("\\\\", "\\");
-    assert_eq!(lexer.next_token().token, Token::String(Cow::Owned(expected)));
-    assert_eq!(lexer.next_token().token, Token::EOF);
+    assert_tokens!(
+        Lexer::new(src),
+        Token::String(Cow::Owned(
+            "\n\t\"\\"
+                .replace("\\n", "\n")
+                .replace("\\t", "\t")
+                .replace("\\\"", "\"")
+                .replace("\\\\", "\\")
+        )),
+        Token::EOF
+    );
 }
 
 #[test]
@@ -265,11 +227,12 @@ fn test_string_with_mixed_valid_and_invalid_escapes() {
 
 #[test]
 fn test_string_with_all_ascii_except_quote_and_backslash() {
-    let src = "\"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=;:',.<>/?|[]{}~`\"";
-    let mut lexer = Lexer::new(src);
-    let expected = Cow::Borrowed(
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=;:',.<>/?|[]{}~`",
+    let src = r#""abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=;:',.<>/?|[]{}~`""#;
+    assert_tokens!(
+        Lexer::new(src),
+        Token::String(Cow::Borrowed(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=;:',.<>/?|[]{}~`"
+        )),
+        Token::EOF
     );
-    assert_eq!(lexer.next_token().token, Token::String(expected));
-    assert_eq!(lexer.next_token().token, Token::EOF);
 }
