@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
-use crate::syntax::scanner::{Lexer, Token};
+use crate::syntax::scanner::{Lexer, SpannedToken, Token};
 
 /// Arena allocator for AST nodes - our answer to memory management without garbage collection.
 ///
@@ -172,8 +172,8 @@ impl AsStr for SyntaxError {
 /// messages in one parse, which is much more helpful than stopping at the first error.
 pub struct Parser<'src> {
     pub lexer: Lexer<'src>,
-    cur: Token<'src>,    // Current token (one token lookahead)
-    errors: Diagnostics, // Collect all syntax errors, don't fail fast
+    cur: SpannedToken<'src>, // Current spanned token (one token lookahead)
+    errors: Diagnostics,     // Collect all syntax errors, don't fail fast
 
     // Separate arenas for each AST node type - type safety without runtime cost
     pub stmt_arena: Arena<Stmt<'src>>,
@@ -215,9 +215,9 @@ impl<'src> Parser<'src> {
     #[inline(always)]
     pub fn parse_program(&mut self) -> (BlockId, Diagnostics) {
         let block_id = self.parse_program_body();
-        if self.cur != Token::EOF {
+        if self.cur.token != Token::EOF {
             self.errors.emit(
-                self.lexer.pos..self.lexer.pos + 1,
+                self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::TrailingTokensAfterProgramEnd.as_str(),
@@ -233,15 +233,15 @@ impl<'src> Parser<'src> {
     /// statement start - this is crucial for good error recovery.
     #[inline(always)]
     fn parse_block_body(&mut self) -> BlockId {
-        let start = self.lexer.pos;
+        let start = self.cur.span.start;
         let mut stmts = Vec::new();
-        while !matches!(self.cur, Token::EOF | Token::End) {
+        while !matches!(self.cur.token, Token::EOF | Token::End) {
             match self.parse_statement() {
                 Some(sid) => stmts.push(sid),
                 None => self.synchronize(), // Skip to next statement on error
             }
         }
-        let end = self.lexer.pos;
+        let end = self.cur.span.end;
         self.block_arena.alloc(Block { stmts, span: start..end })
     }
 
@@ -252,7 +252,7 @@ impl<'src> Parser<'src> {
     #[inline(always)]
     fn synchronize(&mut self) {
         while !matches!(
-            self.cur,
+            self.cur.token,
             Token::EOF | Token::Make | Token::Shout | Token::IfToSay | Token::Jasi | Token::End
         ) {
             self.bump();
@@ -264,53 +264,58 @@ impl<'src> Parser<'src> {
     /// Returns None on error to trigger error recovery in the caller.
     #[inline(always)]
     fn parse_statement(&mut self) -> Option<StmtId> {
-        let start = self.lexer.pos;
-        match self.cur {
+        let start = self.cur.span.start;
+        match &self.cur.token {
             Token::Make => self.parse_assignment(start),
             Token::Shout => self.parse_shout(start),
             Token::IfToSay => self.parse_if(start),
             Token::Jasi => self.parse_loop(start),
             Token::Identifier(var) => {
+                let var_name = *var;
+                let var_span = self.cur.span.clone();
                 // Peek ahead for reassignment: <identifier> 'get' <expression>
                 self.bump();
-                if self.cur == Token::Get {
+                if let Token::Get = self.cur.token {
                     self.bump();
                     let expr = self.parse_expression(0);
-                    let end = self.lexer.pos;
-                    let sid =
-                        self.stmt_arena.alloc(Stmt::AssignExisting { var, expr, span: start..end });
+                    let end = self.cur.span.end;
+                    let sid = self.stmt_arena.alloc(Stmt::AssignExisting {
+                        var: var_name,
+                        expr,
+                        span: start..end,
+                    });
                     Some(sid)
                 } else {
                     // Not a reassignment, error and do not consume
                     let mut message = "I dey expect statement for here";
                     // Suggest a keyword if close to a known one
-                    if Self::suggest_keyword(var, "make").is_some() {
+                    if Self::suggest_keyword(var_name, "make").is_some() {
                         message = "You fit mean `make`?";
-                    } else if Self::suggest_keyword(var, "shout").is_some() {
+                    } else if Self::suggest_keyword(var_name, "shout").is_some() {
                         message = "You fit mean `shout`?";
-                    } else if Self::suggest_keyword(var, "jasi").is_some() {
+                    } else if Self::suggest_keyword(var_name, "jasi").is_some() {
                         message = "You fit mean `jasi`?";
-                    } else if Self::suggest_keyword(var, "if").is_some() {
+                    } else if Self::suggest_keyword(var_name, "if").is_some() {
                         message = "You fit mean `if to say`?";
                     }
                     self.errors.emit(
-                        start..self.lexer.pos,
+                        var_span.clone(),
                         Severity::Error,
                         "syntax",
                         SyntaxError::ExpectedStatement.as_str(),
-                        vec![Label { span: start..self.lexer.pos, message }],
+                        vec![Label { span: var_span, message }],
                     );
                     None
                 }
             }
             _ => {
                 self.errors.emit(
-                    start..self.lexer.pos,
+                    self.cur.span.clone(),
                     Severity::Error,
                     "syntax",
                     SyntaxError::ExpectedStatement.as_str(),
                     vec![Label {
-                        span: start..self.lexer.pos,
+                        span: self.cur.span.clone(),
                         message: "I dey expect `make`, `shout`, `if to say`, `jasi`, or variable reassignment for here",
                     }],
                 );
@@ -326,39 +331,41 @@ impl<'src> Parser<'src> {
     /// with error recovery and might catch additional errors in the expression.
     #[inline(always)]
     fn parse_assignment(&mut self, start: usize) -> Option<StmtId> {
+        let make_span = self.cur.span.clone();
         self.bump(); // consume 'make'
-        let var = if let Token::Identifier(name) = &self.cur {
-            *name
+        let (var, var_span) = if let Token::Identifier(name) = &self.cur.token {
+            (*name, self.cur.span.clone())
         } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                make_span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedIdentifierAfterMake.as_str(),
                 vec![Label {
-                    span: self.lexer.pos..self.lexer.pos + 1,
+                    span: self.cur.span.clone(),
                     message: "Put variable name after `make` for here",
                 }],
             );
             return None;
         };
         self.bump();
-        if self.cur != Token::Get {
+        if let Token::Get = self.cur.token {
+            self.bump();
+        } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                var_span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedGetAfterIdentifier.as_str(),
                 vec![Label {
-                    span: self.lexer.pos..self.lexer.pos + 1,
+                    span: self.cur.span.clone(),
                     message: "Put `get` after variable name for here",
                 }],
             );
             return None;
         }
-        self.bump();
         let expr = self.parse_expression(0);
-        let end = self.lexer.pos;
+        let end = self.cur.span.end;
         let sid = self.stmt_arena.alloc(Stmt::Assign { var, expr, span: start..end });
         Some(sid)
     }
@@ -368,37 +375,40 @@ impl<'src> Parser<'src> {
     /// Straightforward function-call syntax - the parentheses are mandatory.
     #[inline(always)]
     fn parse_shout(&mut self, start: usize) -> Option<StmtId> {
+        let shout_span = self.cur.span.clone();
         self.bump(); // consume 'shout'
-        if self.cur != Token::LParen {
+        if let Token::LParen = self.cur.token {
+            self.bump();
+        } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                shout_span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedLParenAfterShout.as_str(),
                 vec![Label {
-                    span: self.lexer.pos..self.lexer.pos + 1,
+                    span: self.cur.span.clone(),
                     message: "Put `(` after `shout` for here",
                 }],
             );
             return None;
         }
-        self.bump();
         let expr = self.parse_expression(0);
-        if self.cur != Token::RParen {
+        if let Token::RParen = self.cur.token {
+            self.bump();
+        } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedRParenAfterShout.as_str(),
                 vec![Label {
-                    span: self.lexer.pos..self.lexer.pos + 1,
+                    span: self.cur.span.clone(),
                     message: "Close shout with `)` for here",
                 }],
             );
             return None;
         }
-        self.bump();
-        let end = self.lexer.pos;
+        let end = self.cur.span.end;
         Some(self.stmt_arena.alloc(Stmt::Shout { expr, span: start..end }))
     }
 
@@ -408,96 +418,102 @@ impl<'src> Parser<'src> {
     /// The error recovery here tries to parse as much as possible even if parts fail.
     #[inline(always)]
     fn parse_if(&mut self, start: usize) -> Option<StmtId> {
+        let if_span = self.cur.span.clone();
         self.bump(); // consume 'if to say'
-        if self.cur != Token::LParen {
+        if let Token::LParen = self.cur.token {
+            self.bump();
+        } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                if_span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedLParenAfterIf.as_str(),
                 vec![Label {
-                    span: self.lexer.pos..self.lexer.pos + 1,
+                    span: self.cur.span.clone(),
                     message: "Put `(` after `if to say` for here",
                 }],
             );
             return None;
         }
-        self.bump();
         let cond = self.parse_condition();
-        if self.cur != Token::RParen {
+        if let Token::RParen = self.cur.token {
+            self.bump();
+        } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedRParenAfterIf.as_str(),
                 vec![Label {
-                    span: self.lexer.pos..self.lexer.pos + 1,
+                    span: self.cur.span.clone(),
                     message: "Close condition with `)` for here",
                 }],
             );
             return None;
         }
-        self.bump();
 
-        // Parse the mandatory then-block
-        if self.cur != Token::Start {
+        // Parser the mandatory then-block
+        if let Token::Start = self.cur.token {
+            self.bump();
+        } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedStartForThenBlock.as_str(),
                 vec![Label {
-                    span: self.lexer.pos..self.lexer.pos + 1,
+                    span: self.cur.span.clone(),
                     message: "Begin block with `start` for here",
                 }],
             );
             return None;
         }
-        self.bump();
         let then_b = self.parse_block_body();
-        if self.cur == Token::End {
+        if let Token::End = self.cur.token {
             self.bump();
         } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::UnterminatedThenBlock.as_str(),
                 vec![Label {
-                    span: start..start + 5, // highlight 'start'
+                    span: self.cur.span.clone(),
                     message: "Dis block start here, but I no see `end`",
                 }],
             );
         }
 
         // Parse optional else block - "if not so" is our else keyword
-        let else_b = if self.cur == Token::IfNotSo {
+        let else_b = if let Token::IfNotSo = self.cur.token {
+            let else_span = self.cur.span.clone();
             self.bump();
-            if self.cur != Token::Start {
+            if let Token::Start = self.cur.token {
+                self.bump();
+            } else {
                 self.errors.emit(
-                    start..self.lexer.pos,
+                    self.cur.span.clone(),
                     Severity::Error,
                     "syntax",
                     SyntaxError::ExpectedStartForElseBlock.as_str(),
                     vec![Label {
-                        span: self.lexer.pos..self.lexer.pos + 1,
+                        span: self.cur.span.clone(),
                         message: "Begin else block with `start` for here",
                     }],
                 );
                 return None;
             }
-            self.bump();
             let b = self.parse_block_body();
-            if self.cur == Token::End {
+            if let Token::End = self.cur.token {
                 self.bump();
             } else {
                 self.errors.emit(
-                    start..self.lexer.pos,
+                    else_span.clone(),
                     Severity::Error,
                     "syntax",
                     SyntaxError::UnterminatedElseBlock.as_str(),
                     vec![Label {
-                        span: start..start + 5,
+                        span: else_span,
                         message: "Dis else block start here, but I no see `end`",
                     }],
                 );
@@ -506,7 +522,7 @@ impl<'src> Parser<'src> {
         } else {
             None
         };
-        let end = self.lexer.pos;
+        let end = self.cur.span.end;
         let sid = self.stmt_arena.alloc(Stmt::If { cond, then_b, else_b, span: start..end });
         Some(sid)
     }
@@ -516,66 +532,70 @@ impl<'src> Parser<'src> {
     /// "jasi" appears to be Nigerian Pidgin for some kind of loop construct.
     #[inline(always)]
     fn parse_loop(&mut self, start: usize) -> Option<StmtId> {
+        let loop_span = self.cur.span.clone();
         self.bump(); // consume 'jasi'
-        if self.cur != Token::LParen {
+        if let Token::LParen = self.cur.token {
+            self.bump();
+        } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                loop_span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedLParenAfterJasi.as_str(),
                 vec![Label {
-                    span: self.lexer.pos..self.lexer.pos + 1,
+                    span: self.cur.span.clone(),
                     message: "Put `(` after `jasi` for here",
                 }],
             );
             return None;
         }
-        self.bump();
         let cond = self.parse_condition();
-        if self.cur != Token::RParen {
+        if let Token::RParen = self.cur.token {
+            self.bump();
+        } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedRParenAfterJasi.as_str(),
                 vec![Label {
-                    span: self.lexer.pos..self.lexer.pos + 1,
+                    span: self.cur.span.clone(),
                     message: "Close loop condition with `)` for here",
                 }],
             );
             return None;
         }
-        self.bump();
-        if self.cur != Token::Start {
+        if let Token::Start = self.cur.token {
+            self.bump();
+        } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedStartForLoopBody.as_str(),
                 vec![Label {
-                    span: self.lexer.pos..self.lexer.pos + 1,
+                    span: self.cur.span.clone(),
                     message: "Begin loop body with `start` for here",
                 }],
             );
             return None;
         }
-        self.bump();
         let body = self.parse_block_body();
-        if self.cur == Token::End {
+        if let Token::End = self.cur.token {
             self.bump();
         } else {
             self.errors.emit(
-                start..self.lexer.pos,
+                self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::UnterminatedLoopBody.as_str(),
                 vec![Label {
-                    span: start..start + 5,
+                    span: self.cur.span.clone(),
                     message: "Dis loop body start here, but I no see `end`",
                 }],
             );
         }
-        let end = self.lexer.pos;
+        let end = self.cur.span.end;
         let sid = self.stmt_arena.alloc(Stmt::Loop { cond, body, span: start..end });
         Some(sid)
     }
@@ -585,20 +605,20 @@ impl<'src> Parser<'src> {
     /// Always a binary comparison - no compound conditions yet.
     #[inline(always)]
     fn parse_condition(&mut self) -> CondId {
-        let start = self.lexer.pos;
+        let start = self.cur.span.start;
         let lhs = self.parse_expression(0);
-        let op = match self.cur {
+        let op = match &self.cur.token {
             Token::Na => CmpOp::Eq,        // "na" means equals
             Token::Pass => CmpOp::Gt,      // "pass" means greater than
             Token::SmallPass => CmpOp::Lt, // "small pass" means less than
             _ => {
                 self.errors.emit(
-                    start..self.lexer.pos,
+                    self.cur.span.clone(),
                     Severity::Error,
                     "syntax",
                     SyntaxError::ExpectedComparisonOperator.as_str(),
                     vec![Label {
-                        span: self.lexer.pos..self.lexer.pos + 1,
+                        span: self.cur.span.clone(),
                         message: "Use `na`, `pass`, or `small pass` to compare for here",
                     }],
                 );
@@ -607,7 +627,7 @@ impl<'src> Parser<'src> {
         };
         self.bump();
         let rhs = self.parse_expression(0);
-        let end = self.lexer.pos;
+        let end = self.cur.span.end;
         self.cond_arena.alloc(Cond { op, lhs, rhs, span: start..end })
     }
 
@@ -621,24 +641,23 @@ impl<'src> Parser<'src> {
     /// Inspiration: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
     #[inline(always)]
     fn parse_expression(&mut self, min_bp: u8) -> ExprId {
-        let start = self.lexer.pos;
+        let start = self.cur.span.start;
         // Parse the left-hand side (primary expression)
-        let mut lhs = match &self.cur {
+        let mut lhs = match &self.cur.token {
             Token::Number(n) => {
-                let s = start..self.lexer.pos + n.len();
+                let s = self.cur.span.clone();
                 let id = self.expr_arena.alloc(Expr::Number(n, s));
                 self.bump();
                 id
             }
             Token::String(sval) => {
-                let len = sval.len();
-                let s = start..self.lexer.pos + len + 2; // +2 for quotes
+                let s = self.cur.span.clone();
                 let id = self.expr_arena.alloc(Expr::String(sval.clone(), s));
                 self.bump();
                 id
             }
             Token::Identifier(v) => {
-                let s = start..self.lexer.pos + v.len();
+                let s = self.cur.span.clone();
                 let id = self.expr_arena.alloc(Expr::Var(v, s));
                 self.bump();
                 id
@@ -646,34 +665,34 @@ impl<'src> Parser<'src> {
             Token::LParen => {
                 self.bump();
                 let expr = self.parse_expression(0); // Reset precedence inside parentheses
-                if self.cur != Token::RParen {
+                if let Token::RParen = self.cur.token {
+                    self.bump();
+                } else {
                     self.errors.emit(
-                        start..self.lexer.pos,
+                        self.cur.span.clone(),
                         Severity::Error,
                         "syntax",
                         SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                         vec![Label {
-                            span: self.lexer.pos..self.lexer.pos + 1,
+                            span: self.cur.span.clone(),
                             message: "Close expression with `)` for here",
                         }],
                     );
-                } else {
-                    self.bump();
                 }
                 expr
             }
             _ => {
                 self.errors.emit(
-                    start..self.lexer.pos,
+                    self.cur.span.clone(),
                     Severity::Error,
                     "syntax",
                     SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                     vec![Label {
-                        span: self.lexer.pos..self.lexer.pos + 1,
+                        span: self.cur.span.clone(),
                         message: "I dey expect number, variable, or ( for here",
                     }],
                 );
-                let s = start..self.lexer.pos;
+                let s = self.cur.span.clone();
                 let id = self.expr_arena.alloc(Expr::Number("0", s));
                 self.bump();
                 id
@@ -682,7 +701,7 @@ impl<'src> Parser<'src> {
 
         // Parse binary operators with precedence climbing
         loop {
-            let op = match self.cur {
+            let op = match &self.cur.token {
                 Token::Times => BinOp::Times,
                 Token::Divide => BinOp::Divide,
                 Token::Add => BinOp::Add,
@@ -702,7 +721,7 @@ impl<'src> Parser<'src> {
             }
             self.bump(); // consume the operator
             let rhs = self.parse_expression(r_bp); // Parse right side with higher precedence
-            let end = self.lexer.pos;
+            let end = self.cur.span.end;
             lhs = self.expr_arena.alloc(Expr::Binary { op, lhs, rhs, span: start..end });
         }
         lhs
@@ -741,12 +760,12 @@ impl<'src> Parser<'src> {
     /// This implements: <program> ::= <statement_list> where statement_list ends at non-statements.
     #[inline(always)]
     fn parse_program_body(&mut self) -> BlockId {
-        let start = self.lexer.pos;
+        let start = self.cur.span.start;
         let mut stmts = Vec::new();
 
         // Keep parsing statements until we hit EOF or an invalid statement token
         while matches!(
-            self.cur,
+            &self.cur.token,
             Token::Make | Token::Shout | Token::IfToSay | Token::Jasi | Token::Identifier(_)
         ) {
             match self.parse_statement() {
@@ -754,7 +773,7 @@ impl<'src> Parser<'src> {
                 None => self.synchronize(), // Skip to next statement on error
             }
         }
-        let end = self.lexer.pos;
+        let end = self.cur.span.end;
         self.block_arena.alloc(Block { stmts, span: start..end })
     }
 }

@@ -98,14 +98,13 @@ impl Diagnostics {
             let caret_count = (diag.span.end.saturating_sub(diag.span.start)).max(1);
             let caret_line = Self::render_caret_line(col, caret_count, color, &plain_gutter);
 
-            let main_line = line;
             // Partition labels based on whether they're on the same line as the main diagnostic.
             // This affects how we render them - same-line labels appear as underlines below
             // the source line, while cross-line labels get their own source context.
             let (same_line_labels, cross_line_labels): (Vec<_>, Vec<_>) =
                 diag.labels.iter().partition(|label| {
                     let (label_line, _, _, _) = Self::line_col_from_span(src, label.span.start);
-                    label_line == main_line
+                    label_line == line
                 });
 
             // Render same-line labels as underlines with dashes
