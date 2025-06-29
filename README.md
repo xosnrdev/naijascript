@@ -27,11 +27,11 @@ A scripting language for learning, automation, and fun with Naija (Nigerian) lin
      naijaup default latest
      ```
 
-3. **Explore Documentation and Examples**
+3. **Explore Documentation**
    - [Toolchain Manager (`naijaup`)](./docs/naijaup.md): Installation, version management, troubleshooting, advanced usage.
    - [Interpreter (`naija`)](./docs/naija.md): Running scripts, REPL, evaluating code, piping, CLI options, troubleshooting.
    - [Language Design](./docs/DESIGN.md): Philosophy and architecture behind NaijaScript.
-   - [Examples](./examples): Syntax samples and practical usage.
+   - [Language Reference Manual](./docs/LRM.md): The official language specification.
 
 ## License
 
