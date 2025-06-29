@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
+use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 
 /// Represents the type of lexical errors that can occur during tokenization
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +70,13 @@ pub enum Token<'input> {
     EOF, // End of file
 }
 
+/// Represents a token along with its location in the original source text.
+#[derive(Debug, PartialEq)]
+pub struct SpannedToken<'input> {
+    pub token: Token<'input>,
+    pub span: Span,
+}
+
 /// Our lexical analyzer that breaks source text into tokens
 ///
 /// We use a byte-based scanner for performance rather than working with Unicode
@@ -90,7 +97,7 @@ impl<'input> Lexer<'input> {
         Lexer { src, pos: 0, errors: Diagnostics::default() }
     }
 
-    /// Returns the next token from the input.
+    /// Returns the next token and its span from the input.
     ///
     /// This is the main loop of the lexer. We process the input byte by byte,
     /// skipping whitespace, and then matching on the next character to decide
@@ -99,7 +106,7 @@ impl<'input> Lexer<'input> {
     /// we delegate to a helper function that handles the details.
     /// If we encounter something we don't recognize, we emit an error and keep going.
     #[inline(always)]
-    pub fn next_token(&mut self) -> Token<'input> {
+    pub fn next_token(&mut self) -> SpannedToken<'input> {
         loop {
             // Skip over any whitespace before the next token
             self.skip_whitespace();
@@ -110,26 +117,29 @@ impl<'input> Lexer<'input> {
             // Check for EOF first
             let b = self.peek();
             if b == 0 {
-                return Token::EOF;
+                return SpannedToken { token: Token::EOF, span: start..start };
             }
 
             // String literals
             if b == b'"' {
-                return self.scan_string();
+                let token = self.scan_string();
+                return SpannedToken { token, span: start..self.pos };
             }
-            if let Some(tok) = self.scan_paren(b) {
-                return tok;
+            if let Some(token) = self.scan_paren(b) {
+                return SpannedToken { token, span: start..self.pos };
             }
             if Self::is_digit(b) {
-                return self.scan_number(start);
+                let token = self.scan_number(start);
+                return SpannedToken { token, span: start..self.pos };
             }
             if Self::is_alpha(b) {
-                return self.scan_identifier_or_keyword(start);
+                let token = self.scan_identifier_or_keyword(start);
+                return SpannedToken { token, span: start..self.pos };
             }
             if b != 0
-                && let Some(tok) = self.scan_unexpected(start)
+                && let Some(token) = self.scan_unexpected(start)
             {
-                return tok;
+                return SpannedToken { token, span: start..self.pos };
             }
             self.bump();
         }
@@ -350,7 +360,7 @@ impl<'input> Lexer<'input> {
                     }],
                 );
                 self.bump();
-                return self.next_token();
+                return self.next_token().token;
             }
             while Self::is_digit(self.peek()) {
                 self.bump();
@@ -368,7 +378,7 @@ impl<'input> Lexer<'input> {
                 LexError::InvalidNumber.as_str(),
                 vec![Label { span: extra_dot..self.pos, message: "Number get extra dot" }],
             );
-            return self.next_token();
+            return self.next_token().token;
         }
 
         // If the next character is a letter, that means the user wrote something like "1foo".
@@ -450,15 +460,13 @@ impl<'input> Lexer<'input> {
                 let mut chars = other.chars();
                 if let Some(first) = chars.next() {
                     if !first.is_ascii_alphabetic() {
-                        let id_start = start;
-                        let id_end = self.pos;
                         self.errors.emit(
-                            id_start..id_end,
+                            start..self.pos,
                             Severity::Error,
                             "lexical",
                             LexError::InvalidIdentifier.as_str(),
                             vec![Label {
-                                span: id_start..id_start + 1,
+                                span: start..start + 1,
                                 message: "Identifier must start with letter",
                             }],
                         );
@@ -493,14 +501,12 @@ impl<'input> Lexer<'input> {
 
     #[inline(always)]
     fn scan_unexpected(&mut self, start: usize) -> Option<Token<'input>> {
-        let err_pos = self.pos;
-        self.bump();
         self.errors.emit(
             start..self.pos,
             Severity::Error,
             "lexical",
             LexError::UnexpectedChar.as_str(),
-            vec![Label { span: err_pos..self.pos, message: "Dis character no dey grammar" }],
+            vec![Label { span: self.pos..self.pos, message: "Dis character no dey grammar" }],
         );
         None
     }

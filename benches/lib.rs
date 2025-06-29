@@ -6,20 +6,20 @@ use naijascript::syntax::scanner::{Lexer, Token};
 
 fn bench_lexer(c: &mut Criterion) {
     let input = black_box(
-        "make x get 5\n\
+        r#"make x get 5\n\
          shout (x add 1)\n\
          if to say (x na 5) start make y get 1 end\n\
-         jasi (x small pass 10) start make x get x add 1 end\n",
+         jasi (x small pass 10) start make x get x add 1 end\n"#,
     );
     c.bench_function("lexer", |b| {
         b.iter(|| {
             let mut lexer = Lexer::new(input);
             loop {
-                let token = lexer.next_token();
-                if token == Token::EOF {
+                let st = lexer.next_token();
+                if st.token == Token::EOF {
                     break;
                 }
-                black_box(token);
+                black_box(st);
             }
         })
     });
@@ -27,10 +27,10 @@ fn bench_lexer(c: &mut Criterion) {
 
 fn bench_parser(c: &mut Criterion) {
     let input = black_box(
-        "make x get 5\n\
+        r#"make x get 5\n\
          shout (x add 1)\n\
          if to say (x na 5) start make y get 1 end\n\
-         jasi (x small pass 10) start make x get x add 1 end\n",
+         jasi (x small pass 10) start make x get x add 1 end\n"#,
     );
     c.bench_function("parser", |b| {
         b.iter(|| {
