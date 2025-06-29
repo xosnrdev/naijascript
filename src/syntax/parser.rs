@@ -241,8 +241,7 @@ impl<'src> Parser<'src> {
                 None => self.synchronize(), // Skip to next statement on error
             }
         }
-        let end = self.cur.span.end;
-        self.block_arena.alloc(Block { stmts, span: start..end })
+        self.block_arena.alloc(Block { stmts, span: start..self.cur.span.end })
     }
 
     /// Error recovery mechanism - skips tokens until we find a likely statement start.
@@ -278,11 +277,10 @@ impl<'src> Parser<'src> {
                 if let Token::Get = self.cur.token {
                     self.bump();
                     let expr = self.parse_expression(0);
-                    let end = self.cur.span.end;
                     let sid = self.stmt_arena.alloc(Stmt::AssignExisting {
                         var: var_name,
                         expr,
-                        span: start..end,
+                        span: start..self.cur.span.end,
                     });
                     Some(sid)
                 } else {
@@ -365,8 +363,7 @@ impl<'src> Parser<'src> {
             return None;
         }
         let expr = self.parse_expression(0);
-        let end = self.cur.span.end;
-        let sid = self.stmt_arena.alloc(Stmt::Assign { var, expr, span: start..end });
+        let sid = self.stmt_arena.alloc(Stmt::Assign { var, expr, span: start..self.cur.span.end });
         Some(sid)
     }
 
@@ -408,8 +405,7 @@ impl<'src> Parser<'src> {
             );
             return None;
         }
-        let end = self.cur.span.end;
-        Some(self.stmt_arena.alloc(Stmt::Shout { expr, span: start..end }))
+        Some(self.stmt_arena.alloc(Stmt::Shout { expr, span: start..self.cur.span.end }))
     }
 
     /// Parses if statements with optional else blocks.
@@ -522,8 +518,12 @@ impl<'src> Parser<'src> {
         } else {
             None
         };
-        let end = self.cur.span.end;
-        let sid = self.stmt_arena.alloc(Stmt::If { cond, then_b, else_b, span: start..end });
+        let sid = self.stmt_arena.alloc(Stmt::If {
+            cond,
+            then_b,
+            else_b,
+            span: start..self.cur.span.end,
+        });
         Some(sid)
     }
 
@@ -595,8 +595,7 @@ impl<'src> Parser<'src> {
                 }],
             );
         }
-        let end = self.cur.span.end;
-        let sid = self.stmt_arena.alloc(Stmt::Loop { cond, body, span: start..end });
+        let sid = self.stmt_arena.alloc(Stmt::Loop { cond, body, span: start..self.cur.span.end });
         Some(sid)
     }
 
@@ -627,8 +626,7 @@ impl<'src> Parser<'src> {
         };
         self.bump();
         let rhs = self.parse_expression(0);
-        let end = self.cur.span.end;
-        self.cond_arena.alloc(Cond { op, lhs, rhs, span: start..end })
+        self.cond_arena.alloc(Cond { op, lhs, rhs, span: start..self.cur.span.end })
     }
 
     /// Expression parsing using Pratt parsing technique for operator precedence.
@@ -721,8 +719,12 @@ impl<'src> Parser<'src> {
             }
             self.bump(); // consume the operator
             let rhs = self.parse_expression(r_bp); // Parse right side with higher precedence
-            let end = self.cur.span.end;
-            lhs = self.expr_arena.alloc(Expr::Binary { op, lhs, rhs, span: start..end });
+            lhs = self.expr_arena.alloc(Expr::Binary {
+                op,
+                lhs,
+                rhs,
+                span: start..self.cur.span.end,
+            });
         }
         lhs
     }
@@ -773,7 +775,6 @@ impl<'src> Parser<'src> {
                 None => self.synchronize(), // Skip to next statement on error
             }
         }
-        let end = self.cur.span.end;
-        self.block_arena.alloc(Block { stmts, span: start..end })
+        self.block_arena.alloc(Block { stmts, span: start..self.cur.span.end })
     }
 }
