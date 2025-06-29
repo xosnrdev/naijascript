@@ -110,6 +110,8 @@ fn test_string_with_invalid_escape() {
     let mut lexer = Lexer::new(src);
     let _ = lexer.next_token();
     let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 4..6);
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str()));
 }
 
@@ -119,6 +121,8 @@ fn test_unterminated_string() {
     let mut lexer = Lexer::new(src);
     let _ = lexer.next_token();
     let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 0..src.len());
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str()));
 }
 
@@ -128,6 +132,8 @@ fn test_invalid_identifier() {
     let mut lexer = Lexer::new(src);
     let _ = lexer.next_token();
     let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 0..1);
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
 }
 
@@ -137,6 +143,8 @@ fn test_invalid_number() {
     let mut lexer = Lexer::new(src);
     let _ = lexer.next_token();
     let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 1..2);
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidNumber.as_str()));
 }
 
@@ -250,6 +258,8 @@ fn test_string_with_mixed_valid_and_invalid_escapes() {
     expected.push('\n');
     assert_eq!(lexer.next_token().token, Token::String(Cow::Owned(expected)));
     let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 4..6);
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str()));
 }
 
