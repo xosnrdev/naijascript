@@ -506,7 +506,7 @@ impl<'input> Lexer<'input> {
             Severity::Error,
             "lexical",
             LexError::UnexpectedChar.as_str(),
-            vec![Label { span: self.pos..self.pos, message: "Dis character no dey grammar" }],
+            vec![Label { span: start..start + 1, message: "Dis character no dey grammar" }],
         );
         None
     }
