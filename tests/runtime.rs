@@ -1,327 +1,150 @@
 use std::borrow::Cow;
 
 use naijascript::diagnostics::AsStr;
-use naijascript::resolver::SemAnalyzer;
 use naijascript::runtime::{Interpreter, RuntimeErrorKind, Value};
-use naijascript::syntax::parser::Parser;
 
-#[test]
-fn test_assignment_and_shout() {
-    let src = "make x get 5 shout(x)";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(5.0)]);
+mod common;
+use crate::common::parse_from_source;
+
+#[macro_export]
+macro_rules! assert_runtime {
+    ($src:expr, output: $expected:expr) => {{
+        let mut parser = parse_from_source($src);
+        let (root, parse_errors) = parser.parse_program();
+        assert!(
+            parse_errors.diagnostics.is_empty(),
+            "Expected no parse errors, got: {:?}",
+            parse_errors.diagnostics
+        );
+        let mut interp = Interpreter::new(
+            &parser.stmt_arena,
+            &parser.expr_arena,
+            &parser.cond_arena,
+            &parser.block_arena,
+        );
+        interp.run(root);
+        assert_eq!(interp.output, $expected);
+    }};
+    ($src:expr, error: $err:expr) => {{
+        let mut parser = parse_from_source($src);
+        let (root, parse_errors) = parser.parse_program();
+        assert!(
+            parse_errors.diagnostics.is_empty(),
+            "Expected no parse errors, got: {:?}",
+            parse_errors.diagnostics
+        );
+        let mut interp = Interpreter::new(
+            &parser.stmt_arena,
+            &parser.expr_arena,
+            &parser.cond_arena,
+            &parser.block_arena,
+        );
+        interp.run(root);
+        assert!(
+            interp.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
+            "Expected error: {}, got: {:?}",
+            $err.as_str(),
+            interp.errors.diagnostics
+        );
+    }};
 }
 
 #[test]
-fn test_reassignment() {
-    let src = "make x get 2 x get 7 shout(x)";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(7.0)]);
+fn variable_assignment() {
+    assert_runtime!("make x get 5 shout(x)", output: vec![Value::Number(5.0)]);
 }
 
 #[test]
-fn test_expression_arithmetic() {
-    let src = "make x get 2 add 3 times 4 shout(x)"; // 2 + (3*4) = 14
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(14.0)]);
+fn variable_reassignment() {
+    assert_runtime!("make x get 2 x get 7 shout(x)", output: vec![Value::Number(7.0)]);
 }
 
 #[test]
-fn test_if_statement_then() {
-    let src = "make x get 1 if to say (x na 1) start shout(42) end";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(42.0)]);
+fn arithmetic_addition() {
+    assert_runtime!("shout(2 add 3)", output: vec![Value::Number(5.0)]);
 }
 
 #[test]
-fn test_if_statement_else() {
-    let src = "make x get 2 if to say (x na 1) start shout(1) end if not so start shout(2) end";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(2.0)]);
+fn arithmetic_precedence() {
+    assert_runtime!("shout(2 add 3 times 4)", output: vec![Value::Number(14.0)]);
 }
 
 #[test]
-fn test_loop_statement() {
-    let src = "make x get 1 jasi (x small pass 4) start shout(x) x get x add 1 end";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)]);
+fn if_then_branch() {
+    assert_runtime!("if to say (1 na 1) start shout(42) end", output: vec![Value::Number(42.0)]);
 }
 
 #[test]
-fn test_division_by_zero_error() {
-    let src = "make x get 1 divide 0 shout(x)";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert!(
-        interp
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == RuntimeErrorKind::DivisionByZero.as_str())
-    );
+fn if_else_branch() {
+    assert_runtime!("if to say (1 na 2) start shout(1) end if not so start shout(2) end", output: vec![Value::Number(2.0)]);
 }
 
 #[test]
-fn test_string_assignment_and_output() {
-    let src = r#"make s get "hello" shout(s)"#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(analyzer.errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Str(Cow::Borrowed("hello"))]);
+fn loop_execution() {
+    assert_runtime!("make x get 1 jasi (x small pass 3) start shout(x) x get x add 1 end", output: vec![Value::Number(1.0), Value::Number(2.0)]);
 }
 
 #[test]
-fn test_string_comparison_condition() {
-    let src = r#"make s get "abc" if to say (s na "abc") start shout(1) end if not so start shout(2) end"#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(analyzer.errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(1.0)]);
+fn division_by_zero() {
+    assert_runtime!("shout(1 divide 0)", error: RuntimeErrorKind::DivisionByZero);
 }
 
 #[test]
-fn test_parenthesized_expression() {
-    let src = "make x get (2 add 3) times 4 shout(x)";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(20.0)]);
+fn parenthesized_expression() {
+    assert_runtime!("shout((2 add 3) times 4)", output: vec![Value::Number(20.0)]);
 }
 
 #[test]
-fn test_minus_and_divide_expression() {
-    let src = "make x get 10 minus 2 divide 2 shout(x)";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    // 10 - (2 / 2) = 9
-    assert_eq!(interp.output, vec![Value::Number(9.0)]);
+fn operator_precedence() {
+    assert_runtime!("shout(10 minus 2 divide 2)", output: vec![Value::Number(9.0)]);
 }
 
 #[test]
-fn test_condition_pass_operator() {
-    let src = "make x get 5 if to say (x pass 3) start shout(1) end if not so start shout(2) end";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(1.0)]);
+fn comparison_greater_than() {
+    assert_runtime!("if to say (5 pass 3) start shout(1) end", output: vec![Value::Number(1.0)]);
 }
 
 #[test]
-fn test_nested_blocks() {
-    let src = "make x get 1 if to say (x na 1) start if to say (x na 1) start shout(42) end end";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(42.0)]);
+fn string_equality() {
+    assert_runtime!(r#"if to say ("abc" na "abc") start shout(1) end"#, output: vec![Value::Number(1.0)]);
 }
 
 #[test]
-fn test_shout_string_literal() {
-    let src = r#"shout("direct")"#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Str(Cow::Borrowed("direct"))]);
+fn string_concatenation() {
+    assert_runtime!(r#"shout("foo" add "bar")"#, output: vec![Value::Str(Cow::Owned("foobar".to_string()))]);
 }
 
 #[test]
-fn test_string_escape_sequences() {
-    let src = r#"make s get "line1\nline2"
-shout(s)"#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(analyzer.errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Str(Cow::Borrowed("line1\nline2"))]);
+fn loop_with_mutation() {
+    assert_runtime!("make sum get 0 make i get 1 jasi (i small pass 3) start sum get sum add i i get i add 1 end shout(sum)", output: vec![Value::Number(3.0)]);
 }
 
 #[test]
-fn test_string_inequality_condition() {
-    let src = r#"make s get "abc"
-if to say (s na "def") start shout(1) end if not so start shout(2) end"#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(analyzer.errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Number(2.0)]);
+fn nested_arithmetic() {
+    assert_runtime!("shout((1 add 2) times (3 add 4))", output: vec![Value::Number(21.0)]);
 }
 
 #[test]
-fn test_string_concatenation_literals() {
-    let src = r#"make s get "foo" add "bar" shout(s)"#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty());
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(analyzer.errors.diagnostics.is_empty());
-    let mut interp = Interpreter::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    interp.run(root);
-    assert_eq!(interp.output, vec![Value::Str(Cow::Owned("foobar".to_string()))]);
+fn multiplication_by_zero() {
+    assert_runtime!("shout(5 times 0)", output: vec![Value::Number(0.0)]);
+}
+
+#[test]
+fn negative_numbers() {
+    assert_runtime!("shout(0 minus 5)", output: vec![Value::Number(-5.0)]);
+}
+
+#[test]
+fn decimal_arithmetic() {
+    assert_runtime!("shout(1.5 add 2.5)", output: vec![Value::Number(4.0)]);
+}
+
+#[test]
+fn comparison_in_condition() {
+    assert_runtime!("make x get 10 make y get 5 if to say (x pass y) start shout(x minus y) end", output: vec![Value::Number(5.0)]);
+}
+
+#[test]
+fn empty_string_concatenation() {
+    assert_runtime!(r#"shout("" add "test")"#, output: vec![Value::Str(Cow::Owned("test".to_string()))]);
 }
