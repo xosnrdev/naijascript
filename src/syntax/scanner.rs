@@ -30,7 +30,7 @@ impl AsStr for LexError {
 ///
 /// The lifetime parameter 'input ties token references to the source text lifetime,
 /// letting us avoid copying strings for identifiers and numbers
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum Token<'input> {
     // Keywords for variable declaration and assignment
     Make, // "make" - variable declaration
@@ -67,11 +67,12 @@ pub enum Token<'input> {
     String(Cow<'input, str>), // String literals
 
     // Special tokens
+    #[default]
     EOF, // End of file
 }
 
 /// Represents a token along with its location in the original source text.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct SpannedToken<'input> {
     pub token: Token<'input>,
     pub span: Span,
@@ -122,7 +123,7 @@ impl<'input> Lexer<'input> {
 
             // String literals
             if b == b'"' {
-                let token = self.scan_string();
+                let token = self.scan_string(start);
                 return SpannedToken { token, span: start..self.pos };
             }
             if let Some(token) = self.scan_paren(b) {
@@ -136,12 +137,17 @@ impl<'input> Lexer<'input> {
                 let token = self.scan_identifier_or_keyword(start);
                 return SpannedToken { token, span: start..self.pos };
             }
-            if b != 0
-                && let Some(token) = self.scan_unexpected(start)
-            {
-                return SpannedToken { token, span: start..self.pos };
+            if b != 0 {
+                // We always advance the position here, even for unexpected characters,
+                // to make sure we don't get stuck in an infinite loop and that the error span isn't empty.
+                self.bump();
+                let token = self.scan_unexpected(start);
+                if let Some(token) = token {
+                    return SpannedToken { token, span: start..self.pos };
+                }
+            } else {
+                self.bump();
             }
-            self.bump();
         }
     }
 
@@ -233,9 +239,9 @@ impl<'input> Lexer<'input> {
     }
 
     #[inline(always)]
-    fn scan_string(&mut self) -> Token<'input> {
+    fn scan_string(&mut self, start: usize) -> Token<'input> {
         self.bump(); // Skip the opening quote
-        let start = self.pos;
+        let content_start = self.pos;
         let mut end = self.pos;
         let mut has_escape = false;
         let mut owned = String::new();
@@ -247,7 +253,7 @@ impl<'input> Lexer<'input> {
                     self.pos = end + 1;
                     return Token::String(Cow::Owned(owned));
                 } else {
-                    let s = &self.src[start..end];
+                    let s = &self.src[content_start..end];
                     self.pos = end + 1;
                     return Token::String(Cow::Borrowed(s));
                 }
@@ -255,18 +261,18 @@ impl<'input> Lexer<'input> {
                 has_escape = true;
                 // Push everything up to this point if first escape
                 if owned.is_empty() {
-                    owned.push_str(&self.src[start..end]);
+                    owned.push_str(&self.src[content_start..end]);
                 }
                 if end + 1 >= self.src.len() {
                     // Looks like we've hit the end of the input right after a backslash.
                     // This means the string ends with an incomplete escape sequence, which is an error.
                     self.errors.emit(
-                        start - 1..self.src.len(),
+                        start..self.src.len(),
                         Severity::Error,
                         "lexical",
                         LexError::UnterminatedString.as_str(),
                         vec![Label {
-                            span: start - 1..self.src.len(),
+                            span: start..self.src.len(),
                             message: "String no get ending quote",
                         }],
                     );
@@ -302,17 +308,17 @@ impl<'input> Lexer<'input> {
         // Looks like we reached the end of the input without finding a closing quote.
         // We'll emit an error to let the user know their string is unterminated.
         self.errors.emit(
-            start - 1..self.src.len(),
+            start..self.src.len(),
             Severity::Error,
             "lexical",
             LexError::UnterminatedString.as_str(),
-            vec![Label { span: start - 1..self.src.len(), message: "String no get ending quote" }],
+            vec![Label { span: start..self.src.len(), message: "String no get ending quote" }],
         );
         self.pos = self.src.len();
         if has_escape {
             Token::String(Cow::Owned(owned))
         } else {
-            Token::String(Cow::Borrowed(&self.src[start..self.src.len()]))
+            Token::String(Cow::Borrowed(&self.src[content_start..self.src.len()]))
         }
     }
 
@@ -506,8 +512,23 @@ impl<'input> Lexer<'input> {
             Severity::Error,
             "lexical",
             LexError::UnexpectedChar.as_str(),
-            vec![Label { span: start..start + 1, message: "Dis character no dey grammar" }],
+            vec![Label { span: start..self.pos, message: "Dis character no dey grammar" }],
         );
         None
+    }
+}
+
+impl<'input> Iterator for Lexer<'input> {
+    type Item = SpannedToken<'input>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let st = self.next_token();
+        // We want to yield exactly one EOF token at the end of the input.
+        // After that, the iterator should return None on all subsequent calls.
+        // This check ensures we don't emit multiple EOF tokens if .next() is called repeatedly.
+        if matches!(st.token, Token::EOF) && self.pos >= self.src.len() {
+            // We're already at the end, so let's stop iterating.
+            return None;
+        }
+        Some(st)
     }
 }

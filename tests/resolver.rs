@@ -1,227 +1,70 @@
 use naijascript::diagnostics::AsStr;
 use naijascript::resolver::{SemAnalyzer, SemanticError};
-use naijascript::syntax::parser::Parser;
 
-#[test]
-fn test_semantic_duplicate_declaration() {
-    let src = "make x get 1 make x get 2";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == SemanticError::DuplicateDeclaration.as_str()),
-        "Expected duplicate declaration error"
-    );
+mod common;
+use crate::common::parse_from_source;
+
+macro_rules! assert_resolve {
+    ($src:expr, $err:expr) => {{
+        let mut parser = parse_from_source($src);
+        let (root, parser_errors) = parser.parse_program();
+        assert!(
+            parser_errors.diagnostics.is_empty(),
+            "Expected no parse errors, got: {:?}",
+            parser_errors.diagnostics
+        );
+        let mut analyzer = SemAnalyzer::new(
+            &parser.stmt_arena,
+            &parser.expr_arena,
+            &parser.cond_arena,
+            &parser.block_arena,
+        );
+        analyzer.analyze(root);
+        assert!(
+            analyzer.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
+            "Expected error: {}, got: {:?}",
+            $err.as_str(),
+            analyzer.errors.diagnostics
+        );
+    }};
 }
 
 #[test]
-fn test_semantic_undeclared_variable() {
-    let src = "shout(x)";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == SemanticError::UseOfUndeclared.as_str()),
-        "Expected undeclared variable error"
-    );
+fn test_duplicate_variable_declaration() {
+    assert_resolve!("make x get 5 make x get 10", SemanticError::DuplicateDeclaration);
 }
 
 #[test]
-fn test_semantic_valid_program() {
-    let src = "make x get 5 shout(x)";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer.errors.diagnostics.is_empty(),
-        "Expected no semantic errors, got: {:#?}",
-        analyzer.errors
-    );
+fn test_use_undeclared_variable() {
+    assert_resolve!("shout(x)", SemanticError::UseOfUndeclared);
 }
 
 #[test]
-fn test_assignment_to_undeclared_variable() {
-    let src = "x get 5";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == SemanticError::AssignmentToUndeclared.as_str()),
-        "Expected assignment to undeclared variable error"
-    );
+fn test_assign_to_undeclared_variable() {
+    assert_resolve!("x get 5", SemanticError::AssignmentToUndeclared);
 }
 
 #[test]
-fn test_reassignment_to_declared_variable() {
-    let src = "make x get 1 x get 2";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer.errors.diagnostics.is_empty(),
-        "Expected no semantic errors, got: {:#?}",
-        analyzer.errors
-    );
+fn test_undeclared_variable_in_condition() {
+    assert_resolve!("if to say (x na 1) start end", SemanticError::UseOfUndeclared);
 }
 
 #[test]
-fn test_if_with_undeclared_variable_in_condition() {
-    let src = "if to say (y na 1) start shout(1) end";
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == SemanticError::UseOfUndeclared.as_str()),
-        "Expected use of undeclared variable in if condition"
-    );
+fn test_string_number_comparison() {
+    assert_resolve!(r#"if to say ("foo" na 1) start end"#, SemanticError::TypeMismatch);
 }
 
 #[test]
-fn test_type_mismatch_in_condition() {
-    let src = r#"if to say ("abc" na 1) start shout(1) end"#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == SemanticError::TypeMismatch.as_str()),
-        "Expected type mismatch error in condition"
-    );
+fn test_string_number_addition() {
+    assert_resolve!(r#"make x get "foo" add 1"#, SemanticError::TypeMismatch);
 }
 
 #[test]
-fn test_type_mismatch_in_arithmetic() {
-    let src = r#"make x get "abc" add 1"#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == SemanticError::TypeMismatch.as_str()),
-        "Expected type mismatch error in arithmetic"
-    );
+fn test_string_subtraction() {
+    assert_resolve!(r#"make x get "foo" minus "bar""#, SemanticError::InvalidStringOperation);
 }
 
 #[test]
-fn test_invalid_string_minus() {
-    let src = r#"make x get "abc" minus "def""#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == SemanticError::InvalidStringOperation.as_str()),
-        "Expected invalid string operation error for minus"
-    );
-}
-
-#[test]
-fn test_type_mismatch_in_loop_condition() {
-    let src = r#"jasi ("abc" pass 1) start shout(1) end"#;
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-    assert!(parse_errors.diagnostics.is_empty(), "Parse errors: {parse_errors:?}");
-    let mut analyzer = SemAnalyzer::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.cond_arena,
-        &parser.block_arena,
-    );
-    analyzer.analyze(root);
-    assert!(
-        analyzer
-            .errors
-            .diagnostics
-            .iter()
-            .any(|e| e.message == SemanticError::TypeMismatch.as_str()),
-        "Expected type mismatch error in loop condition"
-    );
+fn test_string_number_comparison_in_loop() {
+    assert_resolve!(r#"jasi ("foo" pass 1) start end"#, SemanticError::TypeMismatch);
 }

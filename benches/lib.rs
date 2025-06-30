@@ -6,16 +6,13 @@ use naijascript::syntax::scanner::{Lexer, Token};
 
 fn bench_lexer(c: &mut Criterion) {
     let input = black_box(
-        r#"make x get 5\n\
-         shout (x add 1)\n\
-         if to say (x na 5) start make y get 1 end\n\
-         jasi (x small pass 10) start make x get x add 1 end\n"#,
+        r#"make x get 42 add 3.14 minus "hello" times (y divide z) shout(result) if to say (a na b) start jasi (c pass d) start end end if not so start make small pass 1 end"#,
     );
     c.bench_function("lexer", |b| {
         b.iter(|| {
             let mut lexer = Lexer::new(input);
             loop {
-                let st = lexer.next_token();
+                let st = lexer.next().unwrap_or_default();
                 if st.token == Token::EOF {
                     break;
                 }
@@ -27,18 +24,16 @@ fn bench_lexer(c: &mut Criterion) {
 
 fn bench_parser(c: &mut Criterion) {
     let input = black_box(
-        r#"make x get 5\n\
-         shout (x add 1)\n\
-         if to say (x na 5) start make y get 1 end\n\
-         jasi (x small pass 10) start make x get x add 1 end\n"#,
+        r#"make x get 5 add 2 x get x times 3 shout(x) if to say (x pass 10) start shout(1) end if not so start jasi (x small pass 20) start x get x add 1 end end"#,
     );
     c.bench_function("parser", |b| {
         b.iter(|| {
-            let mut parser = Parser::new(input);
+            let lexer = Lexer::new(input);
+            let mut parser = Parser::new(lexer);
             black_box(parser.parse_program());
         })
     });
 }
 
-criterion_group!(benches, bench_lexer, bench_parser,);
+criterion_group!(benches, bench_lexer, bench_parser);
 criterion_main!(benches);

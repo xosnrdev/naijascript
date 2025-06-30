@@ -9,6 +9,7 @@ use clap_cargo::style::CLAP_STYLING;
 use naijascript::resolver::SemAnalyzer;
 use naijascript::runtime::Interpreter;
 use naijascript::syntax::parser::Parser;
+use naijascript::syntax::scanner::Lexer;
 
 /// Command line arguments for the NaijaScript interpreter.
 #[derive(Debug, ClapParser)]
@@ -50,16 +51,16 @@ fn main() -> ExitCode {
 
 /// Run source code from a &str, with full diagnostics and semantic analysis.
 fn run_source(filename: &str, src: &str) -> ExitCode {
-    let mut parser = Parser::new(src);
-    let (root, parse_errors) = parser.parse_program();
-
-    if !parser.lexer.errors.diagnostics.is_empty() {
-        parser.lexer.errors.render(src, filename);
+    let lexer = Lexer::new(src);
+    if !lexer.errors.diagnostics.is_empty() {
+        lexer.errors.report(src, filename);
         return ExitCode::FAILURE;
     }
 
+    let mut parser = Parser::new(lexer);
+    let (root, parse_errors) = parser.parse_program();
     if !parse_errors.diagnostics.is_empty() {
-        parse_errors.render(src, filename);
+        parse_errors.report(src, filename);
         return ExitCode::FAILURE;
     }
 
@@ -71,7 +72,7 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
     );
     analyzer.analyze(root);
     if !analyzer.errors.diagnostics.is_empty() {
-        analyzer.errors.render(src, filename);
+        analyzer.errors.report(src, filename);
         return ExitCode::FAILURE;
     }
 
@@ -83,7 +84,7 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
     );
     let diagnostics = interp.run(root);
     if !diagnostics.diagnostics.is_empty() {
-        diagnostics.render(src, filename);
+        diagnostics.report(src, filename);
         return ExitCode::FAILURE;
     }
     for value in &interp.output {
