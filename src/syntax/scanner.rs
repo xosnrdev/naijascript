@@ -30,7 +30,7 @@ impl AsStr for LexError {
 ///
 /// The lifetime parameter 'input ties token references to the source text lifetime,
 /// letting us avoid copying strings for identifiers and numbers
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum Token<'input> {
     // Keywords for variable declaration and assignment
     Make, // "make" - variable declaration
@@ -67,11 +67,12 @@ pub enum Token<'input> {
     String(Cow<'input, str>), // String literals
 
     // Special tokens
+    #[default]
     EOF, // End of file
 }
 
 /// Represents a token along with its location in the original source text.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct SpannedToken<'input> {
     pub token: Token<'input>,
     pub span: Span,
@@ -514,5 +515,20 @@ impl<'input> Lexer<'input> {
             vec![Label { span: start..self.pos, message: "Dis character no dey grammar" }],
         );
         None
+    }
+}
+
+impl<'input> Iterator for Lexer<'input> {
+    type Item = SpannedToken<'input>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let st = self.next_token();
+        // We want to yield exactly one EOF token at the end of the input.
+        // After that, the iterator should return None on all subsequent calls.
+        // This check ensures we don't emit multiple EOF tokens if .next() is called repeatedly.
+        if matches!(st.token, Token::EOF) && self.pos >= self.src.len() {
+            // We're already at the end, so let's stop iterating.
+            return None;
+        }
+        Some(st)
     }
 }

@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
-use crate::syntax::scanner::{Lexer, SpannedToken, Token};
+use crate::syntax::scanner::{SpannedToken, Token};
 
 /// Arena allocator for AST nodes - our answer to memory management without garbage collection.
 ///
@@ -18,15 +18,15 @@ pub struct Arena<T> {
 
 impl<T> Arena<T> {
     /// Creates a fresh arena - nothing fancy here, just an empty Vec
-    #[inline(always)]
+    #[inline]
     pub const fn new() -> Self {
         Arena { nodes: Vec::new() }
     }
 
     /// Stores a node and returns its ID for later reference.
-    /// The inline(always) here is important - this gets called constantly during parsing
+    /// The inline here is important - this gets called constantly during parsing
     /// and we want the optimizer to eliminate the function call overhead.
-    #[inline(always)]
+    #[inline]
     pub fn alloc(&mut self, node: T) -> NodeId {
         let id = NodeId(self.nodes.len());
         self.nodes.push(node);
@@ -34,7 +34,7 @@ impl<T> Arena<T> {
     }
 
     /// Retrieves a node by its ID - essentially just array indexing with a wrapper
-    #[inline(always)]
+    #[inline]
     pub fn get(&self, id: NodeId) -> &T {
         &self.nodes[id.0]
     }
@@ -170,8 +170,8 @@ impl AsStr for SyntaxError {
 /// Error recovery strategy: when we hit a syntax error, we try to synchronize to the
 /// next statement boundary and continue parsing. This gives users multiple error
 /// messages in one parse, which is much more helpful than stopping at the first error.
-pub struct Parser<'src> {
-    pub lexer: Lexer<'src>,
+pub struct Parser<'src, I: Iterator<Item = SpannedToken<'src>>> {
+    tokens: I,
     cur: SpannedToken<'src>, // Current spanned token (one token lookahead)
     errors: Diagnostics,     // Collect all syntax errors, don't fail fast
 
@@ -182,16 +182,17 @@ pub struct Parser<'src> {
     pub block_arena: Arena<Block>,
 }
 
-impl<'src> Parser<'src> {
-    /// Sets up a new parser with the first token ready to go.
-    /// The lexer is consumed immediately to get the first token - this simplifies
-    /// the parsing logic since we always have a current token to examine.
-    #[inline(always)]
-    pub fn new(src: &'src str) -> Self {
-        let mut lex = Lexer::new(src);
-        let first = lex.next_token();
+impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
+    /// Creates a new parser, primed and ready with the first token.
+    ///
+    /// This function takes an iterator of tokens, grabs the first one (so parsing can start immediately),
+    /// and sets up all the arenas and error tracking you'll need. It's the standard entry point for
+    /// turning a stream of tokens into a parser instance. If the token stream is empty, we just use a default token.
+    #[inline]
+    pub fn new(mut tokens: I) -> Self {
+        let first = tokens.next().unwrap_or_default();
         Parser {
-            lexer: lex,
+            tokens,
             cur: first,
             errors: Diagnostics::default(),
             stmt_arena: Arena::new(),
@@ -201,18 +202,20 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Advances to the next token - the fundamental operation of parsing.
-    /// Inlined because this gets called constantly and we want zero overhead.
-    #[inline(always)]
+    /// Move forward to the next token in our input stream.
+    #[inline]
     fn bump(&mut self) {
-        self.cur = self.lexer.next_token();
+        self.cur = self.tokens.next().unwrap_or(SpannedToken {
+            token: Token::EOF,
+            span: self.cur.span.end..self.cur.span.end,
+        });
     }
 
     /// Main entry point for parsing a complete NaijaScript program.
     /// Returns both the AST root and any syntax errors found.
     /// The grammar says: <program> ::= <statement_list>
     /// We treat the whole program as one big block of statements.
-    #[inline(always)]
+    #[inline]
     pub fn parse_program(&mut self) -> (BlockId, Diagnostics) {
         let block_id = self.parse_program_body();
         if self.cur.token != Token::EOF {
@@ -231,7 +234,7 @@ impl<'src> Parser<'src> {
     /// The grammar's <statement_list> is recursive, but we use a simple loop instead.
     /// When statement parsing fails, we call synchronize() to skip to the next likely
     /// statement start - this is crucial for good error recovery.
-    #[inline(always)]
+    #[inline]
     fn parse_block_body(&mut self) -> BlockId {
         let start = self.cur.span.start;
         let mut stmts = Vec::new();
@@ -248,7 +251,7 @@ impl<'src> Parser<'src> {
     /// This is essential for parsing multiple statements when earlier ones have errors.
     /// We look for statement keywords (make, shout, if to say, jasi) or block boundaries.
     /// Without this, one syntax error would make the rest of the file unparseable.
-    #[inline(always)]
+    #[inline]
     fn synchronize(&mut self) {
         while !matches!(
             self.cur.token,
@@ -261,7 +264,7 @@ impl<'src> Parser<'src> {
     /// Dispatches to the appropriate statement parser based on the current token.
     /// This directly implements: <statement> ::= <assignment> | <output_statement> | <if_statement> | <loop_statement>
     /// Returns None on error to trigger error recovery in the caller.
-    #[inline(always)]
+    #[inline]
     fn parse_statement(&mut self) -> Option<StmtId> {
         let start = self.cur.span.start;
         match &self.cur.token {
@@ -327,7 +330,7 @@ impl<'src> Parser<'src> {
     /// This is the most common statement type, so we want it to be rock-solid.
     /// Note: we parse the expression even if the variable part failed - this helps
     /// with error recovery and might catch additional errors in the expression.
-    #[inline(always)]
+    #[inline]
     fn parse_assignment(&mut self, start: usize) -> Option<StmtId> {
         let make_span = self.cur.span.clone();
         self.bump(); // consume 'make'
@@ -370,7 +373,7 @@ impl<'src> Parser<'src> {
     /// Parses "shout(expression)" output statements.
     /// Grammar: <output_statement> ::= "shout" "(" <expression> ")"
     /// Straightforward function-call syntax - the parentheses are mandatory.
-    #[inline(always)]
+    #[inline]
     fn parse_shout(&mut self, start: usize) -> Option<StmtId> {
         let shout_span = self.cur.span.clone();
         self.bump(); // consume 'shout'
@@ -412,7 +415,7 @@ impl<'src> Parser<'src> {
     /// Grammar: <if_statement> ::= "if to say" "(" <condition> ")" <block> ("if not so" <block>)?
     /// This is the most complex statement type - lots of moving parts to coordinate.
     /// The error recovery here tries to parse as much as possible even if parts fail.
-    #[inline(always)]
+    #[inline]
     fn parse_if(&mut self, start: usize) -> Option<StmtId> {
         let if_span = self.cur.span.clone();
         self.bump(); // consume 'if to say'
@@ -530,7 +533,7 @@ impl<'src> Parser<'src> {
     /// Parses loop statements - simpler than if statements since there's no else clause.
     /// Grammar: <loop_statement> ::= "jasi" "(" <condition> ")" <block>
     /// "jasi" appears to be Nigerian Pidgin for some kind of loop construct.
-    #[inline(always)]
+    #[inline]
     fn parse_loop(&mut self, start: usize) -> Option<StmtId> {
         let loop_span = self.cur.span.clone();
         self.bump(); // consume 'jasi'
@@ -602,7 +605,7 @@ impl<'src> Parser<'src> {
     /// Parses condition expressions for if statements and loops.
     /// Grammar: <condition> ::= <expression> "na" <expression> | <expression> "pass" <expression> | <expression> "small pass" <expression>
     /// Always a binary comparison - no compound conditions yet.
-    #[inline(always)]
+    #[inline]
     fn parse_condition(&mut self) -> CondId {
         let start = self.cur.span.start;
         let lhs = self.parse_expression(0);
@@ -637,7 +640,7 @@ impl<'src> Parser<'src> {
     /// The min_bp parameter controls precedence - higher numbers bind tighter.
     /// This avoids the traditional approach of separate methods for each precedence level.
     /// Inspiration: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
-    #[inline(always)]
+    #[inline]
     fn parse_expression(&mut self, min_bp: u8) -> ExprId {
         let start = self.cur.span.start;
         // Parse the left-hand side (primary expression)
@@ -730,7 +733,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Suggests a statement keyword if the identifier is a likely typo, using a single-edit heuristic.
-    #[inline(always)]
+    #[inline]
     fn suggest_keyword<'a>(ident: &str, expected: &'a str) -> Option<&'a str> {
         // Only check for single-char edit distance or prefix (very cheap, no alloc)
         if ident.len() == expected.len() {
@@ -760,7 +763,7 @@ impl<'src> Parser<'src> {
     /// Parses a program-level statement list that stops at invalid tokens.
     /// Unlike parse_block_body, this stops at any token that's not a valid statement starter.
     /// This implements: <program> ::= <statement_list> where statement_list ends at non-statements.
-    #[inline(always)]
+    #[inline]
     fn parse_program_body(&mut self) -> BlockId {
         let start = self.cur.span.start;
         let mut stmts = Vec::new();

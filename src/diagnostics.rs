@@ -83,8 +83,8 @@ impl Diagnostics {
         self.diagnostics.push(Diagnostic { span, severity, code, message, labels });
     }
 
-    /// Render all collected diagnostics to the terminal with rich formatting.
-    pub fn render(&self, src: &str, filename: &str) {
+    /// Report all collected diagnostics to the terminal with rich formatting.
+    pub fn report(&self, src: &str, filename: &str) {
         let gutter_width = Self::compute_gutter_width(&self.diagnostics, src);
 
         for diag in &self.diagnostics {
