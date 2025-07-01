@@ -224,3 +224,43 @@ fn test_scan_unexpected_character() {
     assert_eq!(label.span, 0..0);
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
 }
+
+#[test]
+fn test_scan_single_line_comment() {
+    let src = "# this is a comment";
+    assert_tokens!(Lexer::new(src), Token::EOF);
+}
+
+#[test]
+fn test_scan_full_line_comment() {
+    let src = r#"
+        make x get 1
+        # full line comment
+        make y get 2
+    "#;
+    assert_tokens!(
+        Lexer::new(src),
+        Token::Make,
+        Token::Identifier("x"),
+        Token::Get,
+        Token::Number("1"),
+        Token::Make,
+        Token::Identifier("y"),
+        Token::Get,
+        Token::Number("2"),
+        Token::EOF
+    );
+}
+
+#[test]
+fn test_scan_trailing_comment() {
+    let src = "make x get 1 # trailing comment";
+    assert_tokens!(
+        Lexer::new(src),
+        Token::Make,
+        Token::Identifier("x"),
+        Token::Get,
+        Token::Number("1"),
+        Token::EOF
+    );
+}
