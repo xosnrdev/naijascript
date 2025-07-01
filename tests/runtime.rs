@@ -151,7 +151,7 @@ fn empty_string_concatenation() {
 
 #[test]
 fn modulus_by_zero() {
-    assert_runtime!("shout(5 remain 0)", error: RuntimeErrorKind::DivisionByZero);
+    assert_runtime!("shout(5 mod 0)", error: RuntimeErrorKind::DivisionByZero);
 }
 
 #[test]

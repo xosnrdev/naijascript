@@ -41,7 +41,7 @@ pub enum Token<'input> {
     Minus,  // "minus" - subtraction
     Times,  // "times" - multiplication
     Divide, // "divide" - division
-    Remain, // "remain" - modulus
+    Mod,    // "mod" - modulus
 
     // I/O and control flow
     Shout, // "shout" - print to console
@@ -455,7 +455,7 @@ impl<'input> Lexer<'input> {
             "minus" => Token::Minus,
             "times" => Token::Times,
             "divide" => Token::Divide,
-            "remain" => Token::Remain,
+            "mod" => Token::Mod,
             "shout" => Token::Shout,
             "jasi" => Token::Jasi,
             "start" => Token::Start,

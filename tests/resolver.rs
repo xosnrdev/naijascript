@@ -71,7 +71,7 @@ fn test_string_number_comparison_in_loop() {
 
 #[test]
 fn test_string_modulus() {
-    assert_resolve!(r#"make x get "foo" remain "bar""#, SemanticError::InvalidStringOperation);
+    assert_resolve!(r#"make x get "foo" mod "bar""#, SemanticError::InvalidStringOperation);
 }
 
 #[test]
