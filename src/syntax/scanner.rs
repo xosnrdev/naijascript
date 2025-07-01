@@ -117,16 +117,9 @@ impl<'input> Lexer<'input> {
             // Skip over any whitespace before the next token
             self.skip_whitespace();
 
-            // If we see a '#' character, that means the start of a comment, so let's skip everything until we hit a newline (LF), carriage return (CR), or the end of the input
+            // If we see a '#' character, that means the start of a comment.
             if self.peek() == b'#' {
-                while self.peek() != b'\n' && self.peek() != b'\r' && self.peek() != 0 {
-                    self.bump();
-                }
-                // After skipping to end of line, we might be sitting on the newline or carriage return character
-                // We need to consume it too so the next token scan starts fresh on the following line
-                if self.peek() == b'\n' || self.peek() == b'\r' {
-                    self.bump();
-                }
+                self.skip_comment();
                 continue;
             }
 
@@ -192,6 +185,19 @@ impl<'input> Lexer<'input> {
     #[inline(always)]
     fn skip_whitespace(&mut self) {
         while self.peek().is_ascii_whitespace() {
+            self.bump();
+        }
+    }
+
+    #[inline(always)]
+    fn skip_comment(&mut self) {
+        // Let's keep moving forward until we find a newline, a carriage return, or reach the end of the input. This way, we skip the whole comment and get ready to scan the next real token.
+        while self.peek() != b'\n' && self.peek() != b'\r' && self.peek() != 0 {
+            self.bump();
+        }
+        // After skipping to end of line, we might be sitting on the newline or carriage return character
+        // We need to consume it too so the next token scan starts fresh on the following line
+        if self.peek() == b'\n' || self.peek() == b'\r' {
             self.bump();
         }
     }
