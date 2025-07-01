@@ -58,7 +58,7 @@ Whitespace (spaces, tabs, newlines) dey used to separate tokens and make code re
 
 ## 3. Grammar and Syntax
 
-NaijaScript syntax dey defined with a formal grammar using Backus-Naur Form (BNF). You fit check the full grammar for this link: [grammar](https://raw.githubusercontent.com/xosnrdev/naijascript/master/docs/grammar.bnf).
+NaijaScript syntax dey defined with a formal grammar using Backus-Naur Form (BNF). You fit check the full grammar for this [link](https://raw.githubusercontent.com/xosnrdev/naijascript/master/docs/grammar.bnf).
 
 ## 4. Static Semantics
 
