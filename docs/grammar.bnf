@@ -38,3 +38,5 @@
 <condition> ::= <expression> "na" <expression> | <expression> "pass" <expression> | <expression> "small pass" <expression>
 
 <block> ::= "start" <statement_list> "end"
+
+<comment> ::= "#" { any character except "\n" }

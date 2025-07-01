@@ -52,9 +52,11 @@ Literals na the fixed values wey you dey write directly for your code.
 
 - `(` and `)`: Used for grouping expressions and in `shout`, `if to say`, and `jasi` statements.
 
-### 2.6. Whitespace
+### 2.6. Whitespace and Comments
 
-Whitespace (spaces, tabs, newlines) dey used to separate tokens and make code readable. NaijaScript no dey sensitive to whitespace.
+Whitespace (like space, tab, or new line) na wetin you fit use to separate code make e clear. NaijaScript no dey worry about how many space or new line you put.
+
+If you wan write comment, just put `#` for anywhere for the line. Anything wey dey after `#` till the end of that line na comment, the interpreter no go run am. You fit put comment anywhere for your code, e no go affect how your program work.
 
 ## 3. Grammar and Syntax
 
