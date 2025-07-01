@@ -213,3 +213,14 @@ fn test_scan_string_with_mixed_valid_and_invalid_escapes() {
     assert_eq!(label.span, 4..6);
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str()));
 }
+
+#[test]
+fn test_scan_unexpected_character() {
+    let src = "@";
+    let mut lexer = Lexer::new(src);
+    let _ = lexer.next_token();
+    let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 0..0);
+    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
+}

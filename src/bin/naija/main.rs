@@ -51,13 +51,14 @@ fn main() -> ExitCode {
 
 /// Run source code from a &str, with full diagnostics and semantic analysis.
 fn run_source(filename: &str, src: &str) -> ExitCode {
-    let lexer = Lexer::new(src);
+    let mut lexer = Lexer::new(src);
+    let tokens: Vec<_> = (&mut lexer).collect();
     if !lexer.errors.diagnostics.is_empty() {
         lexer.errors.report(src, filename);
         return ExitCode::FAILURE;
     }
 
-    let mut parser = Parser::new(lexer);
+    let mut parser = Parser::new(tokens.into_iter());
     let (root, parse_errors) = parser.parse_program();
     if !parse_errors.diagnostics.is_empty() {
         parse_errors.report(src, filename);

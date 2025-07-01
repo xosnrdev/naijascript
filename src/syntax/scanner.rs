@@ -142,17 +142,15 @@ impl<'input> Lexer<'input> {
                 let token = self.scan_identifier_or_keyword(start);
                 return SpannedToken { token, span: start..self.pos };
             }
-            if b != 0 {
-                // We always advance the position here, even for unexpected characters,
-                // to make sure we don't get stuck in an infinite loop and that the error span isn't empty.
-                self.bump();
-                let token = self.scan_unexpected(start);
-                if let Some(token) = token {
-                    return SpannedToken { token, span: start..self.pos };
-                }
-            } else {
-                self.bump();
+
+            if b != 0
+                && let Some(token) = self.scan_unexpected(start)
+            {
+                return SpannedToken { token, span: start..self.pos };
             }
+            // We move forward by one byte here so that if we see a character we don't recognize,
+            // we don't get stuck in an infinite loop.
+            self.bump();
         }
     }
 
