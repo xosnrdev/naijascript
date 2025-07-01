@@ -45,6 +45,7 @@ impl AsStr for SemanticError {
 enum VarType {
     Number,
     String,
+    Bool,
 }
 
 /// The heart of our semantic analysis - this walks through NaijaScript code
@@ -199,9 +200,14 @@ impl<'src> SemAnalyzer<'src> {
         let rhs_type = self.infer_expr_type(cond.rhs);
         match (lhs_type, rhs_type) {
             (Some(VarType::String), Some(VarType::String))
-            | (Some(VarType::Number), Some(VarType::Number)) => {}
+            | (Some(VarType::Number), Some(VarType::Number))
+            | (Some(VarType::Bool), Some(VarType::Bool)) => {}
             (Some(VarType::String), Some(VarType::Number))
-            | (Some(VarType::Number), Some(VarType::String)) => {
+            | (Some(VarType::Number), Some(VarType::String))
+            | (Some(VarType::Bool), Some(VarType::Number))
+            | (Some(VarType::Number), Some(VarType::Bool))
+            | (Some(VarType::Bool), Some(VarType::String))
+            | (Some(VarType::String), Some(VarType::Bool)) => {
                 self.errors.emit(
                     cond.span.clone(),
                     Severity::Error,
@@ -209,7 +215,7 @@ impl<'src> SemAnalyzer<'src> {
                     SemanticError::TypeMismatch.as_str(),
                     vec![Label {
                         span: cond.span.clone(),
-                        message: "You no fit compare string and number together",
+                        message: "You no fit compare different types together",
                     }],
                 );
             }
@@ -224,7 +230,7 @@ impl<'src> SemAnalyzer<'src> {
     fn check_expr(&mut self, eid: ExprId) {
         match &self.exprs.nodes[eid.0] {
             // Numbers like 42 or 3.14 are always semantically valid
-            Expr::Number(_, _) | Expr::String(_, _) => {}
+            Expr::Number(_, _) | Expr::String(_, _) | Expr::Bool(_, _) => {}
             // Variables must have been declared with "make" before use
             Expr::Var(v, span) => {
                 if !self.symbol_table.iter().any(|(name, _, _)| name == v) {
@@ -264,6 +270,18 @@ impl<'src> SemAnalyzer<'src> {
                                 }],
                             );
                         }
+                        (Some(VarType::Bool), _) | (_, Some(VarType::Bool)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: "You no fit do arithmetic with boolean values",
+                                }],
+                            );
+                        }
                         _ => {}
                     },
                     BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Remain => match (l, r) {
@@ -293,6 +311,18 @@ impl<'src> SemAnalyzer<'src> {
                                 }],
                             );
                         }
+                        (Some(VarType::Bool), _) | (_, Some(VarType::Bool)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: "You no fit do arithmetic with boolean values",
+                                }],
+                            );
+                        }
                         _ => {}
                     },
                 }
@@ -305,6 +335,7 @@ impl<'src> SemAnalyzer<'src> {
         match &self.exprs.nodes[eid.0] {
             Expr::Number(_, _) => Some(VarType::Number),
             Expr::String(_, _) => Some(VarType::String),
+            Expr::Bool(_, _) => Some(VarType::Bool),
             Expr::Var(v, _) => {
                 self.symbol_table.iter().find(|(name, _, _)| name == v).map(|(_, t, _)| *t)
             }

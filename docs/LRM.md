@@ -39,6 +39,9 @@ Literals na the fixed values wey you dey write directly for your code.
   - Example: `10`, `3.142`, `0.5`
 - **Strings**: A sequence of characters inside double quotes.
   - Example: `"Hello, World!"`, `"Naija no dey carry last"`
+- **Booleans**: Truth values wey be `true` and `false`.
+  - `true` - mean say e correct or e happen.
+  - `false` - mean say e no correct or e no happen.
 
 ### 2.4. Operators
 
@@ -67,6 +70,7 @@ NaijaScript get two main data types:
 
 - **Number**: Represents numeric values (e.g., `10`, `99.9`). All numbers na floating-point numbers.
 - **String**: Represents text (e.g., `"Naija"`).
+- **Boolean**: Represents truth values wey fit be `true` or `false`.
 
 Type inference dey automatic. You no need to declare the type of a variable.
 

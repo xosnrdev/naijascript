@@ -153,3 +153,27 @@ fn empty_string_concatenation() {
 fn modulus_by_zero() {
     assert_runtime!("shout(5 remain 0)", error: RuntimeErrorKind::DivisionByZero);
 }
+
+#[test]
+fn boolean_literals() {
+    assert_runtime!("shout(true)", output: vec![Value::Bool(true)]);
+    assert_runtime!("shout(false)", output: vec![Value::Bool(false)]);
+}
+
+#[test]
+fn boolean_assignment() {
+    assert_runtime!("make x get true shout(x)", output: vec![Value::Bool(true)]);
+    assert_runtime!("make y get false shout(y)", output: vec![Value::Bool(false)]);
+}
+
+#[test]
+fn boolean_comparison() {
+    assert_runtime!("if to say (true na true) start shout(1) end", output: vec![Value::Number(1.0)]);
+    assert_runtime!("if to say (true na false) start shout(1) end if not so start shout(2) end", output: vec![Value::Number(2.0)]);
+}
+
+#[test]
+fn boolean_ordering() {
+    assert_runtime!("if to say (false small pass true) start shout(1) end", output: vec![Value::Number(1.0)]);
+    assert_runtime!("if to say (true pass false) start shout(1) end", output: vec![Value::Number(1.0)]);
+}

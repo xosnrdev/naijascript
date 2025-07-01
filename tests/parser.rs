@@ -124,3 +124,15 @@ fn test_parse_trailing_tokens() {
     let src = "make x get 5 123";
     assert_parse!(src, SyntaxError::TrailingTokensAfterProgramEnd);
 }
+
+#[test]
+fn test_parse_boolean_literals() {
+    let src = "make x get true make y get false";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_boolean_comparison() {
+    let src = "if to say (true na false) start end";
+    assert_parse!(src);
+}

@@ -91,6 +91,7 @@ pub enum Stmt<'src> {
 pub enum Expr<'src> {
     Number(&'src str, Span),                                    // 42, 3.14, etc.
     String(Cow<'src, str>, Span),                               // "hello", etc.
+    Bool(bool, Span),                                           // "true", "false"
     Var(&'src str, Span),                                       // variable references
     Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span }, // arithmetic operations
 }
@@ -655,6 +656,13 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             Token::String(sval) => {
                 let s = self.cur.span.clone();
                 let id = self.expr_arena.alloc(Expr::String(sval.clone(), s));
+                self.bump();
+                id
+            }
+            Token::True | Token::False => {
+                let s = self.cur.span.clone();
+                let value = matches!(&self.cur.token, Token::True);
+                let id = self.expr_arena.alloc(Expr::Bool(value, s));
                 self.bump();
                 id
             }
