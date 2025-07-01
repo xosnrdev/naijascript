@@ -252,11 +252,15 @@ impl<'src> Interpreter<'src> {
                         BinOp::Add => Ok(Value::Number(lv + rv)),
                         BinOp::Minus => Ok(Value::Number(lv - rv)),
                         BinOp::Times => Ok(Value::Number(lv * rv)),
-                        BinOp::Divide => {
+                        BinOp::Divide | BinOp::Remain => {
                             if rv == 0.0 {
                                 Err(RuntimeError { kind: RuntimeErrorKind::DivisionByZero, span })
                             } else {
-                                Ok(Value::Number(lv / rv))
+                                Ok(Value::Number(match op {
+                                    BinOp::Divide => lv / rv,
+                                    BinOp::Remain => lv % rv,
+                                    _ => unreachable!("Unexpected binary operation for numbers"),
+                                }))
                             }
                         }
                     },

@@ -148,3 +148,8 @@ fn comparison_in_condition() {
 fn empty_string_concatenation() {
     assert_runtime!(r#"shout("" add "test")"#, output: vec![Value::Str(Cow::Owned("test".to_string()))]);
 }
+
+#[test]
+fn modulus_by_zero() {
+    assert_runtime!("shout(5 remain 0)", error: RuntimeErrorKind::DivisionByZero);
+}

@@ -1,23 +1,28 @@
-make x get 1
-jasi (x small pass 16) start
-    make fizz get 0
-    if to say (x divide 3 na 0) start
-        fizz get fizz add 1
+make i get 1
+
+jasi (i small pass 101)
+start
+    if to say (i remain 3 na 0)
+    start
+        if to say (i remain 5 na 0)
+        start
+            shout("FizzBuzz")
+        end
+        if not so
+        start
+            shout("Fizz")
+        end
     end
-    if to say (x divide 5 na 0) start
-        fizz get fizz add 2
+    if not so
+    start
+        if to say (i remain 5 na 0)
+        start
+            shout("Buzz")
+        end
+        if not so
+        start
+            shout(i)
+        end
     end
-    if to say (fizz na 0) start
-        shout (x)
-    end
-    if to say (fizz na 1) start
-        shout (111)
-    end
-    if to say (fizz na 2) start
-        shout (222)
-    end
-    if to say (fizz na 3) start
-        shout (333)
-    end
-    x get x add 1
+    i get i add 1
 end

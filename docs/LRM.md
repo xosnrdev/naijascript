@@ -28,7 +28,7 @@ Keywords na special words wey get meaning for NaijaScript. You no fit use them a
 - `jasi`: Loop construct.
 - `start`: Beginning of a code block.
 - `end`: End of a code block.
-- `add`, `minus`, `times`, `divide`: Arithmetic operators.
+- `add`, `minus`, `times`, `divide`, `remain`: Arithmetic operators.
 - `na`, `pass`, `small pass`: Comparison operators.
 
 ### 2.3. Literals
@@ -42,7 +42,7 @@ Literals na the fixed values wey you dey write directly for your code.
 
 ### 2.4. Operators
 
-- **Arithmetic**: `add` (+), `minus` (-), `times` (\*), `divide` (/)
+- **Arithmetic**: `add` (+), `minus` (-), `times` (\*), `divide` (/), `remain` (%)
 - **Comparison**: `na` (==), `pass` (>), `small pass` (<)
 
 ### 2.5. Punctuation
@@ -55,36 +55,7 @@ Whitespace (spaces, tabs, newlines) dey used to separate tokens and make code re
 
 ## 3. Grammar and Syntax
 
-The syntax of NaijaScript dey defined by the following grammar in Backus-Naur Form (BNF).
-
-```bnf
-<program> ::= <statement_list>
-
-<statement_list> ::= <statement> | <statement> <statement_list>
-
-<statement> ::= <assignment> | <reassignment> | <output_statement> | <if_statement> | <loop_statement>
-
-<assignment> ::= "make" <variable> "get" <expression>
-<reassignment> ::= <variable> "get" <expression>
-
-<variable> ::= <identifier>
-
-<expression> ::= <term> | <expression> "add" <term> | <expression> "minus" <term>
-
-<term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor>
-
-<factor> ::= <number> | <string> | <variable> | "(" <expression> ")"
-
-<output_statement> ::= "shout" "(" <expression> ")"
-
-<if_statement> ::= "if to say" "(" <condition> ")" <block> ("if not so" <block>)?
-
-<loop_statement> ::= "jasi" "(" <condition> ")" <block>
-
-<condition> ::= <expression> "na" <expression> | <expression> "pass" <expression> | <expression> "small pass" <expression>
-
-<block> ::= "start" <statement_list> "end"
-```
+NaijaScript syntax dey defined with a formal grammar using Backus-Naur Form (BNF). You fit check the full grammar for this link: [grammar](https://raw.githubusercontent.com/xosnrdev/naijascript/master/docs/grammar.bnf).
 
 ## 4. Static Semantics
 
@@ -121,7 +92,7 @@ This section dey explain wetin each part of the language dey do when e dey run.
 
 ### 5.2. Expressions
 
-- **Arithmetic**: Expressions with `add`, `minus`, `times`, and `divide` go perform the calculation and return a `Number`. If you try to divide by zero, e go cause a runtime error.
+- **Arithmetic**: Expressions with `add`, `minus`, `times`, `divide`, and `remain` go perform the calculation and return a `Number`. If you try to divide by zero or use remain with zero, e go cause a runtime error.
 - **String Concatenation**: You fit use the `add` operator to join two strings together.
 - **Comparison**: Expressions with `na`, `pass`, and `small pass` go compare two values and return a boolean result (true or false) for use in conditions.
 
