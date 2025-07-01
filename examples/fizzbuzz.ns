@@ -1,26 +1,19 @@
 make i get 1
 
-jasi (i small pass 101)
-start
-    if to say (i mod 3 na 0)
-    start
-        if to say (i mod 5 na 0)
-        start
+jasi (i small pass 101) start
+    if to say (i mod 3 na 0) start
+        if to say (i mod 5 na 0) start
             shout("FizzBuzz")
         end
-        if not so
-        start
+        if not so start
             shout("Fizz")
         end
     end
-    if not so
-    start
-        if to say (i mod 5 na 0)
-        start
+    if not so start
+        if to say (i mod 5 na 0) start
             shout("Buzz")
         end
-        if not so
-        start
+        if not so start
             shout(i)
         end
     end
