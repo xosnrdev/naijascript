@@ -17,7 +17,7 @@
 
 <expression> ::= <term> | <expression> "add" <term> | <expression> "minus" <term>
 
-<term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor>
+<term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor> | <term> "remain" <factor>
 
 <factor> ::= <number> | <string> | <variable> | "(" <expression> ")"
 

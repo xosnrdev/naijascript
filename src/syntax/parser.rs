@@ -62,6 +62,7 @@ pub enum BinOp {
     Minus,  // "minus" keyword
     Times,  // "times" keyword
     Divide, // "divide" keyword
+    Remain, // "remain" keyword
 }
 
 /// Comparison operators for conditions in if statements and loops.
@@ -705,15 +706,16 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             let op = match &self.cur.token {
                 Token::Times => BinOp::Times,
                 Token::Divide => BinOp::Divide,
+                Token::Remain => BinOp::Remain,
                 Token::Add => BinOp::Add,
                 Token::Minus => BinOp::Minus,
                 _ => break, // No more operators
             };
 
-            // Set precedence levels - multiplication/division bind tighter than addition/subtraction
+            // Set precedence levels - multiplication/division/modulus bind tighter than addition/subtraction
             let (l_bp, r_bp) = match op {
-                BinOp::Times | BinOp::Divide => (20, 21), // Higher precedence
-                BinOp::Add | BinOp::Minus => (10, 11),    // Lower precedence
+                BinOp::Times | BinOp::Divide | BinOp::Remain => (20, 21), // Higher precedence
+                BinOp::Add | BinOp::Minus => (10, 11),                    // Lower precedence
             };
 
             // If current operator has lower precedence than minimum, we're done

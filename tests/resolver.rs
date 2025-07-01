@@ -68,3 +68,8 @@ fn test_string_subtraction() {
 fn test_string_number_comparison_in_loop() {
     assert_resolve!(r#"jasi ("foo" pass 1) start end"#, SemanticError::TypeMismatch);
 }
+
+#[test]
+fn test_string_modulus() {
+    assert_resolve!(r#"make x get "foo" remain "bar""#, SemanticError::InvalidStringOperation);
+}

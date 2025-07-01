@@ -259,6 +259,13 @@ impl<'src> Interpreter<'src> {
                                 Ok(Value::Number(lv / rv))
                             }
                         }
+                        BinOp::Remain => {
+                            if rv == 0.0 {
+                                Err(RuntimeError { kind: RuntimeErrorKind::DivisionByZero, span })
+                            } else {
+                                Ok(Value::Number(lv % rv))
+                            }
+                        }
                     },
                     (Value::Str(ls), Value::Str(rs)) => match op {
                         BinOp::Add => {
