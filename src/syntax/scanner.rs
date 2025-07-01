@@ -117,8 +117,10 @@ impl<'input> Lexer<'input> {
             // Skip over any whitespace before the next token
             self.skip_whitespace();
 
+            let b = self.peek();
+
             // If we see a '#' character, that means the start of a comment.
-            if self.peek() == b'#' {
+            if b == b'#' {
                 self.skip_comment();
                 continue;
             }
@@ -127,7 +129,6 @@ impl<'input> Lexer<'input> {
             let start = self.pos;
 
             // Check for EOF first
-            let b = self.peek();
             if b == 0 {
                 return SpannedToken { token: Token::EOF, span: start..start };
             }
