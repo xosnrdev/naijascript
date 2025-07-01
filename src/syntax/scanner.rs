@@ -59,8 +59,8 @@ pub enum Token<'input> {
     IfNotSo, // "if not so" - else statement
 
     // Boolean literals
-    True,  // "true" - true
-    False, // "false" - false
+    True,  // "true" - truthy
+    False, // "false" - falsy
 
     // Punctuation
     LParen, // "("
