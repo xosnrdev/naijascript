@@ -58,6 +58,10 @@ pub enum Token<'input> {
     IfToSay, // "if to say" - if statement
     IfNotSo, // "if not so" - else statement
 
+    // Boolean literals
+    True,  // "true" - truthy
+    False, // "false" - falsy
+
     // Punctuation
     LParen, // "("
     RParen, // ")"
@@ -460,6 +464,8 @@ impl<'input> Lexer<'input> {
             "end" => Token::End,
             "na" => Token::Na,
             "pass" => Token::Pass,
+            "true" => Token::True,
+            "false" => Token::False,
             // If not a keyword, it's an identifier
             other => {
                 // Let's make sure the identifier is valid:

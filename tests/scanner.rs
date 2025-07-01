@@ -18,7 +18,7 @@ macro_rules! assert_tokens {
 
 #[test]
 fn test_scan_keywords() {
-    let src = "make get add minus times divide remain shout jasi start end na pass small pass if to say if not so";
+    let src = "make get add minus times divide remain shout jasi start end na pass small pass if to say if not so true false";
     assert_tokens!(
         Lexer::new(src),
         Token::Make,
@@ -37,6 +37,8 @@ fn test_scan_keywords() {
         Token::SmallPass,
         Token::IfToSay,
         Token::IfNotSo,
+        Token::True,
+        Token::False,
         Token::EOF
     );
 }

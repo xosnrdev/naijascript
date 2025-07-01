@@ -19,7 +19,9 @@
 
 <term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor> | <term> "remain" <factor>
 
-<factor> ::= <number> | <string> | <variable> | "(" <expression> ")"
+<factor> ::= <number> | <string> | <boolean> | <variable> | "(" <expression> ")"
+
+<boolean> ::= "true" | "false"
 
 <string> ::= "\"" { <string_char> } "\""
 <string_char> ::= any character except "\"" or "\\" | "\\" <escape_sequence>

@@ -224,6 +224,15 @@ impl<'src> Interpreter<'src> {
                 };
                 Ok(result)
             }
+            (Value::Bool(l), Value::Bool(r)) => {
+                let result = match c.op {
+                    CmpOp::Eq => l == r,
+                    // Boolean comparison follows Rust's standard where false equals 0 and true equals 1, so false comes before true in ordering
+                    CmpOp::Gt => l > r,
+                    CmpOp::Lt => l < r,
+                };
+                Ok(result)
+            }
             _ => unreachable!("Semantic analysis should guarantee only valid comparisons"),
         }
     }
@@ -235,6 +244,7 @@ impl<'src> Interpreter<'src> {
                 .map(Value::Number)
                 .map_err(|_| RuntimeError { kind: RuntimeErrorKind::InvalidNumber, span }),
             Expr::String(s, _) => Ok(Value::Str(s.clone())),
+            Expr::Bool(b, _) => Ok(Value::Bool(*b)),
             Expr::Var(v, _) => {
                 let val = self
                     .env

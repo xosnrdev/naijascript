@@ -73,3 +73,18 @@ fn test_string_number_comparison_in_loop() {
 fn test_string_modulus() {
     assert_resolve!(r#"make x get "foo" remain "bar""#, SemanticError::InvalidStringOperation);
 }
+
+#[test]
+fn test_boolean_number_comparison() {
+    assert_resolve!("if to say (true na 1) start end", SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_boolean_string_comparison() {
+    assert_resolve!(r#"if to say (true na "test") start end"#, SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_boolean_arithmetic_operations() {
+    assert_resolve!("make x get true add false", SemanticError::TypeMismatch);
+}
