@@ -117,14 +117,14 @@ impl<'input> Lexer<'input> {
             // Skip over any whitespace before the next token
             self.skip_whitespace();
 
-            // If we see a '#' character, that means the start of a comment, so let's skip everything until we hit a newline or the end of the input
+            // If we see a '#' character, that means the start of a comment, so let's skip everything until we hit a newline (LF), carriage return (CR), or the end of the input
             if self.peek() == b'#' {
-                while self.peek() != b'\n' && self.peek() != 0 {
+                while self.peek() != b'\n' && self.peek() != b'\r' && self.peek() != 0 {
                     self.bump();
                 }
-                // After skipping to end of line, we might be sitting on the newline character
+                // After skipping to end of line, we might be sitting on the newline or carriage return character
                 // We need to consume it too so the next token scan starts fresh on the following line
-                if self.peek() == b'\n' {
+                if self.peek() == b'\n' || self.peek() == b'\r' {
                     self.bump();
                 }
                 continue;
