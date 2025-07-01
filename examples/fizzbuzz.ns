@@ -2,9 +2,9 @@ make i get 1
 
 jasi (i small pass 101)
 start
-    if to say (i remain 3 na 0)
+    if to say (i mod 3 na 0)
     start
-        if to say (i remain 5 na 0)
+        if to say (i mod 5 na 0)
         start
             shout("FizzBuzz")
         end
@@ -15,7 +15,7 @@ start
     end
     if not so
     start
-        if to say (i remain 5 na 0)
+        if to say (i mod 5 na 0)
         start
             shout("Buzz")
         end

@@ -284,7 +284,7 @@ impl<'src> SemAnalyzer<'src> {
                         }
                         _ => {}
                     },
-                    BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Remain => match (l, r) {
+                    BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => match (l, r) {
                         (Some(VarType::Number), Some(VarType::Number)) => {}
                         (Some(VarType::String), Some(VarType::String)) => {
                             self.errors.emit(
@@ -294,7 +294,7 @@ impl<'src> SemAnalyzer<'src> {
                                 SemanticError::InvalidStringOperation.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: "You no fit minus/times/divide/remain string for here",
+                                    message: "You no fit minus/times/divide/mod string for here",
                                 }],
                             );
                         }
@@ -343,7 +343,7 @@ impl<'src> SemAnalyzer<'src> {
                 let l = self.infer_expr_type(*lhs)?;
                 let r = self.infer_expr_type(*rhs)?;
                 match op {
-                    BinOp::Add | BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Remain => {
+                    BinOp::Add | BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => {
                         if l == VarType::Number && r == VarType::Number {
                             Some(VarType::Number)
                         } else if l == VarType::String

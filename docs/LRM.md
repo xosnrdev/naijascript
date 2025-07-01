@@ -28,7 +28,7 @@ Keywords na special words wey get meaning for NaijaScript. You no fit use them a
 - `jasi`: Loop construct.
 - `start`: Beginning of a code block.
 - `end`: End of a code block.
-- `add`, `minus`, `times`, `divide`, `remain`: Arithmetic operators.
+- `add`, `minus`, `times`, `divide`, `mod`: Arithmetic operators.
 - `na`, `pass`, `small pass`: Comparison operators.
 
 ### 2.3. Literals
@@ -45,7 +45,7 @@ Literals na the fixed values wey you dey write directly for your code.
 
 ### 2.4. Operators
 
-- **Arithmetic**: `add` (+), `minus` (-), `times` (\*), `divide` (/), `remain` (%)
+- **Arithmetic**: `add` (+), `minus` (-), `times` (\*), `divide` (/), `mod` (%)
 - **Comparison**: `na` (==), `pass` (>), `small pass` (<)
 
 ### 2.5. Punctuation
@@ -96,7 +96,7 @@ This section dey explain wetin each part of the language dey do when e dey run.
 
 ### 5.2. Expressions
 
-- **Arithmetic**: Expressions with `add`, `minus`, `times`, `divide`, and `remain` go perform the calculation and return a `Number`. If you try to divide by zero or use remain with zero, e go cause a runtime error.
+- **Arithmetic**: Expressions with `add`, `minus`, `times`, `divide`, and `mod` go perform the calculation and return a `Number`. If you try to divide by zero or use mod with zero, e go cause a runtime error.
 - **String Concatenation**: You fit use the `add` operator to join two strings together.
 - **Comparison**: Expressions with `na`, `pass`, and `small pass` go compare two values and return a boolean result (true or false) for use in conditions.
 
