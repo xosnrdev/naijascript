@@ -88,3 +88,13 @@ fn test_boolean_string_comparison() {
 fn test_boolean_arithmetic_operations() {
     assert_resolve!("make x get true add false", SemanticError::TypeMismatch);
 }
+
+#[test]
+fn test_block_scope_variable_not_visible_outside() {
+    assert_resolve!("start make x get 1 end shout(x)", SemanticError::UseOfUndeclared);
+}
+
+#[test]
+fn test_block_scope_duplicate_in_same_block() {
+    assert_resolve!("start make x get 1 make x get 2 end", SemanticError::DuplicateDeclaration);
+}

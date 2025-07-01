@@ -26,7 +26,7 @@ Key components of the architecture include:
 
 - **Why Pidgin English?** Pidgin is the most widely spoken language in Nigeria, acting as a bridge across diverse ethnic groups. Using it as the foundation for a programming language makes coding less intimidating and more inclusive.
 - **Dynamic Typing**: NaijaScript uses dynamic typing, meaning you don't have to declare the type of a variable. This is common in scripting languages and allows for a more flexible and less verbose coding style, which is beneficial for beginners.
-- **Block Scoping (Planned)**: While the current implementation uses a global scope, we plan to introduce block scoping. This is a familiar concept from modern languages that helps in writing safer, more predictable code by limiting the lifecycle of variables.
+- **Block Scoping**: Any variable declared inside a `start ... end` block is only visible within that block and its nested children. This matches the behavior of modern programming languages and helps prevent accidental variable shadowing or leakage. Block scoping is enforced both at the semantic analysis and runtime levels, ensuring soundness and predictability.
 
 ## 4. Further Reading
 

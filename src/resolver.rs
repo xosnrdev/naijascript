@@ -62,12 +62,8 @@ pub struct SemAnalyzer<'src> {
     conds: &'src Arena<Cond>,
     blocks: &'src Arena<Block>,
 
-    // This is our symbol table! For now, it's just a flat Vec that tracks all variables
-    // declared so far, along with their type and where they were declared (the Span).
-    // We use &'src str for variable names to avoid extra allocations, since these
-    // string slices come straight from the source code. If we ever add block scoping,
-    // we can turn this into a stack of Vecs or something fancier.
-    symbol_table: Vec<(&'src str, VarType, &'src Span)>,
+    // We use a stack of symbol tables so each block gets its own list of variables
+    scopes: Vec<Vec<(&'src str, VarType, &'src Span)>>,
 
     // Collect all errors instead of failing fast - gives better user experience
     pub errors: Diagnostics,
@@ -76,7 +72,6 @@ pub struct SemAnalyzer<'src> {
 impl<'src> SemAnalyzer<'src> {
     /// Sets up a new analyzer with the AST arenas from parsing.
     /// We start with empty symbol table and error list - fresh slate for analysis.
-    #[inline(always)]
     pub fn new(
         stmts: &'src Arena<Stmt<'src>>,
         exprs: &'src Arena<Expr<'src>>,
@@ -88,7 +83,7 @@ impl<'src> SemAnalyzer<'src> {
             exprs,
             conds,
             blocks,
-            symbol_table: Vec::new(),
+            scopes: Vec::new(),
             errors: Diagnostics::default(),
         }
     }
@@ -96,20 +91,22 @@ impl<'src> SemAnalyzer<'src> {
     /// Main entry point for semantic checking.
     /// Takes the root block (representing the whole program) and recursively
     /// validates everything inside it.
-    #[inline(always)]
     pub fn analyze(&mut self, root: BlockId) {
+        self.scopes.push(Vec::new()); // enter global scope
         self.check_block(root);
+        self.scopes.pop(); // exit global scope
     }
 
     /// Validates all statements within a block.
     /// Blocks in NaijaScript are wrapped with "start" and "end" keywords,
     /// but here we just process the list of statements inside.
-    #[inline(always)]
     fn check_block(&mut self, bid: BlockId) {
+        self.scopes.push(Vec::new()); // enter new block scope
         let block = &self.blocks.nodes[bid.0];
         for &sid in &block.stmts {
             self.check_stmt(sid);
         }
+        self.scopes.pop(); // exit block scope
     }
 
     /// The main semantic validation logic - handles each type of statement.
@@ -121,10 +118,17 @@ impl<'src> SemAnalyzer<'src> {
         match &self.stmts.nodes[sid.0] {
             // Handle "make variable get expression" statements
             Stmt::Assign { var, expr, span } => {
-                // Find if variable already declared, and get its span if so
-                if let Some((_, _, orig_span)) =
-                    self.symbol_table.iter().find(|(name, _, _)| name == var)
-                {
+                // We only want to prevent redeclaring a variable in the same block,
+                // so we check just the current (innermost) scope for duplicates
+                if self.scopes.last().unwrap().iter().any(|(name, _, _)| name == var) {
+                    let orig_span = self
+                        .scopes
+                        .last()
+                        .unwrap()
+                        .iter()
+                        .find(|(name, _, _)| name == var)
+                        .unwrap()
+                        .2;
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
@@ -145,7 +149,7 @@ impl<'src> SemAnalyzer<'src> {
                     // Let's figure out the type of this variable from the expression,
                     // then add it to our symbol table so future code knows it's declared.
                     let typ = self.infer_expr_type(*expr).unwrap_or(VarType::Number); // fallback to Number if unknown
-                    self.symbol_table.push((var, typ, span));
+                    self.scopes.last_mut().unwrap().push((var, typ, span));
                 }
                 // Always check the expression, even if variable was duplicate
                 // This catches more errors in one pass
@@ -153,7 +157,7 @@ impl<'src> SemAnalyzer<'src> {
             }
             // Handle variable reassignment: <variable> get <expression>
             Stmt::AssignExisting { var, expr, span } => {
-                if !self.symbol_table.iter().any(|(name, _, _)| name == var) {
+                if !self.lookup_var(var) {
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
@@ -185,7 +189,18 @@ impl<'src> SemAnalyzer<'src> {
                 self.check_cond(*cond);
                 self.check_block(*body);
             }
+            // Handle nested blocks
+            Stmt::Block { block, .. } => {
+                self.check_block(*block);
+            }
         }
+    }
+
+    // Check if a variable has already been declared in any scope,
+    // starting from the innermost and moving outward
+    #[inline]
+    fn lookup_var(&self, var: &&'src str) -> bool {
+        self.scopes.iter().rev().any(|scope| scope.iter().any(|(name, _, _)| name == var))
     }
 
     /// Validates condition expressions used in if statements and loops.
@@ -233,7 +248,7 @@ impl<'src> SemAnalyzer<'src> {
             Expr::Number(_, _) | Expr::String(_, _) | Expr::Bool(_, _) => {}
             // Variables must have been declared with "make" before use
             Expr::Var(v, span) => {
-                if !self.symbol_table.iter().any(|(name, _, _)| name == v) {
+                if !self.lookup_var(v) {
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
@@ -337,7 +352,12 @@ impl<'src> SemAnalyzer<'src> {
             Expr::String(_, _) => Some(VarType::String),
             Expr::Bool(_, _) => Some(VarType::Bool),
             Expr::Var(v, _) => {
-                self.symbol_table.iter().find(|(name, _, _)| name == v).map(|(_, t, _)| *t)
+                for scope in self.scopes.iter().rev() {
+                    if let Some((_, t, _)) = scope.iter().find(|(name, _, _)| name == v) {
+                        return Some(*t);
+                    }
+                }
+                None
             }
             Expr::Binary { op, lhs, rhs, .. } => {
                 let l = self.infer_expr_type(*lhs)?;

@@ -80,10 +80,9 @@ pub struct Interpreter<'src> {
     conds: &'src Arena<Cond>,
     blocks: &'src Arena<Block>,
 
-    /// Simple variable environment as a vector of (name, value) pairs.
-    /// This gives us O(n) variable lookup, but for small programs it's fine
-    /// and keeps the implementation dead simple. A HashMap would be overkill here.
-    env: Vec<(&'src str, Value<'src>)>,
+    /// Keeps track of all variables for each scope as we enter and exit blocks.
+    /// Each inner vector is a scope, and each tuple holds a variable name and its value.
+    env: Vec<Vec<(&'src str, Value<'src>)>>,
 
     /// Accumulated diagnostics - we collect these instead of panicking so the
     /// caller can decide how to handle runtime errors (continue, stop, etc.)
@@ -119,6 +118,7 @@ impl<'src> Interpreter<'src> {
     /// approach where the first runtime error stops execution and gets reported.
     /// This matches user expectations for most scripting languages.
     pub fn run(&mut self, root: BlockId) -> &Diagnostics {
+        self.env.push(Vec::new()); // enter global scope
         let block = &self.blocks.nodes[root.0];
         for &sid in &block.stmts {
             if let Err(err) = self.exec_stmt(sid) {
@@ -141,6 +141,7 @@ impl<'src> Interpreter<'src> {
                 break;
             }
         }
+        self.env.pop(); // exit global scope
         &self.errors
     }
 
@@ -159,12 +160,7 @@ impl<'src> Interpreter<'src> {
             }
             Stmt::AssignExisting { var, expr, .. } => {
                 let val = self.eval_expr(*expr)?;
-                let slot = self
-                    .env
-                    .iter_mut()
-                    .find(|(name, _)| *name == *var)
-                    .expect("Semantic analysis should guarantee variable exists");
-                slot.1 = val;
+                self.update_existing(var, val);
                 Ok(())
             }
             Stmt::Shout { expr, .. } => {
@@ -187,14 +183,17 @@ impl<'src> Interpreter<'src> {
                 }
                 Ok(())
             }
+            Stmt::Block { block, .. } => self.exec_block(*block),
         }
     }
 
     fn exec_block(&mut self, bid: BlockId) -> Result<(), RuntimeError<'src>> {
+        self.env.push(Vec::new()); // enter new block scope
         let block = &self.blocks.nodes[bid.0];
         for &sid in &block.stmts {
             self.exec_stmt(sid)?;
         }
+        self.env.pop(); // exit block scope
         Ok(())
     }
 
@@ -247,10 +246,7 @@ impl<'src> Interpreter<'src> {
             Expr::Bool(b, _) => Ok(Value::Bool(*b)),
             Expr::Var(v, _) => {
                 let val = self
-                    .env
-                    .iter()
-                    .find(|(name, _)| *name == *v)
-                    .map(|(_, val)| val.clone())
+                    .lookup_var(v)
                     .expect("Semantic analysis should guarantee all variables are declared");
                 Ok(val)
             }
@@ -296,17 +292,37 @@ impl<'src> Interpreter<'src> {
         }
     }
 
-    /// Helper for variable assignment - handles both new declarations and updates.
-    ///
-    /// This implements the "upsert" pattern: if the variable already exists in our
-    /// environment, update its value; otherwise, add it as a new binding.
-    /// This keeps the assignment logic simple and avoids duplicate code between
-    /// initial declaration and reassignment.
+    /// Adds a new variable to the current scope, or updates its value if it already exists in this scope.
     fn insert_or_update(&mut self, var: &'src str, val: Value<'src>) {
-        if let Some((_, slot)) = self.env.iter_mut().find(|(name, _)| *name == var) {
+        if let Some((_, slot)) =
+            self.env.last_mut().unwrap().iter_mut().find(|(name, _)| *name == var)
+        {
             *slot = val;
         } else {
-            self.env.push((var, val));
+            self.env.last_mut().unwrap().push((var, val));
         }
+    }
+
+    /// Looks for the variable in all scopes starting from the innermost one,
+    /// and updates its value as soon as it is found.
+    fn update_existing(&mut self, var: &'src str, val: Value<'src>) {
+        for scope in self.env.iter_mut().rev() {
+            if let Some((_, slot)) = scope.iter_mut().find(|(name, _)| *name == var) {
+                *slot = val;
+                return;
+            }
+        }
+        unreachable!("Semantic analysis should guarantee variable exists");
+    }
+
+    /// Looks up a variable by its name,
+    /// starting from the innermost scope and moving outward.
+    fn lookup_var(&self, var: &str) -> Option<Value<'src>> {
+        for scope in self.env.iter().rev() {
+            if let Some((_, val)) = scope.iter().find(|(name, _)| *name == var) {
+                return Some(val.clone());
+            }
+        }
+        None
     }
 }

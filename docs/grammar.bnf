@@ -2,7 +2,7 @@
 
 <statement_list> ::= <statement> | <statement> <statement_list>
 
-<statement> ::= <assignment> | <reassignment> | <output_statement> | <if_statement> | <loop_statement>
+<statement> ::= <assignment> | <reassignment> | <output_statement> | <if_statement> | <loop_statement> | <block>
 
 <assignment> ::= "make" <variable> "get" <expression>
 <reassignment> ::= <variable> "get" <expression>
