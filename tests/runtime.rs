@@ -177,3 +177,8 @@ fn boolean_ordering() {
     assert_runtime!("if to say (false small pass true) start shout(1) end", output: vec![Value::Number(1.0)]);
     assert_runtime!("if to say (true pass false) start shout(1) end", output: vec![Value::Number(1.0)]);
 }
+
+#[test]
+fn block_scope_shadowing_and_lifetime() {
+    assert_runtime!("make x get 1 start make x get 2 shout(x) end shout(x)", output: vec![Value::Number(2.0), Value::Number(1.0)]);
+}

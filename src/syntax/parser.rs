@@ -83,6 +83,7 @@ pub enum Stmt<'src> {
     Shout { expr: ExprId, span: Span },                  // "shout(x)"
     If { cond: CondId, then_b: BlockId, else_b: Option<BlockId>, span: Span }, // "if to say(...) start...end"
     Loop { cond: CondId, body: BlockId, span: Span }, // "jasi(...) start...end"
+    Block { block: BlockId, span: Span },             // "start...end" - standalone or nested block
 }
 
 /// Expression AST nodes for NaijaScript.
@@ -127,6 +128,7 @@ pub enum SyntaxError {
     ExpectedRParenAfterIf,
     ExpectedStartForThenBlock,
     UnterminatedThenBlock,
+    UnterminatedBlock,
     ExpectedStartForElseBlock,
     UnterminatedElseBlock,
     ExpectedLParenAfterJasi,
@@ -150,6 +152,7 @@ impl AsStr for SyntaxError {
             SyntaxError::ExpectedRParenAfterIf => "If statement syntax no complete",
             SyntaxError::ExpectedStartForThenBlock => "If block syntax no complete",
             SyntaxError::UnterminatedThenBlock => "If block syntax no complete",
+            SyntaxError::UnterminatedBlock => "Block syntax no complete",
             SyntaxError::ExpectedStartForElseBlock => "Else block syntax no complete",
             SyntaxError::UnterminatedElseBlock => "Else block syntax no complete",
             SyntaxError::ExpectedLParenAfterJasi => "Loop syntax no complete",
@@ -274,6 +277,29 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             Token::Shout => self.parse_shout(start),
             Token::IfToSay => self.parse_if(start),
             Token::Jasi => self.parse_loop(start),
+            Token::Start => {
+                // Parse a standalone or nested block as a statement
+                self.bump(); // consume 'start'
+                let block_id = self.parse_block_body();
+                if let Token::End = self.cur.token {
+                    self.bump();
+                } else {
+                    self.errors.emit(
+                        self.cur.span.clone(),
+                        Severity::Error,
+                        "syntax",
+                        SyntaxError::UnterminatedBlock.as_str(),
+                        vec![Label {
+                            span: self.cur.span.clone(),
+                            message: "Dis block start here, but I no see `end`",
+                        }],
+                    );
+                }
+                let sid = self
+                    .stmt_arena
+                    .alloc(Stmt::Block { block: block_id, span: start..self.cur.span.end });
+                Some(sid)
+            }
             Token::Identifier(var) => {
                 let var_name = *var;
                 let var_span = self.cur.span.clone();
@@ -781,7 +807,12 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
         // Keep parsing statements until we hit EOF or an invalid statement token
         while matches!(
             &self.cur.token,
-            Token::Make | Token::Shout | Token::IfToSay | Token::Jasi | Token::Identifier(_)
+            Token::Make
+                | Token::Shout
+                | Token::IfToSay
+                | Token::Jasi
+                | Token::Identifier(_)
+                | Token::Start
         ) {
             match self.parse_statement() {
                 Some(sid) => stmts.push(sid),

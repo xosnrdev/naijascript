@@ -80,8 +80,8 @@ Type inference dey automatic. You no need to declare the type of a variable.
 
 - **Declaration**: You must declare a variable with the `make` keyword before you use am.
   - `make myVar get 10`
-- **Redeclaration**: You no fit declare a variable wey you don already declare.
-- **Scope**: NaijaScript currently get one global scope. All variables wey you declare fit be accessed from anywhere in the program. Block scoping (`start`...`end`) no dey create a new scope for now, but this go change for future.
+- **Redeclaration**: You no fit declare a variable wey you don already declare for the same block.
+- **Scope**: Any variable wey you declare inside a `start ... end` block go only dey visible inside that block and any nested block. Variable wey you declare for outside block no go dey visible inside the block if you redeclare am inside. This help prevent accidental variable shadowing or leakage, and na the same way modern programming languages dey behave.
 
 ## 5. Dynamic Semantics
 
@@ -95,6 +95,7 @@ This section dey explain wetin each part of the language dey do when e dey run.
 - **`if to say (<condition>) <block>`**: If the condition na true, the code inside the `start`...`end` block go run.
 - **`if to say (<condition>) <block> if not so <block>`**: If the condition na true, the first block go run. Otherwise, the second block go run.
 - **`jasi (<condition>) <block>`**: The code inside the block go run repeatedly as long as the condition dey true.
+- **`start ... end`**: You fit use block anywhere as a statement. Any variable you declare inside the block go only dey visible inside that block and any nested block.
 
 ### 5.2. Expressions
 

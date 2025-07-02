@@ -52,7 +52,7 @@ pub enum Token<'input> {
     // Comparison operators
     Na,        // "na" - equality (Nigerian slang for "is")
     Pass,      // "pass" - greater than (Nigerian slang for "exceeds")
-    SmallPass, // "small pass" - greater than or equal
+    SmallPass, // "small pass" - less than (Nigerian slang for "smaller than")
 
     // Conditional constructs
     IfToSay, // "if to say" - if statement
@@ -459,7 +459,7 @@ impl<'input> Lexer<'input> {
             self.pos = save;
             return Token::Identifier("if");
         }
-        // "small pass" (greater than or equal)
+        // "small pass" (less than)
         if word == "small" {
             let save = self.pos;
             if self.try_consume_word("pass") {
