@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 
 use naijascript::diagnostics::AsStr;
-use naijascript::syntax::scanner::{LexError, Lexer, Token};
+use naijascript::syntax::scanner::{LexError, Lexer};
+use naijascript::syntax::token::Token;
 
 macro_rules! assert_tokens {
     ($lexer:expr, $($expected:expr),+ $(,)?) => {{

@@ -125,10 +125,13 @@ impl<'src> Interpreter<'src> {
                 let labels = match err.kind {
                     RuntimeErrorKind::DivisionByZero => vec![Label {
                         span: err.span.clone(),
-                        message: "You divide by zero for here",
+                        message: Cow::Borrowed("You divide by zero for here"),
                     }],
                     RuntimeErrorKind::InvalidNumber => {
-                        vec![Label { span: err.span.clone(), message: "This number no correct" }]
+                        vec![Label {
+                            span: err.span.clone(),
+                            message: Cow::Borrowed("This number no correct"),
+                        }]
                     }
                 };
                 self.errors.emit(

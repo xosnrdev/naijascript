@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
-use crate::syntax::scanner::{SpannedToken, Token};
+use crate::syntax::token::{SpannedToken, Token};
 
 /// Arena allocator for AST nodes - our answer to memory management without garbage collection.
 ///
@@ -294,7 +294,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                         SyntaxError::UnterminatedBlock.as_str(),
                         vec![Label {
                             span: self.cur.span.clone(),
-                            message: "Dis block start here, but I no see `end`",
+                            message: Cow::Borrowed("Dis block start here, but I no see `end`"),
                         }],
                     );
                 }
@@ -319,17 +319,14 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     Some(sid)
                 } else {
                     // Not a reassignment, error and do not consume
-                    let mut message = "I dey expect statement for here";
-                    // Suggest a keyword if close to a known one
-                    if Self::suggest_keyword(var_name, "make").is_some() {
-                        message = "You fit mean `make`?";
-                    } else if Self::suggest_keyword(var_name, "shout").is_some() {
-                        message = "You fit mean `shout`?";
-                    } else if Self::suggest_keyword(var_name, "jasi").is_some() {
-                        message = "You fit mean `jasi`?";
-                    } else if Self::suggest_keyword(var_name, "if").is_some() {
-                        message = "You fit mean `if to say`?";
-                    }
+                    let message: Cow<'static, str> =
+                        if let Some(suggestion) = Token::suggest_keyword(var_name) {
+                            Cow::Owned(format!(
+                                "I dey expect statement for here. Na `{suggestion}` you mean?",
+                            ))
+                        } else {
+                            Cow::Borrowed("I dey expect statement for here")
+                        };
                     self.errors.emit(
                         var_span.clone(),
                         Severity::Error,
@@ -348,7 +345,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::ExpectedStatement.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: "I dey expect `make`, `shout`, `if to say`, `jasi`, or variable reassignment for here",
+                        message: Cow::Borrowed("I dey expect `make`, `shout`, `if to say`, `jasi`, or variable reassignment for here"),
                     }],
                 );
                 None
@@ -375,7 +372,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedIdentifierAfterMake.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Put variable name after `make` for here",
+                    message: Cow::Borrowed("Put variable name after `make` for here"),
                 }],
             );
             return None;
@@ -391,7 +388,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedGetAfterIdentifier.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Put `get` after variable name for here",
+                    message: Cow::Borrowed("Put `get` after variable name for here"),
                 }],
             );
             return None;
@@ -418,7 +415,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedLParenAfterShout.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Put `(` after `shout` for here",
+                    message: Cow::Borrowed("Put `(` after `shout` for here"),
                 }],
             );
             return None;
@@ -434,7 +431,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedRParenAfterShout.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Close shout with `)` for here",
+                    message: Cow::Borrowed("Close shout with `)` for here"),
                 }],
             );
             return None;
@@ -460,7 +457,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedLParenAfterIf.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Put `(` after `if to say` for here",
+                    message: Cow::Borrowed("Put `(` after `if to say` for here"),
                 }],
             );
             return None;
@@ -476,7 +473,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedRParenAfterIf.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Close condition with `)` for here",
+                    message: Cow::Borrowed("Close condition with `)` for here"),
                 }],
             );
             return None;
@@ -493,7 +490,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedStartForThenBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Begin block with `start` for here",
+                    message: Cow::Borrowed("Begin block with `start` for here"),
                 }],
             );
             return None;
@@ -509,7 +506,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::UnterminatedThenBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Dis block start here, but I no see `end`",
+                    message: Cow::Borrowed("Dis block start here, but I no see `end`"),
                 }],
             );
         }
@@ -528,7 +525,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::ExpectedStartForElseBlock.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: "Begin else block with `start` for here",
+                        message: Cow::Borrowed("Begin else block with `start` for here"),
                     }],
                 );
                 return None;
@@ -544,7 +541,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::UnterminatedElseBlock.as_str(),
                     vec![Label {
                         span: else_span,
-                        message: "Dis else block start here, but I no see `end`",
+                        message: Cow::Borrowed("Dis else block start here, but I no see `end`"),
                     }],
                 );
             }
@@ -578,7 +575,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedLParenAfterJasi.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Put `(` after `jasi` for here",
+                    message: Cow::Borrowed("Put `(` after `jasi` for here"),
                 }],
             );
             return None;
@@ -594,7 +591,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedRParenAfterJasi.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Close loop condition with `)` for here",
+                    message: Cow::Borrowed("Close loop condition with `)` for here"),
                 }],
             );
             return None;
@@ -609,7 +606,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedStartForLoopBody.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Begin loop body with `start` for here",
+                    message: Cow::Borrowed("Begin loop body with `start` for here"),
                 }],
             );
             return None;
@@ -625,7 +622,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::UnterminatedLoopBody.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: "Dis loop body start here, but I no see `end`",
+                    message: Cow::Borrowed("Dis loop body start here, but I no see `end`"),
                 }],
             );
         }
@@ -652,7 +649,9 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::ExpectedComparisonOperator.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: "Use `na`, `pass`, or `small pass` to compare for here",
+                        message: Cow::Borrowed(
+                            "Use `na`, `pass`, or `small pass` to compare for here",
+                        ),
                     }],
                 );
                 CmpOp::Eq // fallback to something reasonable
@@ -721,7 +720,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                         SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                         vec![Label {
                             span: self.cur.span.clone(),
-                            message: "Close expression with `)` for here",
+                            message: Cow::Borrowed("Close expression with `)` for here"),
                         }],
                     );
                 }
@@ -735,7 +734,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: "I dey expect number, variable, or ( for here",
+                        message: Cow::Borrowed("I dey expect number, variable, or `(` for here"),
                     }],
                 );
                 let s = self.cur.span.clone();
@@ -772,34 +771,6 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             });
         }
         lhs
-    }
-
-    /// Suggests a statement keyword if the identifier is a likely typo, using a single-edit heuristic.
-    #[inline]
-    fn suggest_keyword<'a>(ident: &str, expected: &'a str) -> Option<&'a str> {
-        // Only check for single-char edit distance or prefix (very cheap, no alloc)
-        if ident.len() == expected.len() {
-            // One substitution: e.g., 'mak' vs 'make'
-            let mut diff = 0;
-            for (a, b) in ident.bytes().zip(expected.bytes()) {
-                if a != b {
-                    diff += 1;
-                    if diff > 1 {
-                        break;
-                    }
-                }
-            }
-            if diff == 1 {
-                return Some(expected);
-            }
-        } else if ident.len() + 1 == expected.len() && expected.starts_with(ident) {
-            // Missing last char: e.g., 'mak' vs 'make'
-            return Some(expected);
-        } else if ident.len() == expected.len() + 1 && ident.starts_with(expected) {
-            // Extra last char: e.g., 'makee' vs 'make'
-            return Some(expected);
-        }
-        None
     }
 
     /// Parses a program-level statement list that stops at invalid tokens.

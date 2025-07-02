@@ -2,7 +2,8 @@
 
 use std::borrow::Cow;
 
-use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
+use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
+use crate::syntax::token::{SpannedToken, Token};
 
 /// Represents the type of lexical errors that can occur during tokenization
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,75 +18,13 @@ pub enum LexError {
 impl AsStr for LexError {
     fn as_str(&self) -> &'static str {
         match self {
-            LexError::UnexpectedChar => "Wetin be dis?",
-            LexError::InvalidNumber => "Dis number no correct",
-            LexError::InvalidIdentifier => "Dis name no correct",
-            LexError::InvalidStringEscape => "Dis escape no make sense",
+            LexError::UnexpectedChar => "Unexpected character",
+            LexError::InvalidNumber => "Number no correct",
+            LexError::InvalidIdentifier => "Identifier no correct",
+            LexError::InvalidStringEscape => "String escape no correct",
             LexError::UnterminatedString => "String never close",
         }
     }
-}
-
-/// All possible token types in NaijaScript
-///
-/// The lifetime parameter 'input ties token references to the source text lifetime,
-/// letting us avoid copying strings for identifiers and numbers
-#[derive(Debug, Default, Clone, PartialEq)]
-pub enum Token<'input> {
-    // Keywords for variable declaration and assignment
-    Make, // "make" - variable declaration
-    Get,  // "get" - assignment operator
-
-    // Arithmetic operators
-    Add,    // "add" - addition
-    Minus,  // "minus" - subtraction
-    Times,  // "times" - multiplication
-    Divide, // "divide" - division
-    Mod,    // "mod" - modulus
-
-    // Logical operators
-    And, // "and" - logical and
-    Or,  // "or" - logical or
-    Not, // "not" - logical not
-
-    // I/O and control flow
-    Shout, // "shout" - print to console
-    Jasi,  // "jasi" - while loop construct (Nigerian slang for "keep going")
-    Start, // "start" - block beginning
-    End,   // "end" - block ending
-
-    // Comparison operators
-    Na,        // "na" - equality (Nigerian slang for "is")
-    Pass,      // "pass" - greater than (Nigerian slang for "exceeds")
-    SmallPass, // "small pass" - less than (Nigerian slang for "smaller than")
-
-    // Conditional constructs
-    IfToSay, // "if to say" - if statement
-    IfNotSo, // "if not so" - else statement
-
-    // Boolean literals
-    True,  // "true" - truthy
-    False, // "false" - falsy
-
-    // Punctuation
-    LParen, // "("
-    RParen, // ")"
-
-    // Variable length tokens
-    Identifier(&'input str),  // Variable names
-    Number(&'input str),      // Numeric literals
-    String(Cow<'input, str>), // String literals
-
-    // Special tokens
-    #[default]
-    EOF, // End of file
-}
-
-/// Represents a token along with its location in the original source text.
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct SpannedToken<'input> {
-    pub token: Token<'input>,
-    pub span: Span,
 }
 
 /// Our lexical analyzer that breaks source text into tokens
@@ -301,7 +240,7 @@ impl<'input> Lexer<'input> {
                         LexError::UnterminatedString.as_str(),
                         vec![Label {
                             span: start..self.src.len(),
-                            message: "String no get ending quote",
+                            message: Cow::Borrowed(r#"Dis string no get ending quote `"`"#),
                         }],
                     );
                     self.pos = self.src.len();
@@ -319,7 +258,10 @@ impl<'input> Lexer<'input> {
                             Severity::Error,
                             "lexical",
                             LexError::InvalidStringEscape.as_str(),
-                            vec![Label { span: end..end + 2, message: "Escape wey no correct" }],
+                            vec![Label {
+                                span: end..end + 2,
+                                message: Cow::Borrowed("Dis escape no correct"),
+                            }],
                         );
                         // Append the invalid escape character
                         owned.push(esc as char);
@@ -340,7 +282,10 @@ impl<'input> Lexer<'input> {
             Severity::Error,
             "lexical",
             LexError::UnterminatedString.as_str(),
-            vec![Label { span: start..self.src.len(), message: "String no get ending quote" }],
+            vec![Label {
+                span: start..self.src.len(),
+                message: Cow::Borrowed(r#"Dis string no get ending quote `"`"#),
+            }],
         );
         self.pos = self.src.len();
         if has_escape {
@@ -390,7 +335,7 @@ impl<'input> Lexer<'input> {
                     LexError::InvalidNumber.as_str(),
                     vec![Label {
                         span: dot_pos..self.pos,
-                        message: "Number no get digit after dot",
+                        message: Cow::Borrowed("Dis number no get digit after `.`"),
                     }],
                 );
                 self.bump();
@@ -410,7 +355,10 @@ impl<'input> Lexer<'input> {
                 Severity::Error,
                 "lexical",
                 LexError::InvalidNumber.as_str(),
-                vec![Label { span: extra_dot..self.pos, message: "Number get extra dot" }],
+                vec![Label {
+                    span: extra_dot..self.pos,
+                    message: Cow::Borrowed("Dis number get extra `.`"),
+                }],
             );
             return self.next_token().token;
         }
@@ -428,7 +376,10 @@ impl<'input> Lexer<'input> {
                 Severity::Error,
                 "lexical",
                 LexError::InvalidIdentifier.as_str(),
-                vec![Label { span: start..id_start, message: "Identifier must start with letter" }],
+                vec![Label {
+                    span: start..id_start,
+                    message: Cow::Borrowed("Identifier must start with letter"),
+                }],
             );
             let num = &self.src[start..id_start];
             return Token::Number(num);
@@ -507,7 +458,7 @@ impl<'input> Lexer<'input> {
                             LexError::InvalidIdentifier.as_str(),
                             vec![Label {
                                 span: start..start + 1,
-                                message: "Identifier must start with letter",
+                                message: Cow::Borrowed("Identifier must start with letter"),
                             }],
                         );
                     } else {
@@ -525,7 +476,9 @@ impl<'input> Lexer<'input> {
                                     LexError::InvalidIdentifier.as_str(),
                                     vec![Label {
                                         span: bad_pos..bad_pos + 1,
-                                        message: "Identifier get invalid character",
+                                        message: Cow::Borrowed(
+                                            "Dis identifier get invalid character",
+                                        ),
                                     }],
                                 );
                                 break;
@@ -546,7 +499,10 @@ impl<'input> Lexer<'input> {
             Severity::Error,
             "lexical",
             LexError::UnexpectedChar.as_str(),
-            vec![Label { span: start..self.pos, message: "Dis character no dey grammar" }],
+            vec![Label {
+                span: start..self.pos,
+                message: Cow::Borrowed("I no sabi dis character"),
+            }],
         );
         None
     }
