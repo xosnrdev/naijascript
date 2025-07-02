@@ -98,3 +98,23 @@ fn test_block_scope_variable_not_visible_outside() {
 fn test_block_scope_duplicate_in_same_block() {
     assert_resolve!("start make x get 1 make x get 2 end", SemanticError::DuplicateDeclaration);
 }
+
+#[test]
+fn test_logical_and_type_error() {
+    assert_resolve!("make x get true and 1", SemanticError::TypeMismatch);
+    assert_resolve!("make x get 1 and true", SemanticError::TypeMismatch);
+    assert_resolve!("make x get 1 and 2", SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_logical_or_type_error() {
+    assert_resolve!("make x get true or 1", SemanticError::TypeMismatch);
+    assert_resolve!("make x get 1 or true", SemanticError::TypeMismatch);
+    assert_resolve!("make x get 1 or 2", SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_logical_not_type_error() {
+    assert_resolve!("make x get not 1", SemanticError::TypeMismatch);
+    assert_resolve!(r#"make x get not "foo""#, SemanticError::TypeMismatch);
+}

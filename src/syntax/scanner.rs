@@ -43,6 +43,11 @@ pub enum Token<'input> {
     Divide, // "divide" - division
     Mod,    // "mod" - modulus
 
+    // Logical operators
+    And, // "and" - logical and
+    Or,  // "or" - logical or
+    Not, // "not" - logical not
+
     // I/O and control flow
     Shout, // "shout" - print to console
     Jasi,  // "jasi" - while loop construct (Nigerian slang for "keep going")
@@ -476,6 +481,9 @@ impl<'input> Lexer<'input> {
             "times" => Token::Times,
             "divide" => Token::Divide,
             "mod" => Token::Mod,
+            "and" => Token::And,
+            "or" => Token::Or,
+            "not" => Token::Not,
             "shout" => Token::Shout,
             "jasi" => Token::Jasi,
             "start" => Token::Start,

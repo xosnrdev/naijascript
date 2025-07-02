@@ -30,6 +30,7 @@ Keywords na special words wey get meaning for NaijaScript. You no fit use them a
 - `end`: End of a code block.
 - `add`, `minus`, `times`, `divide`, `mod`: Arithmetic operators.
 - `na`, `pass`, `small pass`: Comparison operators.
+- `and`, `or`, `not`: Logical operators.
 
 ### 2.3. Literals
 
@@ -47,6 +48,16 @@ Literals na the fixed values wey you dey write directly for your code.
 
 - **Arithmetic**: `add` (+), `minus` (-), `times` (\*), `divide` (/), `mod` (%)
 - **Comparison**: `na` (==), `pass` (>), `small pass` (<)
+- **Logical**: `and` (logical AND), `or` (logical OR), `not` (logical NOT)
+
+**Operator Precedence (from highest to lowest):**
+
+1. `not`
+2. `times`, `divide`, `mod`
+3. `add`, `minus`
+4. `na`, `pass`, `small pass`
+5. `and`
+6. `or`
 
 ### 2.5. Punctuation
 
@@ -102,6 +113,7 @@ This section dey explain wetin each part of the language dey do when e dey run.
 - **Arithmetic**: Expressions with `add`, `minus`, `times`, `divide`, and `mod` go perform the calculation and return a `Number`. If you try to divide by zero or use mod with zero, e go cause a runtime error.
 - **String Concatenation**: You fit use the `add` operator to join two strings together.
 - **Comparison**: Expressions with `na`, `pass`, and `small pass` go compare two values and return a boolean result (true or false) for use in conditions.
+- **Logical**: Expressions wey use `and`, `or`, and `not` dey join or change boolean values. Dem only work if the values na `true` or `false`. If you try use dem with number or string, e go cause a semantic error.
 
 ## 6. Built-in Intrinsics
 

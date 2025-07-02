@@ -251,42 +251,90 @@ impl<'src> Interpreter<'src> {
                 Ok(val)
             }
             Expr::Binary { op, lhs, rhs, span } => {
-                let l = self.eval_expr(*lhs)?;
-                let r = self.eval_expr(*rhs)?;
-                match (l, r) {
-                    (Value::Number(lv), Value::Number(rv)) => match op {
-                        BinOp::Add => Ok(Value::Number(lv + rv)),
-                        BinOp::Minus => Ok(Value::Number(lv - rv)),
-                        BinOp::Times => Ok(Value::Number(lv * rv)),
-                        BinOp::Divide | BinOp::Mod => {
-                            if rv == 0.0 {
-                                Err(RuntimeError { kind: RuntimeErrorKind::DivisionByZero, span })
-                            } else {
-                                Ok(Value::Number(match op {
-                                    BinOp::Divide => lv / rv,
-                                    BinOp::Mod => lv % rv,
-                                    _ => unreachable!("Unexpected binary operation for numbers"),
-                                }))
-                            }
+                match op {
+                    BinOp::And => {
+                        let l = self.eval_expr(*lhs)?;
+                        if let Value::Bool(false) = l {
+                            return Ok(Value::Bool(false)); // short-circuit
                         }
-                    },
-                    (Value::Str(ls), Value::Str(rs)) => match op {
-                        BinOp::Add => {
-                            let mut s = String::with_capacity(ls.len() + rs.len());
-                            s.push_str(&ls);
-                            s.push_str(&rs);
-                            Ok(Value::Str(Cow::Owned(s)))
+                        let r = self.eval_expr(*rhs)?;
+                        match r {
+                            Value::Bool(b) => Ok(Value::Bool(b)),
+                            _ => unreachable!(
+                                "Semantic analysis should guarantee only valid boolean expressions"
+                            ),
                         }
-                        _ => unreachable!(
-                            "Semantic analysis should guarantee only valid string operations"
-                        ),
-                    },
-                    (Value::Str(_), Value::Number(_)) | (Value::Number(_), Value::Str(_)) => {
-                        unreachable!(
-                            "Semantic analysis should guarantee only valid type combinations"
-                        )
                     }
-                    _ => unreachable!("Semantic analysis should guarantee only valid expressions"),
+                    BinOp::Or => {
+                        let l = self.eval_expr(*lhs)?;
+                        if let Value::Bool(true) = l {
+                            return Ok(Value::Bool(true)); // short-circuit
+                        }
+                        let r = self.eval_expr(*rhs)?;
+                        match r {
+                            Value::Bool(b) => Ok(Value::Bool(b)),
+                            _ => unreachable!(
+                                "Semantic analysis should guarantee only valid boolean expressions"
+                            ),
+                        }
+                    }
+                    _ => {
+                        let l = self.eval_expr(*lhs)?;
+                        let r = self.eval_expr(*rhs)?;
+                        match (l, r) {
+                            (Value::Number(lv), Value::Number(rv)) => match op {
+                                BinOp::Add => Ok(Value::Number(lv + rv)),
+                                BinOp::Minus => Ok(Value::Number(lv - rv)),
+                                BinOp::Times => Ok(Value::Number(lv * rv)),
+                                BinOp::Divide | BinOp::Mod => {
+                                    if rv == 0.0 {
+                                        Err(RuntimeError {
+                                            kind: RuntimeErrorKind::DivisionByZero,
+                                            span,
+                                        })
+                                    } else {
+                                        Ok(Value::Number(match op {
+                                            BinOp::Divide => lv / rv,
+                                            BinOp::Mod => lv % rv,
+                                            _ => unreachable!(
+                                                "Unexpected binary operation for numbers"
+                                            ),
+                                        }))
+                                    }
+                                }
+                                _ => unreachable!("Unexpected op for numbers"),
+                            },
+                            (Value::Str(ls), Value::Str(rs)) => match op {
+                                BinOp::Add => {
+                                    let mut s = String::with_capacity(ls.len() + rs.len());
+                                    s.push_str(&ls);
+                                    s.push_str(&rs);
+                                    Ok(Value::Str(Cow::Owned(s)))
+                                }
+                                _ => unreachable!(
+                                    "Semantic analysis should guarantee only valid string operations"
+                                ),
+                            },
+                            (Value::Str(_), Value::Number(_))
+                            | (Value::Number(_), Value::Str(_)) => {
+                                unreachable!(
+                                    "Semantic analysis should guarantee only valid type combinations"
+                                )
+                            }
+                            _ => unreachable!(
+                                "Semantic analysis should guarantee only valid expressions"
+                            ),
+                        }
+                    }
+                }
+            }
+            Expr::Not { expr, .. } => {
+                let v = self.eval_expr(*expr)?;
+                match v {
+                    Value::Bool(b) => Ok(Value::Bool(!b)),
+                    _ => unreachable!(
+                        "Semantic analysis should guarantee only valid boolean expressions"
+                    ),
                 }
             }
         }

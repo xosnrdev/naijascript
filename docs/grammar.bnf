@@ -15,7 +15,9 @@
 
 <digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
 
-<expression> ::= <term> | <expression> "add" <term> | <expression> "minus" <term>
+<expression> ::= <logic_term> | <expression> "or" <logic_term> | <expression> "add" <term> | <expression> "minus" <term>
+<logic_term> ::= <logic_factor> | <logic_term> "and" <logic_factor> | <term>
+<logic_factor> ::= "not" <factor> | <factor>
 
 <term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor> | <term> "mod" <factor>
 

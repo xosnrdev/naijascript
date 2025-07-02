@@ -63,6 +63,8 @@ pub enum BinOp {
     Times,  // "times" keyword
     Divide, // "divide" keyword
     Mod,    // "mod" keyword
+    And,    // "and" keyword (logical)
+    Or,     // "or" keyword (logical)
 }
 
 /// Comparison operators for conditions in if statements and loops.
@@ -94,7 +96,8 @@ pub enum Expr<'src> {
     String(Cow<'src, str>, Span),                               // "hello", etc.
     Bool(bool, Span),                                           // "true", "false"
     Var(&'src str, Span),                                       // variable references
-    Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span }, // arithmetic operations
+    Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span }, // arithmetic/logical operations
+    Not { expr: ExprId, span: Span },                           // logical not
 }
 
 /// Represents a condition in if statements or loops.
@@ -662,8 +665,10 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
 
     /// Expression parsing using Pratt parsing technique for operator precedence.
     /// This elegantly handles the grammar rules:
-    /// <expression> ::= <term> | <expression> "add" <term> | <expression> "minus" <term>
-    /// <term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor>
+    /// <expression> ::= <logic_term> | <expression> "or" <logic_term> | <expression> "add" <term> | <expression> "minus" <term>
+    /// <logic_term> ::= <logic_factor> | <logic_term> "and" <logic_factor> | <term>
+    /// <logic_factor> ::= "not" <factor> | <factor>
+    /// <term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor> | <term> "mod" <factor>
     ///
     /// The min_bp parameter controls precedence - higher numbers bind tighter.
     /// This avoids the traditional approach of separate methods for each precedence level.
@@ -697,6 +702,11 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 let id = self.expr_arena.alloc(Expr::Var(v, s));
                 self.bump();
                 id
+            }
+            Token::Not => {
+                self.bump();
+                let expr = self.parse_expression(30); // Highest precedence for unary not
+                self.expr_arena.alloc(Expr::Not { expr, span: start..self.cur.span.end })
             }
             Token::LParen => {
                 self.bump();
@@ -737,19 +747,15 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
 
         // Parse binary operators with precedence climbing
         loop {
-            let op = match &self.cur.token {
-                Token::Times => BinOp::Times,
-                Token::Divide => BinOp::Divide,
-                Token::Mod => BinOp::Mod,
-                Token::Add => BinOp::Add,
-                Token::Minus => BinOp::Minus,
+            let (op, l_bp, r_bp) = match &self.cur.token {
+                Token::Times => (BinOp::Times, 20, 21),
+                Token::Divide => (BinOp::Divide, 20, 21),
+                Token::Mod => (BinOp::Mod, 20, 21),
+                Token::Add => (BinOp::Add, 10, 11),
+                Token::Minus => (BinOp::Minus, 10, 11),
+                Token::And => (BinOp::And, 5, 6),
+                Token::Or => (BinOp::Or, 1, 2),
                 _ => break, // No more operators
-            };
-
-            // Set precedence levels - multiplication/division/modulus bind tighter than addition/subtraction
-            let (l_bp, r_bp) = match op {
-                BinOp::Times | BinOp::Divide | BinOp::Mod => (20, 21), // Higher precedence
-                BinOp::Add | BinOp::Minus => (10, 11),                 // Lower precedence
             };
 
             // If current operator has lower precedence than minimum, we're done
