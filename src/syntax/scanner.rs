@@ -18,10 +18,10 @@ pub enum LexError {
 impl AsStr for LexError {
     fn as_str(&self) -> &'static str {
         match self {
-            LexError::UnexpectedChar => "Wetin be dis?",
-            LexError::InvalidNumber => "Dis number no correct",
-            LexError::InvalidIdentifier => "Dis name no correct",
-            LexError::InvalidStringEscape => "Dis escape no make sense",
+            LexError::UnexpectedChar => "Unexpected character",
+            LexError::InvalidNumber => "Number no correct",
+            LexError::InvalidIdentifier => "Identifier no correct",
+            LexError::InvalidStringEscape => "String escape no correct",
             LexError::UnterminatedString => "String never close",
         }
     }
@@ -240,7 +240,7 @@ impl<'input> Lexer<'input> {
                         LexError::UnterminatedString.as_str(),
                         vec![Label {
                             span: start..self.src.len(),
-                            message: Cow::Borrowed(r#"String no get ending quote `"`"#),
+                            message: Cow::Borrowed(r#"Dis string no get ending quote `"`"#),
                         }],
                     );
                     self.pos = self.src.len();
@@ -284,7 +284,7 @@ impl<'input> Lexer<'input> {
             LexError::UnterminatedString.as_str(),
             vec![Label {
                 span: start..self.src.len(),
-                message: Cow::Borrowed(r#"String no get ending quote `"`"#),
+                message: Cow::Borrowed(r#"Dis string no get ending quote `"`"#),
             }],
         );
         self.pos = self.src.len();
@@ -335,7 +335,7 @@ impl<'input> Lexer<'input> {
                     LexError::InvalidNumber.as_str(),
                     vec![Label {
                         span: dot_pos..self.pos,
-                        message: Cow::Borrowed("Number no get digit after `.`"),
+                        message: Cow::Borrowed("Dis number no get digit after `.`"),
                     }],
                 );
                 self.bump();
@@ -357,7 +357,7 @@ impl<'input> Lexer<'input> {
                 LexError::InvalidNumber.as_str(),
                 vec![Label {
                     span: extra_dot..self.pos,
-                    message: Cow::Borrowed("Number get extra `.`"),
+                    message: Cow::Borrowed("Dis number get extra `.`"),
                 }],
             );
             return self.next_token().token;
@@ -476,7 +476,9 @@ impl<'input> Lexer<'input> {
                                     LexError::InvalidIdentifier.as_str(),
                                     vec![Label {
                                         span: bad_pos..bad_pos + 1,
-                                        message: Cow::Borrowed("Identifier get invalid character"),
+                                        message: Cow::Borrowed(
+                                            "Dis identifier get invalid character",
+                                        ),
                                     }],
                                 );
                                 break;
@@ -499,7 +501,7 @@ impl<'input> Lexer<'input> {
             LexError::UnexpectedChar.as_str(),
             vec![Label {
                 span: start..self.pos,
-                message: Cow::Borrowed("Dis character no dey grammar"),
+                message: Cow::Borrowed("I no sabi dis character"),
             }],
         );
         None
