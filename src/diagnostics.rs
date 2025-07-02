@@ -1,5 +1,6 @@
 //! The diagnostics system for NaijaScript.
 
+use std::borrow::Cow;
 use std::ops::Range;
 
 /// Byte-range span within source text.
@@ -51,7 +52,7 @@ impl Severity {
 #[derive(Debug)]
 pub struct Label {
     pub span: Span,
-    pub message: &'static str,
+    pub message: Cow<'static, str>,
 }
 
 #[derive(Debug)]
@@ -117,7 +118,7 @@ impl Diagnostics {
                     lbl_col,
                     dash_count,
                     color,
-                    label.message,
+                    &label.message,
                     &plain_gutter,
                 ));
             }
@@ -135,7 +136,7 @@ impl Diagnostics {
                     label_col,
                     dash_count,
                     color,
-                    label.message,
+                    &label.message,
                     &plain_gutter,
                 );
                 cross_line_displays.push((line_display, label_underline));

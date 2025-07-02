@@ -1,5 +1,7 @@
 //! The semantic analyzer (or resolver) for NaijaScript.
 
+use std::borrow::Cow;
+
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     Arena, BinOp, Block, BlockId, Cond, CondId, Expr, ExprId, Stmt, StmtId,
@@ -137,11 +139,11 @@ impl<'src> SemAnalyzer<'src> {
                         vec![
                             Label {
                                 span: (*orig_span).clone(),
-                                message: "First time you declare am here",
+                                message: Cow::Borrowed("First time you declare am here"),
                             },
                             Label {
                                 span: span.clone(),
-                                message: "You try declare am again for here",
+                                message: Cow::Borrowed("You try declare am again for here"),
                             },
                         ],
                     );
@@ -165,7 +167,7 @@ impl<'src> SemAnalyzer<'src> {
                         SemanticError::AssignmentToUndeclared.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: "This variable never dey before",
+                            message: Cow::Borrowed("This variable never dey before"),
                         }],
                     );
                 }
@@ -230,7 +232,7 @@ impl<'src> SemAnalyzer<'src> {
                     SemanticError::TypeMismatch.as_str(),
                     vec![Label {
                         span: cond.span.clone(),
-                        message: "You no fit compare different types together",
+                        message: Cow::Borrowed("You no fit compare different types together"),
                     }],
                 );
             }
@@ -256,7 +258,7 @@ impl<'src> SemAnalyzer<'src> {
                         SemanticError::UseOfUndeclared.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: "This variable never dey before",
+                            message: Cow::Borrowed("This variable never dey before"),
                         }],
                     );
                 }
@@ -280,7 +282,9 @@ impl<'src> SemAnalyzer<'src> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: "You no fit add string and number together",
+                                    message: Cow::Borrowed(
+                                        "You no fit add string and number together",
+                                    ),
                                 }],
                             );
                         }
@@ -292,53 +296,61 @@ impl<'src> SemAnalyzer<'src> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: "You no fit do arithmetic with boolean values",
+                                    message: Cow::Borrowed(
+                                        "You no fit do arithmetic with boolean values",
+                                    ),
                                 }],
                             );
                         }
                         _ => {}
                     },
-                    BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => match (l, r) {
-                        (Some(VarType::Number), Some(VarType::Number)) => {}
-                        (Some(VarType::String), Some(VarType::String)) => {
-                            self.errors.emit(
-                                span.clone(),
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::InvalidStringOperation.as_str(),
-                                vec![Label {
-                                    span: span.clone(),
-                                    message: "You no fit minus/times/divide/mod string for here",
-                                }],
-                            );
-                        }
-                        (Some(VarType::String), Some(VarType::Number))
-                        | (Some(VarType::Number), Some(VarType::String)) => {
-                            self.errors.emit(
+                    BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => {
+                        match (l, r) {
+                            (Some(VarType::Number), Some(VarType::Number)) => {}
+                            (Some(VarType::String), Some(VarType::String)) => {
+                                self.errors.emit(
+                                    span.clone(),
+                                    Severity::Error,
+                                    "semantic",
+                                    SemanticError::InvalidStringOperation.as_str(),
+                                    vec![Label {
+                                        span: span.clone(),
+                                        message: Cow::Borrowed(
+                                            "You no fit minus/times/divide/mod string for here",
+                                        ),
+                                    }],
+                                );
+                            }
+                            (Some(VarType::String), Some(VarType::Number))
+                            | (Some(VarType::Number), Some(VarType::String)) => {
+                                self.errors.emit(
                                 span.clone(),
                                 Severity::Error,
                                 "semantic",
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: "You no fit do arithmetic with string and number together",
+                                    message: Cow::Borrowed("You no fit do arithmetic with string and number together"),
                                 }],
                             );
+                            }
+                            (Some(VarType::Bool), _) | (_, Some(VarType::Bool)) => {
+                                self.errors.emit(
+                                    span.clone(),
+                                    Severity::Error,
+                                    "semantic",
+                                    SemanticError::TypeMismatch.as_str(),
+                                    vec![Label {
+                                        span: span.clone(),
+                                        message: Cow::Borrowed(
+                                            "You no fit do arithmetic with boolean values",
+                                        ),
+                                    }],
+                                );
+                            }
+                            _ => {}
                         }
-                        (Some(VarType::Bool), _) | (_, Some(VarType::Bool)) => {
-                            self.errors.emit(
-                                span.clone(),
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
-                                vec![Label {
-                                    span: span.clone(),
-                                    message: "You no fit do arithmetic with boolean values",
-                                }],
-                            );
-                        }
-                        _ => {}
-                    },
+                    }
                     BinOp::And | BinOp::Or => match (l, r) {
                         (Some(VarType::Bool), Some(VarType::Bool)) => {}
                         _ => {
@@ -349,7 +361,9 @@ impl<'src> SemAnalyzer<'src> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: "Logical operators dey only work with boolean values",
+                                    message: Cow::Borrowed(
+                                        "Logical operators dey only work with boolean values",
+                                    ),
                                 }],
                             );
                         }
@@ -368,7 +382,7 @@ impl<'src> SemAnalyzer<'src> {
                         SemanticError::TypeMismatch.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: "You fit only use `not` for boolean values",
+                            message: Cow::Borrowed("You fit only use `not` for boolean values"),
                         }],
                     );
                 }
