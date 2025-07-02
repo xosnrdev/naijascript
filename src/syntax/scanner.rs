@@ -260,7 +260,7 @@ impl<'input> Lexer<'input> {
                             LexError::InvalidStringEscape.as_str(),
                             vec![Label {
                                 span: end..end + 2,
-                                message: Cow::Owned(format!("Dis escape `{esc}` no correct")),
+                                message: Cow::Borrowed("Dis escape no correct"),
                             }],
                         );
                         // Append the invalid escape character
