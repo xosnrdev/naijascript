@@ -244,9 +244,9 @@ impl<'src> SemAnalyzer<'src> {
     /// exist in our symbol table.
     fn check_expr(&mut self, eid: ExprId) {
         match &self.exprs.nodes[eid.0] {
-            // Numbers like 42 or 3.14 are always semantically valid
+            // Literals are always valid since they represent concrete values
             Expr::Number(_, _) | Expr::String(_, _) | Expr::Bool(_, _) => {}
-            // Variables must have been declared with "make" before use
+            // Variables need to exist in our symbol table before we can use them
             Expr::Var(v, span) => {
                 if !self.lookup_var(v) {
                     self.errors.emit(
@@ -261,8 +261,7 @@ impl<'src> SemAnalyzer<'src> {
                     );
                 }
             }
-            // Binary operations like "add", "minus", "times", "divide"
-            // Both operands must be valid expressions (recursive validation)
+            // Binary operations need type compatibility between operands
             Expr::Binary { op, lhs, rhs, span } => {
                 self.check_expr(*lhs);
                 self.check_expr(*rhs);
@@ -340,6 +339,38 @@ impl<'src> SemAnalyzer<'src> {
                         }
                         _ => {}
                     },
+                    BinOp::And | BinOp::Or => match (l, r) {
+                        (Some(VarType::Bool), Some(VarType::Bool)) => {}
+                        _ => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: "Logical operators dey only work with boolean values",
+                                }],
+                            );
+                        }
+                    },
+                }
+            }
+            // Unary not requires a boolean operand
+            Expr::Not { expr, span } => {
+                self.check_expr(*expr);
+                let t = self.infer_expr_type(*expr);
+                if t != Some(VarType::Bool) {
+                    self.errors.emit(
+                        span.clone(),
+                        Severity::Error,
+                        "semantic",
+                        SemanticError::TypeMismatch.as_str(),
+                        vec![Label {
+                            span: span.clone(),
+                            message: "You fit only use `not` for boolean values",
+                        }],
+                    );
                 }
             }
         }
@@ -375,7 +406,18 @@ impl<'src> SemAnalyzer<'src> {
                             None
                         }
                     }
+                    BinOp::And | BinOp::Or => {
+                        if l == VarType::Bool && r == VarType::Bool {
+                            Some(VarType::Bool)
+                        } else {
+                            None
+                        }
+                    }
                 }
+            }
+            Expr::Not { expr, .. } => {
+                let t = self.infer_expr_type(*expr)?;
+                if t == VarType::Bool { Some(VarType::Bool) } else { None }
             }
         }
     }

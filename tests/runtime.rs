@@ -182,3 +182,37 @@ fn boolean_ordering() {
 fn block_scope_shadowing_and_lifetime() {
     assert_runtime!("make x get 1 start make x get 2 shout(x) end shout(x)", output: vec![Value::Number(2.0), Value::Number(1.0)]);
 }
+
+#[test]
+fn logical_and_operator() {
+    assert_runtime!("shout(true and true)", output: vec![Value::Bool(true)]);
+    assert_runtime!("shout(true and false)", output: vec![Value::Bool(false)]);
+    assert_runtime!("shout(false and true)", output: vec![Value::Bool(false)]);
+    assert_runtime!("shout(false and false)", output: vec![Value::Bool(false)]);
+}
+
+#[test]
+fn logical_or_operator() {
+    assert_runtime!("shout(true or true)", output: vec![Value::Bool(true)]);
+    assert_runtime!("shout(true or false)", output: vec![Value::Bool(true)]);
+    assert_runtime!("shout(false or true)", output: vec![Value::Bool(true)]);
+    assert_runtime!("shout(false or false)", output: vec![Value::Bool(false)]);
+}
+
+#[test]
+fn logical_not_operator() {
+    assert_runtime!("shout(not true)", output: vec![Value::Bool(false)]);
+    assert_runtime!("shout(not false)", output: vec![Value::Bool(true)]);
+}
+
+#[test]
+fn logical_operator_precedence() {
+    assert_runtime!("shout(true or false and false)", output: vec![Value::Bool(true)]);
+    assert_runtime!("shout((true or false) and false)", output: vec![Value::Bool(false)]);
+}
+
+#[test]
+fn logical_not_precedence() {
+    assert_runtime!("shout(not true or true)", output: vec![Value::Bool(true)]);
+    assert_runtime!("shout(not (true or true))", output: vec![Value::Bool(false)]);
+}
