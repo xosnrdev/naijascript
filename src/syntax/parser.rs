@@ -322,7 +322,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     let message: Cow<'static, str> =
                         if let Some(suggestion) = Token::suggest_keyword(var_name) {
                             Cow::Owned(format!(
-                                "I dey expect statement for here. Na `{suggestion}` you mean ?",
+                                "I dey expect statement for here. Na `{suggestion}` you mean?",
                             ))
                         } else {
                             Cow::Borrowed("I dey expect statement for here")
