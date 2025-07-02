@@ -2,7 +2,8 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use naijascript::syntax::parser::Parser;
-use naijascript::syntax::scanner::{Lexer, Token};
+use naijascript::syntax::scanner::Lexer;
+use naijascript::syntax::token::Token;
 
 fn bench_lexer(c: &mut Criterion) {
     let input = black_box(
