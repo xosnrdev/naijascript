@@ -165,6 +165,48 @@ impl Diagnostics {
         }
     }
 
+    /// Report all collected diagnostics as HTML for the web.
+    #[cfg(target_arch = "wasm32")]
+    pub fn report_html(&self, src: &str, filename: &str) -> String {
+        let gutter_width = Self::compute_gutter_width(&self.diagnostics, src);
+        let mut html = String::new();
+        for diag in &self.diagnostics {
+            let (line, col, line_start, line_end) = Self::line_col_from_span(src, diag.span.start);
+            let src_line = &src[line_start..line_end];
+            let caret_count = (diag.span.end.saturating_sub(diag.span.start)).max(1);
+            html.push_str(&format!(
+                "<div class='diagnostic {severity}'>\
+                  <div class='header'><span class='severity {severity}'>{severity}[{code}]</span>: <b>{msg}</b></div>\
+                  <div class='location'>--&gt; {filename}:{line}:{col}</div>\
+                  <div class='src'><span class='gutter'>{line:>gutter_width$} |</span> <span class='src-line'>{src_line}</span></div>\
+                  <div class='caret'><span class='gutter'>{gutter}</span>{caret}</div>",
+                severity=diag.severity.label(),
+                code=diag.code,
+                msg=diag.message,
+                filename=html_escape::encode_safe(filename),
+                src_line=html_escape::encode_safe(src_line),
+                gutter=" ",
+                caret="^".repeat(caret_count)
+            ));
+            for label in &diag.labels {
+                let (lbl_line, lbl_col, lbl_line_start, lbl_line_end) =
+                    Self::line_col_from_span(src, label.span.start);
+                let src_line = &src[lbl_line_start..lbl_line_end];
+                let dash_count = (label.span.end.saturating_sub(label.span.start)).max(1);
+                html.push_str(&format!(
+                    "<div class='label'><span class='gutter'>{lbl_line:>gutter_width$} |</span> <span class='src-line'>{src_line}</span></div>\
+                     <div class='label-underline'><span class='gutter'>{gutter}</span>{dashes} <b>{msg}</b></div>",
+                    src_line=html_escape::encode_safe(src_line),
+                    gutter=" ",
+                    dashes="-".repeat(dash_count),
+                    msg=label.message
+                ));
+            }
+            html.push_str("</div>");
+        }
+        html
+    }
+
     #[inline]
     fn render_header(severity: Severity, code: &str, message: &str) -> String {
         let color = severity.color_code();

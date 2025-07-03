@@ -4,18 +4,36 @@ version = "0.10.4"
 edition = "2024"
 authors = ["Success Kingsley <xosnrdev@gmail.com>"]
 description = "A scripting language for learning, automation, and fun with Naija (Nigerian) lingo."
+repository = "https://github.com/xosnrdev/naijascript"
+license = "MIT"
+readme = false
+publish = false
 
 default-run = "naija"
+
+# These wasm-opt flags help avoid build errors when compiling with wasm-pack.
+# For more details, see: https://github.com/rustwasm/wasm-pack/issues/1441
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["--enable-bulk-memory", "--enable-nontrapping-float-to-int"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 clap = { version = "4.5.39", features = ["derive"] }
 clap-cargo = { version = "0.15.2", features = ["clap"] }
 dirs = "6.0.0"
-flate2 = "1.1.1"
 regex-lite = "0.1.6"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+flate2 = "1.1.1"
 reqwest = { version = "0.12.19", default-features = false, features = ["rustls-tls", "blocking", "json"] }
 tar = "0.4.44"
 zip = "4.0.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+html-escape = { version = "0.2.13" }
+wasm-bindgen = "0.2.100"
 
 [dev-dependencies]
 criterion = { version = "0.6.0", features = ["html_reports"] }
@@ -34,3 +52,4 @@ panic = "abort"             # reduces binary size by ~50% in combination with -Z
 split-debuginfo = "packed"  # generates a separate *.dwp/*.dSYM so the binary can get stripped
 strip = "symbols"           # See split-debuginfo - allows us to drop the size by ~65%
 incremental = true          # Improves re-compile times
+

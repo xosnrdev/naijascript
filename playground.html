@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Playground | The NaijaScript Interpreter</title>
+  </head>
+  <body>
+    <h1>NaijaScript Playground</h1>
+    <textarea id="source" rows="10" cols="60">shout("foo\nbar")</textarea>
+    <br />
+    <button id="run">Run</button>
+    <div id="output"></div>
+    <script type="module">
+      import init, { run_source } from "./pkg/naijascript.js";
+      async function main() {
+        await init();
+        document.getElementById("run").onclick = () => {
+          const src = document.getElementById("source").value;
+          try {
+            const result = run_source(src, "<playground>");
+            document.getElementById("output").innerHTML = result;
+          } catch (err) {
+            document.getElementById("output").innerHTML = err;
+          }
+        };
+      }
+      main();
+    </script>
+  </body>
+</html>
