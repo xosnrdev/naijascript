@@ -14,8 +14,6 @@ use {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn run_source(src: &str, filename: &str) -> String {
-    use crate::runtime::Value;
-
     let mut lexer = Lexer::new(src);
     let tokens: Vec<_> = (&mut lexer).collect();
     if !lexer.errors.diagnostics.is_empty() {
@@ -49,13 +47,5 @@ pub fn run_source(src: &str, filename: &str) -> String {
     if !err.diagnostics.is_empty() {
         return err.report_html(src, filename);
     }
-
-    let v = |v: &Value| {
-        v.to_string()
-            .replace('\n', "<br />")
-            .replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;")
-            .replace("\\\"", "&quot;")
-            .replace("\\\\", "\\")
-    };
-    rt.output.iter().map(v).collect::<Vec<_>>().join("<br />")
+    rt.output.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n")
 }

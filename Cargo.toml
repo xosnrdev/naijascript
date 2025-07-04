@@ -32,6 +32,7 @@ tar = "0.4.44"
 zip = "4.0.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+ansi-to-html = "0.2.2"
 html-escape = { version = "0.2.13" }
 wasm-bindgen = "0.2.100"
 
