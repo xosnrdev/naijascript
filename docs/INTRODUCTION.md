@@ -2,7 +2,7 @@
 
 NaijaScript na language wey you fit use learn coding, automate things, and catch fun. This book go teach you everything wey you need to know, from how we think am to how you go take use am.
 
-You wan test am quick? Try the [playground](https://naijascript-playground.pages.dev) online.
+You wan experiment quick? Try the online [playground](https://naijascript-playground.pages.dev).
 
 ## How to Use This Book
 
