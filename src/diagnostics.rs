@@ -96,7 +96,7 @@ impl Diagnostics {
     #[cfg(target_arch = "wasm32")]
     pub fn report_html(&self, src: &str, filename: &str) -> String {
         let ansi = self.render_ansi(src, filename);
-        ansi_to_html::convert(&ansi).unwrap_or_default()
+        ansi_to_html::convert(&ansi).unwrap()
     }
 
     // Render all diagnostics as a single ANSI string
