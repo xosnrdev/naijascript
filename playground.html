@@ -253,7 +253,6 @@
         setupEditor();
         const runBtn = document.getElementById("run");
         const output = document.getElementById("output");
-        // Help panel toggle logic (zero-allocation, zero-latency)
         const helpBtn = document.getElementById("help-toggle");
         const helpPanel = document.getElementById("help-panel");
         helpBtn.onclick = function () {
@@ -267,7 +266,7 @@
           const src = editor.getValue();
           try {
             const result = run_source(src, "<playground>");
-            output.innerHTML = result;
+            output.textContent = result;
           } catch (err) {
             output.textContent = err;
           }
