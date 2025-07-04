@@ -1,5 +1,7 @@
 # NaijaScript
 
+[![Web Playground](https://img.shields.io/badge/Web%20Playground-Run%20Online-brightgreen?logo=cloudflare&logoColor=white)](https://naijascript-playground.pages.dev)
+
 A scripting language for learning, automation, and fun with Naija (Nigerian) lingo.
 
 ## Getting Started
