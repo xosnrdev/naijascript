@@ -65,30 +65,30 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let mut analyzer = SemAnalyzer::new(
+    let mut resolver = SemAnalyzer::new(
         &parser.stmt_arena,
         &parser.expr_arena,
         &parser.cond_arena,
         &parser.block_arena,
     );
-    analyzer.analyze(root);
-    if !analyzer.errors.diagnostics.is_empty() {
-        analyzer.errors.report(src, filename);
+    resolver.analyze(root);
+    if !resolver.errors.diagnostics.is_empty() {
+        resolver.errors.report(src, filename);
         return ExitCode::FAILURE;
     }
 
-    let mut interp = Interpreter::new(
+    let mut rt = Interpreter::new(
         &parser.stmt_arena,
         &parser.expr_arena,
         &parser.cond_arena,
         &parser.block_arena,
     );
-    let diagnostics = interp.run(root);
-    if !diagnostics.diagnostics.is_empty() {
-        diagnostics.report(src, filename);
+    let err = rt.run(root);
+    if !err.diagnostics.is_empty() {
+        err.report(src, filename);
         return ExitCode::FAILURE;
     }
-    for value in &interp.output {
+    for value in &rt.output {
         println!("{value}")
     }
 

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Playground | The NaijaScript Interpreter</title>
+    <style>
+      :root {
+        --naija-bg: #e6f2e6;
+        --naija-text: #0a7e07;
+        --naija-accent: #008753;
+        --naija-gold: #fbc02d;
+        --naija-error: #e53935;
+        --naija-warning: #fbc02d;
+        --naija-note: #388e3c;
+        --editor-bg: #222;
+        --editor-text: #f8f8f2;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: system-ui, sans-serif;
+        background: var(--naija-bg);
+        color: var(--naija-text);
+        min-height: 100vh;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1.5rem 0.5rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        color: var(--naija-accent);
+      }
+      .editor-container {
+        width: 100%;
+        max-width: 600px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      button {
+        align-self: flex-end;
+        padding: 0.5rem 1.25rem;
+        font-size: 1rem;
+        border: none;
+        border-radius: 5px;
+        background: var(--naija-accent);
+        color: #fff;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      button:active {
+        background: var(--naija-gold);
+        color: var(--naija-text);
+      }
+      #editor {
+        resize: vertical;
+        overflow: auto;
+        min-height: 120px;
+        max-height: 60vh;
+      }
+      #output {
+        resize: vertical;
+        overflow: auto;
+        min-height: 60px;
+        max-height: 40vh;
+        width: 100%;
+        min-height: 2.5em;
+        background: var(--editor-bg);
+        color: var(--editor-text);
+        border-radius: 6px;
+        padding: 1rem;
+        margin-top: 1rem;
+        font-size: 1.05rem;
+        overflow-x: auto;
+        box-sizing: border-box;
+        word-break: break-word;
+      }
+      #help-panel {
+        display: none;
+        background: #fffbe7;
+        color: var(--naija-text);
+        border: 1px solid var(--naija-gold);
+        border-radius: 6px;
+        padding: 1rem 1.25rem;
+        margin: 1rem 0 0 0;
+        font-size: 1rem;
+        max-width: 600px;
+        width: 100%;
+        box-sizing: border-box;
+        box-shadow: 0 2px 8px #0001;
+        line-height: 1.6;
+        z-index: 2;
+      }
+      #help-panel.show {
+        display: block;
+      }
+      #help-toggle {
+        align-self: flex-end;
+        margin-bottom: 0.5rem;
+        background: var(--naija-gold);
+        color: var(--naija-accent);
+        font-weight: 500;
+        border: none;
+        border-radius: 5px;
+        padding: 0.4rem 1.1rem;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      #help-toggle:active {
+        background: var(--naija-accent);
+        color: #fff;
+      }
+      @media (max-width: 600px) {
+        .editor-container {
+          max-width: 100vw;
+        }
+        #output {
+          font-size: 1rem;
+        }
+        #help-panel {
+          font-size: 0.98rem;
+          padding: 0.85rem 0.5rem;
+        }
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.32.3/src-min-noconflict/ace.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.32.3/src-min-noconflict/ext-language_tools.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Fira+Mono:400,500&display=swap"
+    />
+  </head>
+  <body>
+    <h1>NaijaScript Playground</h1>
+    <div class="editor-container">
+      <button
+        id="help-toggle"
+        aria-controls="help-panel"
+        aria-expanded="false"
+        type="button"
+      >
+        Show Help
+      </button>
+      <section
+        id="help-panel"
+        tabindex="-1"
+        aria-label="NaijaScript Quick Reference"
+      >
+        <strong>NaijaScript Quick Reference</strong>
+        <ul style="margin: 0.5em 0 0.5em 1.2em; padding: 0">
+          <li><b>make</b>: Declare variable. <code>make age get 20</code></li>
+          <li><b>get</b>: Assign value. <code>age get 21</code></li>
+          <li>
+            <b>shout(...)</b>: Print to output. <code>shout("Wetin dey!")</code>
+          </li>
+          <li>
+            <b>if to say (...)</b>: Conditional.
+            <code>if to say (age pass 18) start ... end</code>
+          </li>
+          <li>
+            <b>if not so</b>: Else block. <code>if not so start ... end</code>
+          </li>
+          <li>
+            <b>jasi (...)</b>: Loop.
+            <code>jasi (count small pass 5) start ... end</code>
+          </li>
+          <li><b>start ... end</b>: Code block. <code>start ... end</code></li>
+          <li><b>Comments</b>: <code># This na comment</code></li>
+          <li><b>Numbers</b>: <code>make pi get 3.142</code></li>
+          <li><b>Strings</b>: <code>make name get "Naija"</code></li>
+          <li><b>Booleans</b>: <code>make ok get true</code></li>
+          <li>
+            <b>Operators</b>: <code>add</code> (+), <code>minus</code> (-),
+            <code>times</code> (*), <code>divide</code> (/),
+            <code>mod</code> (%)
+          </li>
+          <li>
+            <b>Comparison</b>: <code>na</code> (==), <code>pass</code> (>),
+            <code>small pass</code> (<)
+          </li>
+          <li>
+            <b>Logic</b>: <code>and</code>, <code>or</code>, <code>not</code>
+          </li>
+        </ul>
+        <div style="margin-top: 0.5em; font-size: 0.97em">
+          See
+          <a
+            href="https://xosnrdev.github.io/naijascript/LRM.html"
+            target="_blank"
+            style="color: var(--naija-accent); text-decoration: underline"
+            >Language Reference</a
+          >
+          for full details.
+        </div>
+      </section>
+      <div
+        id="editor"
+        aria-label="NaijaScript source code"
+        style="
+          min-height: 180px;
+          width: 100%;
+          font-family: 'Fira Mono', monospace;
+          border-radius: 6px;
+        "
+      ></div>
+      <button id="run">Run</button>
+      <pre id="output" aria-live="polite"></pre>
+    </div>
+    <script type="module">
+      import init, { run_source } from "./pkg/naijascript.js";
+      let editor;
+      function setupEditor() {
+        editor = ace.edit("editor", {
+          mode: "ace/mode/javascript",
+          theme: "ace/theme/monokai",
+          fontSize: "1.1rem",
+          wrap: true,
+          showPrintMargin: false,
+          useWorker: false,
+          highlightActiveLine: true,
+          showLineNumbers: true,
+          showGutter: true,
+          tabSize: 2,
+          value: 'shout("foo\\nbar")',
+        });
+        editor.setOptions({
+          enableBasicAutocompletion: false,
+          enableLiveAutocompletion: false,
+          enableSnippets: false,
+        });
+        editor.renderer.setScrollMargin(10, 10, 0, 0);
+        editor.container.style.fontFamily = "'Fira Mono', monospace";
+        editor.container.style.lineHeight = "1.5";
+        editor.container.style.background = "#222";
+        editor.container.style.color = "#f8f8f2";
+        editor.container.style.border = "1px solid #ccc";
+        editor.container.style.boxSizing = "border-box";
+        editor.container.style.minHeight = "180px";
+        editor.container.style.width = "100%";
+        editor.container.style.borderRadius = "6px";
+
+        new ResizeObserver(() => editor.resize()).observe(editor.container);
+      }
+      async function main() {
+        await init();
+        setupEditor();
+        const runBtn = document.getElementById("run");
+        const output = document.getElementById("output");
+        const helpBtn = document.getElementById("help-toggle");
+        const helpPanel = document.getElementById("help-panel");
+        helpBtn.onclick = function () {
+          const show = !helpPanel.classList.contains("show");
+          helpPanel.classList.toggle("show");
+          helpBtn.setAttribute("aria-expanded", show ? "true" : "false");
+          helpBtn.textContent = show ? "Hide Help" : "Show Help";
+          if (show) helpPanel.focus();
+        };
+        function runCode() {
+          const src = editor.getValue();
+          try {
+            const result = run_source(src, "<playground>");
+            output.textContent = result;
+          } catch (err) {
+            output.textContent = err;
+          }
+        }
+        runBtn.onclick = runCode;
+        editor.container.addEventListener("keydown", (e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            runCode();
+            e.preventDefault();
+          }
+        });
+      }
+      main();
+    </script>
+  </body>
+</html>

@@ -1,3 +1,5 @@
+//! The official Toolchain Manager for NaijaScript
+
 use std::borrow::Cow;
 use std::fs;
 use std::fs::File;
