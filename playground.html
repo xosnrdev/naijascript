@@ -266,7 +266,7 @@
           const src = editor.getValue();
           try {
             const result = run_source(src, "<playground>");
-            output.textContent = result;
+            output.innerHTML = result;
           } catch (err) {
             output.textContent = err;
           }
