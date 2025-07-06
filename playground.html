@@ -117,6 +117,23 @@
         background: var(--naija-accent);
         color: #fff;
       }
+      #clear {
+        align-self: flex-end;
+        margin-top: 0.5rem;
+        padding: 0.5rem 1.25rem;
+        font-size: 1rem;
+        border: none;
+        border-radius: 5px;
+        background: var(--naija-gold);
+        color: var(--naija-accent);
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      #clear:active {
+        background: var(--naija-accent);
+        color: #fff;
+      }
       @media (max-width: 600px) {
         .editor-container {
           max-width: 100vw;
@@ -211,6 +228,7 @@
         "
       ></div>
       <button id="run">Run</button>
+      <button id="clear">Clear</button>
       <pre id="output" aria-live="polite"></pre>
     </div>
     <script type="module">
@@ -253,6 +271,10 @@
         setupEditor();
         const runBtn = document.getElementById("run");
         const output = document.getElementById("output");
+        const clearBtn = document.getElementById("clear");
+        clearBtn.onclick = function () {
+          output.textContent = "";
+        };
         const helpBtn = document.getElementById("help-toggle");
         const helpPanel = document.getElementById("help-panel");
         helpBtn.onclick = function () {
