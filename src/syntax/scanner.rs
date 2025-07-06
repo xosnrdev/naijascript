@@ -94,7 +94,7 @@ impl<'input> Lexer<'input> {
                 return SpannedToken { token, span: start..self.pos };
             }
             // Unicode characters beyond ASCII require special handling since our lexer operates on bytes
-            if b != 0 && !b.is_ascii() {
+            if !b.is_ascii() {
                 // We need the complete Unicode character to properly skip it and report accurate spans
                 let rest = &self.src[start..];
                 if let Some(c) = rest.chars().next() {
