@@ -93,7 +93,33 @@ impl<'input> Lexer<'input> {
                 let token = self.scan_identifier_or_keyword(start);
                 return SpannedToken { token, span: start..self.pos };
             }
-
+            // Unicode characters beyond ASCII require special handling since our lexer operates on bytes
+            if !b.is_ascii() {
+                // We need the complete Unicode character to properly skip it and report accurate spans
+                let rest = &self.src[start..];
+                if let Some(c) = rest.chars().next() {
+                    let char_len = c.len_utf8();
+                    self.errors.emit(
+                        start..self.pos + char_len,
+                        Severity::Error,
+                        "lexical",
+                        LexError::UnexpectedChar.as_str(),
+                        vec![Label {
+                            span: start..self.pos + char_len,
+                            message: Cow::Borrowed(
+                                "I no sabi dis character. You fit use unicode as string",
+                            ),
+                        }],
+                    );
+                    // Skip the entire Unicode character to avoid splitting it across byte boundaries
+                    self.pos += char_len;
+                    continue;
+                } else {
+                    // Invalid UTF-8 sequence detected, so we advance by one byte to prevent infinite loops
+                    self.pos += 1;
+                    continue;
+                }
+            }
             if b != 0
                 && let Some(token) = self.scan_unexpected(start)
             {
