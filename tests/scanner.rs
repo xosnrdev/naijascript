@@ -268,3 +268,14 @@ fn test_scan_trailing_comment() {
         Token::EOF
     );
 }
+
+#[test]
+fn test_utf8_boundary_panic() {
+    let src = "shout(😆)";
+    let mut lexer = Lexer::new(src);
+    let _ = lexer.next_token();
+    let _ = lexer.next_token();
+    let _ = lexer.next_token();
+    let errors = lexer.errors;
+    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
+}
