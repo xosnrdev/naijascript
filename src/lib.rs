@@ -8,14 +8,14 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use {
     crate::resolver::SemAnalyzer, crate::runtime::Interpreter, crate::syntax::parser::Parser,
-    crate::syntax::scanner::Lexer,
+    crate::syntax::scanner::Lexer, crate::syntax::token::SpannedToken,
 };
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn run_source(src: &str, filename: &str) -> String {
     let mut lexer = Lexer::new(src);
-    let tokens: Vec<_> = (&mut lexer).collect();
+    let tokens: Vec<SpannedToken> = (&mut lexer).collect();
     if !lexer.errors.diagnostics.is_empty() {
         return lexer.errors.report_html(src, filename);
     }

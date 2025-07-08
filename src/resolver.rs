@@ -99,9 +99,9 @@ impl<'src> SemAnalyzer<'src> {
         self.scopes.pop(); // exit global scope
     }
 
-    /// Validates all statements within a block.
-    /// Blocks in NaijaScript are wrapped with "start" and "end" keywords,
-    /// but here we just process the list of statements inside.
+    // Validates all statements within a block.
+    // Blocks in NaijaScript are wrapped with "start" and "end" keywords,
+    // but here we just process the list of statements inside.
     fn check_block(&mut self, bid: BlockId) {
         self.scopes.push(Vec::new()); // enter new block scope
         let block = &self.blocks.nodes[bid.0];
@@ -111,11 +111,11 @@ impl<'src> SemAnalyzer<'src> {
         self.scopes.pop(); // exit block scope
     }
 
-    /// The main semantic validation logic - handles each type of statement.
-    /// This is where we enforce the key rules of NaijaScript:
-    /// 1. No redeclaring variables (each "make" creates a new variable)
-    /// 2. Variables must be declared before use
-    /// 3. All expressions and conditions must be semantically valid
+    // The main semantic validation logic - handles each type of statement.
+    // This is where we enforce the key rules of NaijaScript:
+    // 1. No redeclaring variables (each "make" creates a new variable)
+    // 2. Variables must be declared before use
+    // 3. All expressions and conditions must be semantically valid
     fn check_stmt(&mut self, sid: StmtId) {
         match &self.stmts.nodes[sid.0] {
             // Handle "make variable get expression" statements
@@ -205,10 +205,10 @@ impl<'src> SemAnalyzer<'src> {
         self.scopes.iter().rev().any(|scope| scope.iter().any(|(name, _, _)| name == var))
     }
 
-    /// Validates condition expressions used in if statements and loops.
-    /// NaijaScript conditions are binary comparisons: "na" (equals),
-    /// "pass" (greater), "small pass" (less than).
-    /// Both sides must be valid expressions.
+    // Validates condition expressions used in if statements and loops.
+    // NaijaScript conditions are binary comparisons: "na" (equals),
+    // "pass" (greater), "small pass" (less than).
+    // Both sides must be valid expressions.
     fn check_cond(&mut self, cid: CondId) {
         let cond = &self.conds.nodes[cid.0];
         self.check_expr(cond.lhs);
@@ -240,10 +240,10 @@ impl<'src> SemAnalyzer<'src> {
         }
     }
 
-    /// Recursively validates expressions - the core of our semantic checking.
-    /// This is where we catch the most common programming error: using variables
-    /// before declaring them. Numbers are always valid, but variables need to
-    /// exist in our symbol table.
+    // Recursively validates expressions - the core of our semantic checking.
+    // This is where we catch the most common programming error: using variables
+    // before declaring them. Numbers are always valid, but variables need to
+    // exist in our symbol table.
     fn check_expr(&mut self, eid: ExprId) {
         match &self.exprs.nodes[eid.0] {
             // Literals are always valid since they represent concrete values
@@ -390,7 +390,7 @@ impl<'src> SemAnalyzer<'src> {
         }
     }
 
-    /// Infer the type of an expression, using the symbol table for variables
+    // Infer the type of an expression, using the symbol table for variables
     fn infer_expr_type(&self, eid: ExprId) -> Option<VarType> {
         match &self.exprs.nodes[eid.0] {
             Expr::Number(_, _) => Some(VarType::Number),

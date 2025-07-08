@@ -148,12 +148,12 @@ impl<'src> Interpreter<'src> {
         &self.errors
     }
 
-    /// Executes a single statement - the core of our statement dispatch logic.
-    ///
-    /// Each statement type has its own execution semantics:
-    /// - Variable assignment/reassignment updates the environment
-    /// - Shout statements evaluate expressions and capture output
-    /// - Control flow (if/loop) recursively execute blocks based on conditions
+    // Executes a single statement - the core of our statement dispatch logic.
+    //
+    // Each statement type has its own execution semantics:
+    // - Variable assignment/reassignment updates the environment
+    // - Shout statements evaluate expressions and capture output
+    // - Control flow (if/loop) recursively execute blocks based on conditions
     fn exec_stmt(&mut self, sid: StmtId) -> Result<(), RuntimeError<'src>> {
         match &self.stmts.nodes[sid.0] {
             Stmt::Assign { var, expr, .. } => {
@@ -200,11 +200,11 @@ impl<'src> Interpreter<'src> {
         Ok(())
     }
 
-    /// Evaluates a condition expression and returns its boolean result.
-    ///
-    /// Conditions in NaijaScript are always binary comparisons between two numeric
-    /// expressions. We evaluate both sides to numbers first, then apply the comparison
-    /// operator. This is simpler than having a separate boolean type system.
+    // Evaluates a condition expression and returns its boolean result.
+    //
+    // Conditions in NaijaScript are always binary comparisons between two numeric
+    // expressions. We evaluate both sides to numbers first, then apply the comparison
+    // operator. This is simpler than having a separate boolean type system.
     fn eval_cond(&self, cid: CondId) -> Result<bool, RuntimeError<'src>> {
         let c = &self.conds.nodes[cid.0];
         let lhs = self.eval_expr(c.lhs)?;
@@ -343,7 +343,7 @@ impl<'src> Interpreter<'src> {
         }
     }
 
-    /// Adds a new variable to the current scope, or updates its value if it already exists in this scope.
+    // Adds a new variable to the current scope, or updates its value if it already exists in this scope.
     fn insert_or_update(&mut self, var: &'src str, val: Value<'src>) {
         if let Some((_, slot)) =
             self.env.last_mut().unwrap().iter_mut().find(|(name, _)| *name == var)
@@ -354,8 +354,8 @@ impl<'src> Interpreter<'src> {
         }
     }
 
-    /// Looks for the variable in all scopes starting from the innermost one,
-    /// and updates its value as soon as it is found.
+    // Looks for the variable in all scopes starting from the innermost one,
+    // and updates its value as soon as it is found.
     fn update_existing(&mut self, var: &'src str, val: Value<'src>) {
         for scope in self.env.iter_mut().rev() {
             if let Some((_, slot)) = scope.iter_mut().find(|(name, _)| *name == var) {
@@ -366,8 +366,8 @@ impl<'src> Interpreter<'src> {
         unreachable!("Semantic analysis should guarantee variable exists");
     }
 
-    /// Looks up a variable by its name,
-    /// starting from the innermost scope and moving outward.
+    // Looks up a variable by its name,
+    // starting from the innermost scope and moving outward.
     fn lookup_var(&self, var: &str) -> Option<Value<'src>> {
         for scope in self.env.iter().rev() {
             if let Some((_, val)) = scope.iter().find(|(name, _)| *name == var) {
