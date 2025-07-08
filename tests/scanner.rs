@@ -2,14 +2,14 @@ use std::borrow::Cow;
 
 use naijascript::diagnostics::AsStr;
 use naijascript::syntax::scanner::{LexError, Lexer};
-use naijascript::syntax::token::Token;
+use naijascript::syntax::token::{SpannedToken, Token};
 
 macro_rules! assert_tokens {
-    ($lexer:expr, $($expected:expr),+ $(,)?) => {{
-        let mut lexer = $lexer;
-        $(
-            assert_eq!(&lexer.next_token().token, &$expected);
-        )+
+    ($src:expr, $exp:expr $(,)?) => {{
+        let lexer = Lexer::new($src);
+        let spanned_tokens: Vec<SpannedToken> = lexer.collect();
+        let tokens: Vec<Token> = spanned_tokens.into_iter().map(|st| st.token).collect();
+        assert_eq!(tokens, $exp, "Token mismatch");
     }};
 }
 
@@ -21,29 +21,30 @@ macro_rules! assert_tokens {
 fn test_scan_keywords() {
     let src = "make get add minus times divide mod shout jasi start end na pass small pass if to say if not so true false and not or";
     assert_tokens!(
-        Lexer::new(src),
-        Token::Make,
-        Token::Get,
-        Token::Add,
-        Token::Minus,
-        Token::Times,
-        Token::Divide,
-        Token::Mod,
-        Token::Shout,
-        Token::Jasi,
-        Token::Start,
-        Token::End,
-        Token::Na,
-        Token::Pass,
-        Token::SmallPass,
-        Token::IfToSay,
-        Token::IfNotSo,
-        Token::True,
-        Token::False,
-        Token::And,
-        Token::Not,
-        Token::Or,
-        Token::EOF
+        src,
+        &[
+            Token::Make,
+            Token::Get,
+            Token::Add,
+            Token::Minus,
+            Token::Times,
+            Token::Divide,
+            Token::Mod,
+            Token::Shout,
+            Token::Jasi,
+            Token::Start,
+            Token::End,
+            Token::Na,
+            Token::Pass,
+            Token::SmallPass,
+            Token::IfToSay,
+            Token::IfNotSo,
+            Token::True,
+            Token::False,
+            Token::And,
+            Token::Not,
+            Token::Or
+        ]
     );
 }
 
@@ -54,7 +55,7 @@ fn test_scan_keywords() {
 #[test]
 fn test_scan_punctuation() {
     let src = "( )";
-    assert_tokens!(Lexer::new(src), Token::LParen, Token::RParen, Token::EOF);
+    assert_tokens!(src, &[Token::LParen, Token::RParen]);
 }
 
 //------------------------------------------------------------------------
@@ -62,50 +63,126 @@ fn test_scan_punctuation() {
 //------------------------------------------------------------------------
 
 #[test]
-fn test_scan_identifiers() {
+fn test_scan_identifier() {
     let src = "foo bar foo1 bar2";
     assert_tokens!(
-        Lexer::new(src),
-        Token::Identifier("foo"),
-        Token::Identifier("bar"),
-        Token::Identifier("foo1"),
-        Token::Identifier("bar2"),
-        Token::EOF
+        src,
+        &[
+            Token::Identifier("foo"),
+            Token::Identifier("bar"),
+            Token::Identifier("foo1"),
+            Token::Identifier("bar2"),
+        ]
     );
 }
 
 #[test]
-fn test_scan_numbers() {
+fn test_scan_invalid_identifier() {
+    let src = "1foo";
+    let mut lexer = Lexer::new(src);
+    let _ = lexer.next();
+    let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 0..1);
+    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
+}
+
+//------------------------------------------------------------------------
+// NUMBERS
+//------------------------------------------------------------------------
+
+#[test]
+fn test_scan_number() {
     let src = "42 3.14 0.5";
-    assert_tokens!(
-        Lexer::new(src),
-        Token::Number("42"),
-        Token::Number("3.14"),
-        Token::Number("0.5"),
-        Token::EOF
-    );
+    assert_tokens!(src, &[Token::Number("42"), Token::Number("3.14"), Token::Number("0.5")]);
 }
 
 #[test]
-fn test_scan_strings() {
-    let src = r#""hello world" """#;
-    assert_tokens!(
-        Lexer::new(src),
-        Token::String(Cow::Borrowed("hello world")),
-        Token::String(Cow::Borrowed("")),
-        Token::EOF
-    );
+fn test_scan_invalid_number() {
+    let src = "1..2";
+    let mut lexer = Lexer::new(src);
+    let _ = lexer.next();
+    let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 1..2);
+    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidNumber.as_str()));
 }
 
 //------------------------------------------------------------------------
-// STRING LITERALS
+// STRING
 //------------------------------------------------------------------------
+
+#[test]
+fn test_scan_plain_string() {
+    let src = r#""foo bar""#;
+    assert_tokens!(src, &[Token::String(Cow::Borrowed("foo bar"))]);
+}
+
+#[test]
+fn test_scan_empty_string() {
+    let src = r#"""#;
+    assert_tokens!(src, &[Token::String(Cow::Borrowed(""))]);
+}
+
+#[test]
+fn test_scan_string_with_newline_escape() {
+    let src = r#""foo\nbar""#;
+    assert_tokens!(src, &[Token::String(Cow::Owned("foo\nbar".to_string()))]);
+}
+
+#[test]
+fn test_scan_string_with_tab_escape() {
+    let src = r#""foo\tbar""#;
+    assert_tokens!(src, &[Token::String(Cow::Owned("foo\tbar".to_string()))]);
+}
+
+#[test]
+fn test_scan_string_with_escaped_quote() {
+    let src = r#""foo\"bar""#;
+    assert_tokens!(src, &[Token::String(Cow::Owned("foo\"bar".to_string()))]);
+}
+
+#[test]
+fn test_scan_string_with_escaped_backslash() {
+    let src = r#""foo\\bar""#;
+    assert_tokens!(src, &[Token::String(Cow::Owned("foo\\bar".to_string()))]);
+}
+
+#[test]
+fn test_scan_string_with_only_quote() {
+    let src = r#""\"""#;
+    assert_tokens!(src, &[Token::String(Cow::Owned("\"".to_string()))]);
+}
+
+#[test]
+fn test_scan_string_with_only_backslash() {
+    let src = r#""\\""#;
+    assert_tokens!(src, &[Token::String(Cow::Owned("\\".to_string()))]);
+}
+
+#[test]
+fn test_scan_string_with_all_valid_escapes() {
+    let src = r#""\n\t\"\\""#;
+    assert_tokens!(src, &[Token::String(Cow::Owned("\n\t\"\\".to_string()))]);
+}
 
 #[test]
 fn test_scan_string_with_invalid_escape() {
-    let src = r#""bad\xescape""#;
+    let src = r#""foo\xbar""#;
     let mut lexer = Lexer::new(src);
-    let _ = lexer.next_token();
+    let _ = lexer.next();
+    let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 4..6);
+    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str()));
+}
+
+#[test]
+fn test_scan_string_with_mixed_valid_and_invalid_escapes() {
+    let src = r#""foo\xbar\n""#;
+    let mut lexer = Lexer::new(src);
+    let st = lexer.next().unwrap_or_default();
+    assert_eq!(st.token, Token::String(Cow::Owned(String::from("fooxbar\n"))));
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
     assert_eq!(label.span, 4..6);
@@ -114,115 +191,40 @@ fn test_scan_string_with_invalid_escape() {
 
 #[test]
 fn test_scan_unterminated_string() {
-    let src = r#""unterminated string"#;
+    let src = r#""foo bar"#;
     let mut lexer = Lexer::new(src);
-    let _ = lexer.next_token();
+    let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
     assert_eq!(label.span, 0..src.len());
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str()));
 }
 
+//------------------------------------------------------------------------
+// COMMENTS
+//------------------------------------------------------------------------
+
 #[test]
-fn test_scan_invalid_identifier() {
-    let src = "1foo";
-    let mut lexer = Lexer::new(src);
-    let _ = lexer.next_token();
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 0..1);
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
+fn test_scan_line_comment() {
+    let src = "# foo bar";
+    assert_tokens!(src, &[]);
 }
 
 #[test]
-fn test_scan_invalid_number() {
-    let src = "1..2";
-    let mut lexer = Lexer::new(src);
-    let _ = lexer.next_token();
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 1..2);
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidNumber.as_str()));
+fn test_scan_trailing_comment() {
+    let src = "make x get 1 # trailing comment";
+    assert_tokens!(src, &[Token::Make, Token::Identifier("x"), Token::Get, Token::Number("1")]);
 }
 
-#[test]
-fn test_scan_plain_string() {
-    let src = r#""hello world""#;
-    assert_tokens!(Lexer::new(src), Token::String(Cow::Borrowed("hello world")), Token::EOF);
-}
-
-#[test]
-fn test_scan_string_with_newline_escape() {
-    let src = r#""line\nnext""#;
-    assert_tokens!(
-        Lexer::new(src),
-        Token::String(Cow::Owned("line\nnext".to_string())),
-        Token::EOF
-    );
-}
-
-#[test]
-fn test_scan_string_with_tab_escape() {
-    let src = r#""tab\tend""#;
-    assert_tokens!(Lexer::new(src), Token::String(Cow::Owned("tab\tend".to_string())), Token::EOF);
-}
-
-#[test]
-fn test_scan_string_with_escaped_quote() {
-    let src = r#""foo\"bar""#;
-    assert_tokens!(Lexer::new(src), Token::String(Cow::Owned("foo\"bar".to_string())), Token::EOF);
-}
-
-#[test]
-fn test_scan_string_with_escaped_backslash() {
-    let src = r#""foo\\bar""#;
-    assert_tokens!(Lexer::new(src), Token::String(Cow::Owned("foo\\bar".to_string())), Token::EOF);
-}
-
-#[test]
-fn test_scan_empty_string() {
-    let src = r#""""#;
-    assert_tokens!(Lexer::new(src), Token::String(Cow::Borrowed("")), Token::EOF);
-}
-
-#[test]
-fn test_scan_string_with_only_quote() {
-    let src = r#""\"""#;
-    assert_tokens!(Lexer::new(src), Token::String(Cow::Owned("\"".to_string())), Token::EOF);
-}
-
-#[test]
-fn test_scan_string_with_only_backslash() {
-    let src = r#""\\""#;
-    assert_tokens!(Lexer::new(src), Token::String(Cow::Owned("\\".to_string())), Token::EOF);
-}
-
-#[test]
-fn test_scan_string_with_all_valid_escapes() {
-    let src = r#""\n\t\"\\""#;
-    assert_tokens!(Lexer::new(src), Token::String(Cow::Owned("\n\t\"\\".to_string())), Token::EOF);
-}
-
-#[test]
-fn test_scan_string_with_mixed_valid_and_invalid_escapes() {
-    let src = r#""foo\xbar\n""#;
-    let mut lexer = Lexer::new(src);
-    let mut expected = String::from("foo");
-    expected.push('x');
-    expected.push_str("bar");
-    expected.push('\n');
-    assert_eq!(lexer.next_token().token, Token::String(Cow::Owned(expected)));
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 4..6);
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str()));
-}
+//------------------------------------------------------------------------
+// UNKNOWN
+//------------------------------------------------------------------------
 
 #[test]
 fn test_scan_unexpected_character() {
     let src = "@";
     let mut lexer = Lexer::new(src);
-    let _ = lexer.next_token();
+    let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
     assert_eq!(label.span, 0..0);
@@ -230,50 +232,10 @@ fn test_scan_unexpected_character() {
 }
 
 #[test]
-fn test_scan_single_line_comment() {
-    let src = "# this is a comment";
-    assert_tokens!(Lexer::new(src), Token::EOF);
-}
-
-#[test]
-fn test_scan_full_line_comment() {
-    let src = r#"
-        make x get 1
-        # full line comment
-        make y get 2
-    "#;
-    assert_tokens!(
-        Lexer::new(src),
-        Token::Make,
-        Token::Identifier("x"),
-        Token::Get,
-        Token::Number("1"),
-        Token::Make,
-        Token::Identifier("y"),
-        Token::Get,
-        Token::Number("2"),
-        Token::EOF
-    );
-}
-
-#[test]
-fn test_scan_trailing_comment() {
-    let src = "make x get 1 # trailing comment";
-    assert_tokens!(
-        Lexer::new(src),
-        Token::Make,
-        Token::Identifier("x"),
-        Token::Get,
-        Token::Number("1"),
-        Token::EOF
-    );
-}
-
-#[test]
-fn test_utf8_boundary_panic() {
+fn test_scan_utf8_boundary_panic() {
     let src = "😆";
     let mut lexer = Lexer::new(src);
-    let _ = lexer.next_token();
+    let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
     assert_eq!(label.span, 0..4);

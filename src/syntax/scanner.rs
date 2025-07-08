@@ -39,24 +39,21 @@ pub struct Lexer<'input> {
 
 impl<'input> Lexer<'input> {
     /// Creates a new lexer from source text
-    ///
-    /// Using #[inline(always)] because this is a trivial constructor
-    /// that gets called a lot during testing and benchmarks
     #[inline(always)]
     pub fn new(src: &'input str) -> Self {
         Lexer { src, pos: 0, errors: Diagnostics::default() }
     }
 
-    /// Returns the next token and its span from the input.
-    ///
-    /// This is the main loop of the lexer. We process the input byte by byte,
-    /// skipping whitespace, and then matching on the next character to decide
-    /// what kind of token to produce. If we reach the end of input, we return EOF.
-    /// For each token type (string, paren, number, identifier/keyword, or unexpected),
-    /// we delegate to a helper function that handles the details.
-    /// If we encounter something we don't recognize, we emit an error and keep going.
+    // Returns the next token and its span from the input.
+    //
+    // This is the main loop of the lexer. We process the input byte by byte,
+    // skipping whitespace, and then matching on the next character to decide
+    // what kind of token to produce. If we reach the end of input, we return EOF.
+    // For each token type (string, paren, number, identifier/keyword, or unexpected),
+    // we delegate to a helper function that handles the details.
+    // If we encounter something we don't recognize, we emit an error and keep going.
     #[inline(always)]
-    pub fn next_token(&mut self) -> SpannedToken<'input> {
+    fn next_token(&mut self) -> SpannedToken<'input> {
         loop {
             // Skip over any whitespace before the next token
             self.skip_whitespace();
@@ -131,28 +128,28 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    /// Looks at the current byte without advancing position
-    ///
-    /// Returns 0 (NUL byte) if we're at the end of input - this is safer
-    /// than panicking and lets us simplify our main tokenization loop
+    // Looks at the current byte without advancing position
+    //
+    // Returns 0 (NUL byte) if we're at the end of input - this is safer
+    // than panicking and lets us simplify our main tokenization loop
     #[inline(always)]
     fn peek(&self) -> u8 {
         *self.src.as_bytes().get(self.pos).unwrap_or(&0)
     }
 
-    /// Moves the scanner position forward by one byte
-    ///
-    /// Uses saturating_add as a safety measure to prevent overflow,
-    /// though this should never happen in practice
+    // Moves the scanner position forward by one byte
+    //
+    // Uses saturating_add as a safety measure to prevent overflow,
+    // though this should never happen in practice
     #[inline(always)]
     const fn bump(&mut self) {
         self.pos = self.pos.saturating_add(1);
     }
 
-    /// Skips all whitespace characters
-    ///
-    /// Since NaijaScript doesn't have significant whitespace (like Python),
-    /// we can simply skip over all spaces, tabs, newlines, etc.
+    // Skips all whitespace characters
+    //
+    // Since NaijaScript doesn't have significant whitespace (like Python),
+    // we can simply skip over all spaces, tabs, newlines, etc.
     #[inline(always)]
     fn skip_whitespace(&mut self) {
         while self.peek().is_ascii_whitespace() {
@@ -173,28 +170,28 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    /// Checks if a byte is a letter (A-Z, a-z)
-    ///
-    /// Used for identifier and keyword detection
+    // Checks if a byte is a letter (A-Z, a-z)
+    //
+    // Used for identifier and keyword detection
     #[inline(always)]
     const fn is_alpha(b: u8) -> bool {
         b.is_ascii_alphabetic()
     }
 
-    /// Checks if a byte is a digit (0-9)
-    ///
-    /// Used for number literal detection
+    // Checks if a byte is a digit (0-9)
+    //
+    // Used for number literal detection
     #[inline(always)]
     const fn is_digit(b: u8) -> bool {
         b.is_ascii_digit()
     }
 
-    /// Reads an entire word (identifier or keyword)
-    ///
-    /// We can use from_utf8_unchecked safely here because:
-    /// 1. We only match ASCII alphabetic/numeric characters, which are valid UTF-8
-    /// 2. The original source was already valid UTF-8
-    /// 3. The performance gain is significant in our benchmarks
+    // Reads an entire word (identifier or keyword)
+    //
+    // We can use from_utf8_unchecked safely here because:
+    // 1. We only match ASCII alphabetic/numeric characters, which are valid UTF-8
+    // 2. The original source was already valid UTF-8
+    // 3. The performance gain is significant in our benchmarks
     #[inline(always)]
     fn read_word(&mut self) -> &'input str {
         let start = self.pos;
@@ -204,13 +201,13 @@ impl<'input> Lexer<'input> {
         unsafe { std::str::from_utf8_unchecked(&self.src.as_bytes()[start..self.pos]) }
     }
 
-    /// Try to consume a specific word at current position
-    ///
-    /// This is crucial for multi-word keywords like "if to say" and "small pass".
-    /// The function checks if the next word matches the expected one,
-    /// and only consumes it if:
-    /// 1. It's followed by a non-alphabetic character (prevents partial matches)
-    /// 2. We have enough input left
+    // Try to consume a specific word at current position
+    //
+    // This is crucial for multi-word keywords like "if to say" and "small pass".
+    // The function checks if the next word matches the expected one,
+    // and only consumes it if:
+    // 1. It's followed by a non-alphabetic character (prevents partial matches)
+    // 2. We have enough input left
     #[inline(always)]
     fn try_consume_word(&mut self, word: &str) -> bool {
         // Skip any whitespace before the word

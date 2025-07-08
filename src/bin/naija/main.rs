@@ -10,6 +10,7 @@ use naijascript::resolver::SemAnalyzer;
 use naijascript::runtime::Interpreter;
 use naijascript::syntax::parser::Parser;
 use naijascript::syntax::scanner::Lexer;
+use naijascript::syntax::token::SpannedToken;
 
 /// Command line arguments for the NaijaScript interpreter.
 #[derive(Debug, ClapParser)]
@@ -52,7 +53,7 @@ fn main() -> ExitCode {
 /// Run source code from a &str, with full diagnostics and semantic analysis.
 fn run_source(filename: &str, src: &str) -> ExitCode {
     let mut lexer = Lexer::new(src);
-    let tokens: Vec<_> = (&mut lexer).collect();
+    let tokens: Vec<SpannedToken> = (&mut lexer).collect();
     if !lexer.errors.diagnostics.is_empty() {
         lexer.errors.report(src, filename);
         return ExitCode::FAILURE;
