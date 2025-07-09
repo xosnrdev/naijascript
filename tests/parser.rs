@@ -62,7 +62,7 @@ fn test_parse_loop_statement() {
 #[test]
 fn test_parse_missing_identifier_after_make() {
     let src = "make get 5";
-    assert_parse!(src, SyntaxError::ExpectedIdentifierAfterMake);
+    assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
 }
 
 #[test]
@@ -135,4 +135,10 @@ fn test_parse_boolean_literals() {
 fn test_parse_boolean_comparison() {
     let src = "if to say (true na false) start end";
     assert_parse!(src);
+}
+
+#[test]
+fn test_reserved_keyword_as_identifier() {
+    let src = "make shout get 5";
+    assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
 }

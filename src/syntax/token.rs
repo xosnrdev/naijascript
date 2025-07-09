@@ -57,6 +57,35 @@ pub enum Token<'input> {
     EOF, // End of file
 }
 
+impl<'input> std::fmt::Display for Token<'input> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Token::Make => write!(f, "make"),
+            Token::Get => write!(f, "get"),
+            Token::Add => write!(f, "add"),
+            Token::Minus => write!(f, "minus"),
+            Token::Times => write!(f, "times"),
+            Token::Divide => write!(f, "divide"),
+            Token::Mod => write!(f, "mod"),
+            Token::And => write!(f, "and"),
+            Token::Or => write!(f, "or"),
+            Token::Not => write!(f, "not"),
+            Token::Shout => write!(f, "shout"),
+            Token::Jasi => write!(f, "jasi"),
+            Token::Start => write!(f, "start"),
+            Token::End => write!(f, "end"),
+            Token::Na => write!(f, "na"),
+            Token::Pass => write!(f, "pass"),
+            Token::SmallPass => write!(f, "small pass"),
+            Token::IfToSay => write!(f, "if to say"),
+            Token::IfNotSo => write!(f, "if not so"),
+            Token::True => write!(f, "true"),
+            Token::False => write!(f, "false"),
+            _ => write!(f, "{self:?}"),
+        }
+    }
+}
+
 impl<'input> Token<'input> {
     pub fn suggest_keyword(ident: &str) -> Option<&'static str> {
         Self::all_keywords()
@@ -64,6 +93,33 @@ impl<'input> Token<'input> {
             .find(|&&kw| Self::is_single_edit(ident, kw))
             .copied()
             .map(|v| v as _)
+    }
+
+    pub fn is_reserved_keyword(&self) -> bool {
+        matches!(
+            self,
+            Token::Make
+                | Token::Get
+                | Token::Add
+                | Token::Minus
+                | Token::Times
+                | Token::Divide
+                | Token::Mod
+                | Token::And
+                | Token::Or
+                | Token::Not
+                | Token::Shout
+                | Token::Jasi
+                | Token::Start
+                | Token::End
+                | Token::Na
+                | Token::Pass
+                | Token::SmallPass
+                | Token::IfToSay
+                | Token::IfNotSo
+                | Token::True
+                | Token::False
+        )
     }
 
     // Returns a static list of all reserved keywords in NaijaScript.
