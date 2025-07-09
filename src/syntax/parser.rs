@@ -133,6 +133,7 @@ pub enum SyntaxError {
     ExpectedComparisonOperator,
     ExpectedNumberOrVariableOrLParen,
     TrailingTokensAfterProgramEnd,
+    ReservedKeywordAsIdentifier,
 }
 
 impl AsStr for SyntaxError {
@@ -157,6 +158,7 @@ impl AsStr for SyntaxError {
             SyntaxError::ExpectedComparisonOperator => "Condition syntax no complete",
             SyntaxError::ExpectedNumberOrVariableOrLParen => "Expression syntax no complete",
             SyntaxError::TrailingTokensAfterProgramEnd => "Program syntax no complete",
+            SyntaxError::ReservedKeywordAsIdentifier => "Use of reserved keyword as identifier",
         }
     }
 }
@@ -354,20 +356,36 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
     fn parse_assignment(&mut self, start: usize) -> Option<StmtId> {
         let make_span = self.cur.span.clone();
         self.bump(); // consume 'make'
-        let (var, var_span) = if let Token::Identifier(name) = &self.cur.token {
-            (*name, self.cur.span.clone())
-        } else {
-            self.errors.emit(
-                make_span.clone(),
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedIdentifierAfterMake.as_str(),
-                vec![Label {
-                    span: self.cur.span.clone(),
-                    message: Cow::Borrowed("Put variable name after `make` for here"),
-                }],
-            );
-            return None;
+        let (var, var_span) = match &self.cur.token {
+            Token::Identifier(name) => (*name, self.cur.span.clone()),
+            t if t.is_reserved_keyword() => {
+                self.errors.emit(
+                    self.cur.span.clone(),
+                    Severity::Error,
+                    "syntax",
+                    SyntaxError::ReservedKeywordAsIdentifier.as_str(),
+                    vec![Label {
+                        span: self.cur.span.clone(),
+                        message: Cow::Owned(format!(
+                            "You no fit use reserved word `{t}` as identifier"
+                        )),
+                    }],
+                );
+                return None;
+            }
+            _ => {
+                self.errors.emit(
+                    make_span.clone(),
+                    Severity::Error,
+                    "syntax",
+                    SyntaxError::ExpectedIdentifierAfterMake.as_str(),
+                    vec![Label {
+                        span: self.cur.span.clone(),
+                        message: Cow::Borrowed("Put variable name after `make` for here"),
+                    }],
+                );
+                return None;
+            }
         };
         self.bump();
         if let Token::Get = self.cur.token {
