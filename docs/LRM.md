@@ -28,6 +28,8 @@ Keywords na special words wey get meaning for NaijaScript. You no fit use them a
 - `jasi`: Loop construct.
 - `start`: Beginning of a code block.
 - `end`: End of a code block.
+- `do`: Define a function.
+- `return`: Return a value from a function.
 - `add`, `minus`, `times`, `divide`, `mod`: Arithmetic operators.
 - `na`, `pass`, `small pass`: Comparison operators.
 - `and`, `or`, `not`: Logical operators.
@@ -79,11 +81,12 @@ This section dey cover the rules wey dey checked before your code run.
 
 ### 4.1. Type System
 
-NaijaScript get two main data types:
+NaijaScript get four main data types:
 
 - **Number**: Represents numeric values (e.g., `10`, `99.9`). All numbers na floating-point numbers.
 - **String**: Represents text (e.g., `"Naija"`).
 - **Boolean**: Represents truth values wey fit be `true` or `false`.
+- **Function**: Represents callable code blocks with parameters and return values.
 
 Type inference dey automatic. You no need to declare the type of a variable.
 
@@ -93,6 +96,7 @@ Type inference dey automatic. You no need to declare the type of a variable.
   - `make myVar get 10`
 - **Redeclaration**: You no fit declare a variable wey you don already declare for the same block.
 - **Scope**: Any variable wey you declare inside a `start ... end` block go only dey visible inside that block and any nested block. Variable wey you declare for outside block no go dey visible inside the block if you redeclare am inside. This help prevent accidental variable shadowing or leakage, and na the same way modern programming languages dey behave.
+- **Function Scope**: Functions create their own scope. Parameters become local variables inside the function. Variables declared inside a function no go affect variables for outside scope with the same name.
 
 ## 5. Dynamic Semantics
 
@@ -107,6 +111,8 @@ This section dey explain wetin each part of the language dey do when e dey run.
 - **`if to say (<condition>) <block> if not so <block>`**: If the condition na true, the first block go run. Otherwise, the second block go run.
 - **`jasi (<condition>) <block>`**: The code inside the block go run repeatedly as long as the condition dey true.
 - **`start ... end`**: You fit use block anywhere as a statement. Any variable you declare inside the block go only dey visible inside that block and any nested block.
+- **`do <name>(<parameters>) <block>`**: Define a function with the given name and parameters. The function body dey inside the block.
+- **`return <expression>`**: Return a value from a function. If no expression provided, function go return 0. Only valid inside function definitions.
 
 ### 5.2. Expressions
 
@@ -114,6 +120,7 @@ This section dey explain wetin each part of the language dey do when e dey run.
 - **String Concatenation**: You fit use the `add` operator to join two strings together.
 - **Comparison**: Expressions with `na`, `pass`, and `small pass` go compare two values and return a boolean result (true or false) for use in conditions.
 - **Logical**: Expressions wey use `and`, `or`, and `not` dey join or change boolean values. Dem only work if the values na `true` or `false`. If you try use dem with number or string, e go cause a semantic error.
+- **Function Call**: You fit call a function by writing its name followed by arguments in parentheses. The function go run and return a value wey you fit use for further expressions.
 
 ## 6. Built-in Intrinsics
 

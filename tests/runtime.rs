@@ -21,6 +21,8 @@ macro_rules! assert_runtime {
             &parser.expr_arena,
             &parser.cond_arena,
             &parser.block_arena,
+            &parser.param_arena,
+            &parser.arg_arena,
         );
         interp.run(root);
         assert_eq!(interp.output, $expected);
@@ -38,6 +40,8 @@ macro_rules! assert_runtime {
             &parser.expr_arena,
             &parser.cond_arena,
             &parser.block_arena,
+            &parser.param_arena,
+            &parser.arg_arena,
         );
         interp.run(root);
         assert!(
@@ -215,4 +219,24 @@ fn logical_operator_precedence() {
 fn logical_not_precedence() {
     assert_runtime!("shout(not true or true)", output: vec![Value::Bool(true)]);
     assert_runtime!("shout(not (true or true))", output: vec![Value::Bool(false)]);
+}
+
+#[test]
+fn function_definition_and_call() {
+    assert_runtime!("do foo() start shout(42) end foo()", output: vec![Value::Number(42.0)]);
+}
+
+#[test]
+fn function_with_parameters() {
+    assert_runtime!("do sum(a, b) start shout(a add b) end sum(3, 4)", output: vec![Value::Number(7.0)]);
+}
+
+#[test]
+fn function_with_return_value() {
+    assert_runtime!("do square(x) start return x times x end shout(square(5))", output: vec![Value::Number(25.0)]);
+}
+
+#[test]
+fn function_call_as_expression() {
+    assert_runtime!("do double(x) start return x times 2 end make result get double(5) shout(result)", output: vec![Value::Number(10.0)]);
 }

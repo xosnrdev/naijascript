@@ -31,6 +31,8 @@ pub fn run_source(src: &str, filename: &str) -> String {
         &parser.expr_arena,
         &parser.cond_arena,
         &parser.block_arena,
+        &parser.param_arena,
+        &parser.arg_arena,
     );
     resolver.analyze(root);
     if !resolver.errors.diagnostics.is_empty() {
@@ -42,6 +44,8 @@ pub fn run_source(src: &str, filename: &str) -> String {
         &parser.expr_arena,
         &parser.cond_arena,
         &parser.block_arena,
+        &parser.param_arena,
+        &parser.arg_arena,
     );
     let err = rt.run(root);
     if !err.diagnostics.is_empty() {
