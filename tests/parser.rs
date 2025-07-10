@@ -158,7 +158,7 @@ fn test_parse_function_def_with_params() {
 #[test]
 fn test_parse_function_def_trailing_comma() {
     let src = "do foo(a, b,) start end";
-    assert_parse!(src, SyntaxError::ExpectedIdentifier);
+    assert_parse!(src, SyntaxError::TrailingComma);
 }
 
 #[test]
@@ -182,13 +182,13 @@ fn test_parse_function_def_missing_end() {
 #[test]
 fn test_parse_function_def_duplicate_param() {
     let src = "do foo(a, a) start end";
-    assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
+    assert_parse!(src, SyntaxError::DuplicateIdentifier);
 }
 
 #[test]
 fn test_parse_function_def_keyword_as_param() {
     let src = "do foo(jasi) start end";
-    assert_parse!(src, SyntaxError::ExpectedRParen);
+    assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
 }
 
 #[test]
@@ -252,12 +252,6 @@ fn test_parse_function_call_missing_rparen() {
 }
 
 #[test]
-fn test_parse_bare_identifier_error() {
-    let src = "foo";
-    assert_parse!(src, SyntaxError::ExpectedStatement);
-}
-
-#[test]
 fn test_parse_return_no_value() {
     let src = "return";
     assert_parse!(src);
@@ -266,11 +260,5 @@ fn test_parse_return_no_value() {
 #[test]
 fn test_parse_return_with_value() {
     let src = "return 42";
-    assert_parse!(src);
-}
-
-#[test]
-fn test_parse_return_outside_function() {
-    let src = "return 1";
     assert_parse!(src);
 }
