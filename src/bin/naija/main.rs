@@ -71,6 +71,8 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
         &parser.expr_arena,
         &parser.cond_arena,
         &parser.block_arena,
+        &parser.param_arena,
+        &parser.arg_arena,
     );
     resolver.analyze(root);
     if !resolver.errors.diagnostics.is_empty() {

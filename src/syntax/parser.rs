@@ -44,6 +44,20 @@ pub type StmtId = NodeId;
 pub type ExprId = NodeId;
 pub type CondId = NodeId;
 pub type BlockId = NodeId;
+pub type ParamListId = NodeId;
+pub type ArgListId = NodeId;
+
+/// Represents a list of function parameters
+#[derive(Debug)]
+pub struct ParamList<'src> {
+    pub params: Vec<&'src str>,
+}
+
+/// Represents a list of function call arguments
+#[derive(Debug)]
+pub struct ArgList {
+    pub args: Vec<ExprId>,
+}
 
 /// Binary operators in NaijaScript expressions.
 /// Maps directly to the arithmetic and logical operators in our BNF grammar.
@@ -85,7 +99,7 @@ pub enum Stmt<'src> {
     // "start...end" - standalone or nested block
     Block { block: BlockId, span: Span },
     // Function definition: do <name>(<params>?) start ... end
-    FunctionDef { name: &'src str, params: &'src [&'src str], body: BlockId, span: Span },
+    FunctionDef { name: &'src str, params: ParamListId, body: BlockId, span: Span },
     // Return statement: return <expr>?
     Return { expr: Option<ExprId>, span: Span },
     // Expression statement (e.g., function calls)
@@ -115,7 +129,7 @@ pub enum Expr<'src> {
     /// Function call: <callee>(<args>?)
     Call {
         callee: ExprId,
-        args: &'src [ExprId],
+        args: ArgListId,
         span: Span,
     },
 }
@@ -194,6 +208,8 @@ pub struct Parser<'src, I: Iterator<Item = SpannedToken<'src>>> {
     pub expr_arena: Arena<Expr<'src>>,
     pub cond_arena: Arena<Cond>,
     pub block_arena: Arena<Block>,
+    pub param_arena: Arena<ParamList<'src>>,
+    pub arg_arena: Arena<ArgList>,
 }
 
 impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
@@ -213,6 +229,8 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             expr_arena: Arena::new(),
             cond_arena: Arena::new(),
             block_arena: Arena::new(),
+            param_arena: Arena::new(),
+            arg_arena: Arena::new(),
         }
     }
 
@@ -525,15 +543,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 }],
             );
         }
-        // Store parameters in arena to get proper lifetime
-        let params = if params.is_empty() {
-            &[]
-        } else {
-            // SAFETY: All &str values have 'src lifetime from token parsing
-            // We're transmuting &[&'src str] to &'src [&'src str] which is sound
-            // because the slice references data that lives for 'src
-            unsafe { std::mem::transmute::<&[&'src str], &'src [&'src str]>(params.as_slice()) }
-        };
+        let params = self.param_arena.alloc(ParamList { params });
         let sid = self.stmt_arena.alloc(Stmt::FunctionDef {
             name,
             params,
@@ -1024,12 +1034,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                         }],
                     );
                 }
-                let args = if args.is_empty() {
-                    &[]
-                } else {
-                    // SAFETY: ExprId has no lifetime requirements, so extending lifetime is safe
-                    unsafe { std::mem::transmute::<&[ExprId], &'src [ExprId]>(args.as_slice()) }
-                };
+                let args = self.arg_arena.alloc(ArgList { args });
                 lhs = self.expr_arena.alloc(Expr::Call {
                     callee: lhs,
                     args,

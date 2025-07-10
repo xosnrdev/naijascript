@@ -1,10 +1,12 @@
 //! The semantic analyzer (or resolver) for NaijaScript.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
-    Arena, BinOp, Block, BlockId, Cond, CondId, Expr, ExprId, Stmt, StmtId,
+    self, Arena, ArgList, BinOp, Block, BlockId, Cond, CondId, Expr, ExprId, ParamList,
+    ParamListId, Stmt, StmtId,
 };
 
 /// Identifies any node in our AST for precise error reporting.
@@ -21,23 +23,29 @@ pub enum NodeId {
 /// Represents the type of semantic errors that can occur
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SemanticError {
-    DuplicateDeclaration,
+    DuplicateIdentifier,
     AssignmentToUndeclared,
-    UseOfUndeclared,
     TypeMismatch,
     InvalidStringOperation,
+    UndeclaredIdentifier,
+    FunctionCallArity,
+    ReturnOutsideFunction,
+    DeadCodeAfterReturn,
+    FunctionCallInCondition,
 }
 
 impl AsStr for SemanticError {
     fn as_str(&self) -> &'static str {
         match self {
-            SemanticError::DuplicateDeclaration => "You don declare dis variable before",
-            SemanticError::AssignmentToUndeclared => {
-                "You dey try give value to variable wey I no sabi"
-            }
-            SemanticError::UseOfUndeclared => "You dey use variable wey I no sabi",
-            SemanticError::TypeMismatch => "You dey try use wrong type for operation",
-            SemanticError::InvalidStringOperation => "You no fit do dis operation for string",
+            SemanticError::DuplicateIdentifier => "Duplicate identifier",
+            SemanticError::AssignmentToUndeclared => "Assignment to undeclared variable",
+            SemanticError::TypeMismatch => "Type mismatch",
+            SemanticError::InvalidStringOperation => "Invalid string operation",
+            SemanticError::UndeclaredIdentifier => "Undeclared identifier",
+            SemanticError::FunctionCallArity => "Invalid parameter count",
+            SemanticError::ReturnOutsideFunction => "Return statement outside function",
+            SemanticError::DeadCodeAfterReturn => "Dead code after return statement",
+            SemanticError::FunctionCallInCondition => "Function call in condition",
         }
     }
 }
@@ -48,6 +56,15 @@ enum VarType {
     Number,
     String,
     Bool,
+}
+
+// Represents a function signature for semantic analysis
+#[derive(Debug)]
+struct FunctionSig<'src> {
+    name: &'src str,
+    param_names: Vec<&'src str>,
+    span: &'src Span,
+    has_return: bool,
 }
 
 /// The heart of our semantic analysis - this walks through NaijaScript code
@@ -63,9 +80,17 @@ pub struct SemAnalyzer<'src> {
     exprs: &'src Arena<Expr<'src>>,
     conds: &'src Arena<Cond>,
     blocks: &'src Arena<Block>,
+    params: &'src Arena<ParamList<'src>>,
+    args: &'src Arena<ArgList>,
 
     // We use a stack of symbol tables so each block gets its own list of variables
     scopes: Vec<Vec<(&'src str, VarType, &'src Span)>>,
+
+    // Function symbol table for tracking function definitions
+    functions: Vec<FunctionSig<'src>>,
+
+    // Track current function context for return statement validation
+    current_function: Option<&'src str>,
 
     // Collect all errors instead of failing fast - gives better user experience
     pub errors: Diagnostics,
@@ -79,13 +104,19 @@ impl<'src> SemAnalyzer<'src> {
         exprs: &'src Arena<Expr<'src>>,
         conds: &'src Arena<Cond>,
         blocks: &'src Arena<Block>,
+        params: &'src Arena<ParamList<'src>>,
+        args: &'src Arena<ArgList>,
     ) -> Self {
         SemAnalyzer {
             stmts,
             exprs,
             conds,
             blocks,
+            params,
+            args,
             scopes: Vec::new(),
+            functions: Vec::new(),
+            current_function: None,
             errors: Diagnostics::default(),
         }
     }
@@ -105,7 +136,40 @@ impl<'src> SemAnalyzer<'src> {
     fn check_block(&mut self, bid: BlockId) {
         self.scopes.push(Vec::new()); // enter new block scope
         let block = &self.blocks.nodes[bid.0];
+
+        let mut has_return = false;
         for &sid in &block.stmts {
+            // Check for dead code after return statement
+            if has_return {
+                let stmt = &self.stmts.nodes[sid.0];
+                let span = match stmt {
+                    parser::Stmt::Assign { span, .. } => span,
+                    parser::Stmt::AssignExisting { span, .. } => span,
+                    parser::Stmt::Shout { span, .. } => span,
+                    parser::Stmt::If { span, .. } => span,
+                    parser::Stmt::Loop { span, .. } => span,
+                    parser::Stmt::Block { span, .. } => span,
+                    parser::Stmt::FunctionDef { span, .. } => span,
+                    parser::Stmt::Return { span, .. } => span,
+                    parser::Stmt::Expression { span, .. } => span,
+                };
+
+                self.errors.emit(
+                    span.clone(),
+                    Severity::Warning,
+                    "semantic",
+                    SemanticError::DeadCodeAfterReturn.as_str(),
+                    vec![Label {
+                        span: span.clone(),
+                        message: Cow::Borrowed("This code no go run because return dey before am"),
+                    }],
+                );
+            }
+
+            if matches!(&self.stmts.nodes[sid.0], parser::Stmt::Return { .. }) {
+                has_return = true;
+            }
+
             self.check_stmt(sid);
         }
         self.scopes.pop(); // exit block scope
@@ -122,20 +186,20 @@ impl<'src> SemAnalyzer<'src> {
             Stmt::Assign { var, expr, span } => {
                 // We only want to prevent redeclaring a variable in the same block,
                 // so we check just the current (innermost) scope for duplicates
-                if self.scopes.last().unwrap().iter().any(|(name, _, _)| name == var) {
+                if self.scopes.last().unwrap().iter().any(|(name, ..)| name == var) {
                     let orig_span = self
                         .scopes
                         .last()
                         .unwrap()
                         .iter()
-                        .find(|(name, _, _)| name == var)
+                        .find(|(name, ..)| name == var)
                         .unwrap()
                         .2;
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
                         "semantic",
-                        SemanticError::DuplicateDeclaration.as_str(),
+                        SemanticError::DuplicateIdentifier.as_str(),
                         vec![
                             Label {
                                 span: (*orig_span).clone(),
@@ -195,8 +259,15 @@ impl<'src> SemAnalyzer<'src> {
             Stmt::Block { block, .. } => {
                 self.check_block(*block);
             }
-            Stmt::FunctionDef { .. } | Stmt::Return { .. } => todo!(),
-            Stmt::Expression { .. } => todo!(),
+            Stmt::FunctionDef { name, params, body, span } => {
+                self.check_function_def(name, *params, *body, span);
+            }
+            Stmt::Return { expr, span } => {
+                self.check_return_stmt(*expr, span);
+            }
+            Stmt::Expression { expr, .. } => {
+                self.check_expr(*expr);
+            }
         }
     }
 
@@ -204,7 +275,129 @@ impl<'src> SemAnalyzer<'src> {
     // starting from the innermost and moving outward
     #[inline]
     fn lookup_var(&self, var: &&'src str) -> bool {
-        self.scopes.iter().rev().any(|scope| scope.iter().any(|(name, _, _)| name == var))
+        self.scopes.iter().rev().any(|scope| scope.iter().any(|(name, ..)| name == var))
+    }
+
+    // Check if a function has already been declared
+    #[inline]
+    fn lookup_function(&self, func_name: &str) -> bool {
+        self.functions.iter().any(|sig| sig.name == func_name)
+    }
+
+    // Find function signature by name
+    #[inline]
+    fn find_function(&self, func_name: &str) -> Option<&FunctionSig<'src>> {
+        self.functions.iter().find(|sig| sig.name == func_name)
+    }
+
+    // Validates function definition
+    fn check_function_def(
+        &mut self,
+        name: &'src str,
+        params: ParamListId,
+        body: BlockId,
+        span: &'src Span,
+    ) {
+        // Check for duplicate function declaration
+        if self.lookup_function(name) {
+            let orig_span = self.find_function(name).unwrap().span;
+            self.errors.emit(
+                span.clone(),
+                Severity::Error,
+                "semantic",
+                SemanticError::DuplicateIdentifier.as_str(),
+                vec![
+                    Label {
+                        span: orig_span.clone(),
+                        message: Cow::Borrowed("First time you define am here"),
+                    },
+                    Label {
+                        span: span.clone(),
+                        message: Cow::Borrowed("You try define am again for here"),
+                    },
+                ],
+            );
+        } else {
+            let param_list = &self.params.nodes[params.0];
+
+            // Check for duplicate parameter names
+            let mut seen_params = HashSet::new();
+            for param_name in &param_list.params {
+                if !seen_params.insert(param_name) {
+                    self.errors.emit(
+                        span.clone(),
+                        Severity::Error,
+                        "semantic",
+                        SemanticError::DuplicateIdentifier.as_str(),
+                        vec![Label {
+                            span: span.clone(),
+                            message: Cow::Owned(format!(
+                                "Parameter `{param_name}` dey appear more than once for dis function"
+                            )),
+                        }],
+                    );
+                }
+            }
+
+            // Store parameter names in function signature
+            let param_names = param_list.params.clone();
+
+            // Add function to symbol table
+            self.functions.push(FunctionSig { name, param_names, span, has_return: false });
+        }
+
+        // Set current function context for return validation
+        let prev_function = self.current_function;
+        self.current_function = Some(name);
+
+        // Create new scope for function parameters
+        self.scopes.push(Vec::new());
+
+        // Now we can safely add each parameter as a variable!
+        let param_list = &self.params.nodes[params.0];
+        for param_name in &param_list.params {
+            self.scopes.last_mut().unwrap().push((param_name, VarType::Number, span));
+        }
+
+        // Check function body using check_block to get dead code detection
+        // Note: check_block will create its own scope, but that's fine for function bodies
+        self.check_block(body);
+
+        // Clean up parameter scope
+        self.scopes.pop();
+
+        // Restore previous function context
+        self.current_function = prev_function;
+    }
+
+    // Validates return statements
+    fn check_return_stmt(&mut self, expr: Option<ExprId>, span: &'src Span) {
+        // Check if we're inside a function
+        if self.current_function.is_none() {
+            self.errors.emit(
+                span.clone(),
+                Severity::Error,
+                "semantic",
+                SemanticError::ReturnOutsideFunction.as_str(),
+                vec![Label {
+                    span: span.clone(),
+                    message: Cow::Borrowed("Return statement must be inside function body"),
+                }],
+            );
+        } else {
+            // Mark current function as having a return statement
+            if let Some(current_func_name) = self.current_function
+                && let Some(func_sig) =
+                    self.functions.iter_mut().find(|f| f.name == current_func_name)
+            {
+                func_sig.has_return = true;
+            }
+        }
+
+        // Check return expression if present
+        if let Some(expr_id) = expr {
+            self.check_expr(expr_id);
+        }
     }
 
     // Validates condition expressions used in if statements and loops.
@@ -213,6 +406,11 @@ impl<'src> SemAnalyzer<'src> {
     // Both sides must be valid expressions.
     fn check_cond(&mut self, cid: CondId) {
         let cond = &self.conds.nodes[cid.0];
+
+        // Check for function calls in conditions
+        self.check_expr_for_function_calls(cond.lhs, "condition");
+        self.check_expr_for_function_calls(cond.rhs, "condition");
+
         self.check_expr(cond.lhs);
         self.check_expr(cond.rhs);
         let lhs_type = self.infer_expr_type(cond.lhs);
@@ -249,7 +447,7 @@ impl<'src> SemAnalyzer<'src> {
     fn check_expr(&mut self, eid: ExprId) {
         match &self.exprs.nodes[eid.0] {
             // Literals are always valid since they represent concrete values
-            Expr::Number(_, _) | Expr::String(_, _) | Expr::Bool(_, _) => {}
+            Expr::Number(..) | Expr::String(..) | Expr::Bool(..) => {}
             // Variables need to exist in our symbol table before we can use them
             Expr::Var(v, span) => {
                 if !self.lookup_var(v) {
@@ -257,7 +455,7 @@ impl<'src> SemAnalyzer<'src> {
                         span.clone(),
                         Severity::Error,
                         "semantic",
-                        SemanticError::UseOfUndeclared.as_str(),
+                        SemanticError::UndeclaredIdentifier.as_str(),
                         vec![Label {
                             span: span.clone(),
                             message: Cow::Borrowed("This variable never dey before"),
@@ -290,7 +488,7 @@ impl<'src> SemAnalyzer<'src> {
                                 }],
                             );
                         }
-                        (Some(VarType::Bool), _) | (_, Some(VarType::Bool)) => {
+                        (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
                             self.errors.emit(
                                 span.clone(),
                                 Severity::Error,
@@ -336,7 +534,7 @@ impl<'src> SemAnalyzer<'src> {
                                 }],
                             );
                             }
-                            (Some(VarType::Bool), _) | (_, Some(VarType::Bool)) => {
+                            (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
                                 self.errors.emit(
                                     span.clone(),
                                     Severity::Error,
@@ -389,19 +587,68 @@ impl<'src> SemAnalyzer<'src> {
                     );
                 }
             }
-            Expr::Call { .. } => todo!(),
+            Expr::Call { callee, args, span } => {
+                // Access arguments through the arena
+                let arg_list = &self.args.nodes[args.0];
+
+                // Check the callee expression
+                match &self.exprs.nodes[callee.0] {
+                    Expr::Var(func_name, ..) => {
+                        // Check if function exists
+                        if let Some(func_sig) = self.find_function(func_name) {
+                            // Check parameter count
+                            if arg_list.args.len() != func_sig.param_names.len() {
+                                self.errors.emit(
+                                    span.clone(),
+                                    Severity::Error,
+                                    "semantic",
+                                    SemanticError::FunctionCallArity.as_str(),
+                                    vec![Label {
+                                        span: span.clone(),
+                                        message: Cow::Owned(format!(
+                                            "Function `{}` expect {} parameters but you give {}",
+                                            func_name,
+                                            func_sig.param_names.len(),
+                                            arg_list.args.len()
+                                        )),
+                                    }],
+                                );
+                            }
+                        } else {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::UndeclaredIdentifier.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Owned(format!(
+                                        "Function `{func_name}` never dey before"
+                                    )),
+                                }],
+                            );
+                        }
+                    }
+                    _ => self.check_expr(*callee),
+                }
+
+                // Check all arguments
+                for &arg in &arg_list.args {
+                    self.check_expr(arg);
+                }
+            }
         }
     }
 
     // Infer the type of an expression, using the symbol table for variables
     fn infer_expr_type(&self, eid: ExprId) -> Option<VarType> {
         match &self.exprs.nodes[eid.0] {
-            Expr::Number(_, _) => Some(VarType::Number),
-            Expr::String(_, _) => Some(VarType::String),
-            Expr::Bool(_, _) => Some(VarType::Bool),
-            Expr::Var(v, _) => {
+            Expr::Number(..) => Some(VarType::Number),
+            Expr::String(..) => Some(VarType::String),
+            Expr::Bool(..) => Some(VarType::Bool),
+            Expr::Var(v, ..) => {
                 for scope in self.scopes.iter().rev() {
-                    if let Some((_, t, _)) = scope.iter().find(|(name, _, _)| name == v) {
+                    if let Some((_, t, ..)) = scope.iter().find(|(name, ..)| name == v) {
                         return Some(*t);
                     }
                 }
@@ -436,7 +683,43 @@ impl<'src> SemAnalyzer<'src> {
                 let t = self.infer_expr_type(*expr)?;
                 if t == VarType::Bool { Some(VarType::Bool) } else { None }
             }
-            Expr::Call { .. } => todo!(),
+            Expr::Call { callee, .. } => match &self.exprs.nodes[callee.0] {
+                Expr::Var(func_name, ..) => {
+                    if self.lookup_function(func_name) {
+                        Some(VarType::Number)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
+        }
+    }
+
+    fn check_expr_for_function_calls(&mut self, eid: ExprId, context: &str) {
+        match &self.exprs.nodes[eid.0] {
+            Expr::Call { span, .. } => {
+                self.errors.emit(
+                    span.clone(),
+                    Severity::Warning,
+                    "semantic",
+                    SemanticError::FunctionCallInCondition.as_str(),
+                    vec![Label {
+                        span: span.clone(),
+                        message: Cow::Owned(format!(
+                            "Function call for {context} fit slow down your code if e dey run plenty times"
+                        )),
+                    }],
+                );
+            }
+            Expr::Binary { lhs, rhs, .. } => {
+                self.check_expr_for_function_calls(*lhs, context);
+                self.check_expr_for_function_calls(*rhs, context);
+            }
+            Expr::Not { expr, .. } => {
+                self.check_expr_for_function_calls(*expr, context);
+            }
+            Expr::Number(..) | Expr::String(..) | Expr::Bool(..) | Expr::Var(..) => {}
         }
     }
 }
