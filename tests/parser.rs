@@ -104,19 +104,19 @@ fn test_parse_invalid_statement() {
 #[test]
 fn test_parse_shout_missing_parenthesis() {
     let src = "shout 42";
-    assert_parse!(src, SyntaxError::ExpectedLParenAfterShout);
+    assert_parse!(src, SyntaxError::ExpectedLParen);
 }
 
 #[test]
 fn test_parse_if_missing_start() {
     let src = "if to say (x na 1) shout(1) end";
-    assert_parse!(src, SyntaxError::ExpectedStartForThenBlock);
+    assert_parse!(src, SyntaxError::ExpectedStartBlock);
 }
 
 #[test]
 fn test_parse_loop_missing_end() {
     let src = "jasi (x pass 0) start shout(x)";
-    assert_parse!(src, SyntaxError::UnterminatedLoopBody);
+    assert_parse!(src, SyntaxError::UnterminatedBlock);
 }
 
 #[test]
@@ -141,4 +141,136 @@ fn test_parse_boolean_comparison() {
 fn test_reserved_keyword_as_identifier() {
     let src = "make shout get 5";
     assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
+}
+
+#[test]
+fn test_parse_function_def_no_params() {
+    let src = "do foo() start end";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_function_def_with_params() {
+    let src = "do sum(a, b) start return a add b end";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_function_def_trailing_comma() {
+    let src = "do foo(a, b,) start end";
+    assert_parse!(src, SyntaxError::ExpectedIdentifier);
+}
+
+#[test]
+fn test_parse_function_def_missing_parens() {
+    let src = "do foo start end";
+    assert_parse!(src, SyntaxError::ExpectedLParen);
+}
+
+#[test]
+fn test_parse_function_def_missing_start() {
+    let src = "do foo() shout(1) end";
+    assert_parse!(src, SyntaxError::ExpectedStartBlock);
+}
+
+#[test]
+fn test_parse_function_def_missing_end() {
+    let src = "do foo() start shout(1)";
+    assert_parse!(src, SyntaxError::UnterminatedBlock);
+}
+
+#[test]
+fn test_parse_function_def_duplicate_param() {
+    let src = "do foo(a, a) start end";
+    assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
+}
+
+#[test]
+fn test_parse_function_def_keyword_as_param() {
+    let src = "do foo(jasi) start end";
+    assert_parse!(src, SyntaxError::ExpectedRParen);
+}
+
+#[test]
+fn test_parse_function_def_reserved_keyword_name() {
+    let src = "do shout() start end";
+    assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
+}
+
+#[test]
+fn test_parse_function_def_empty_body() {
+    let src = "do foo() start end";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_function_def_with_return() {
+    let src = "do foo() start return 1 end";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_nested_function_def() {
+    let src = "do outer() start do inner() start end end";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_function_call_no_args() {
+    let src = "foo()";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_function_call_with_args() {
+    let src = "foo(1, 2, 3)";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_function_call_trailing_comma() {
+    let src = "foo(1, 2,)";
+    assert_parse!(src, SyntaxError::TrailingComma);
+}
+
+#[test]
+fn test_parse_function_call_nested() {
+    let src = "foo(bar(1), 2)";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_function_call_in_expression() {
+    let src = "foo(1) add 2";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_function_call_missing_rparen() {
+    let src = "foo(1, 2";
+    assert_parse!(src, SyntaxError::ExpectedRParen);
+}
+
+#[test]
+fn test_parse_bare_identifier_error() {
+    let src = "foo";
+    assert_parse!(src, SyntaxError::ExpectedStatement);
+}
+
+#[test]
+fn test_parse_return_no_value() {
+    let src = "return";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_return_with_value() {
+    let src = "return 42";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_return_outside_function() {
+    let src = "return 1";
+    assert_parse!(src);
 }

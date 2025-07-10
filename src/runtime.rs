@@ -187,6 +187,8 @@ impl<'src> Interpreter<'src> {
                 Ok(())
             }
             Stmt::Block { block, .. } => self.exec_block(*block),
+            Stmt::FunctionDef { .. } | Stmt::Return { .. } => todo!(),
+            Stmt::Expression { .. } => todo!(),
         }
     }
 
@@ -340,6 +342,7 @@ impl<'src> Interpreter<'src> {
                     ),
                 }
             }
+            Expr::Call { .. } => todo!(),
         }
     }
 

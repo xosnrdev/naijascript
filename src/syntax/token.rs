@@ -39,6 +39,10 @@ pub enum Token<'input> {
     IfToSay, // "if to say" - if statement
     IfNotSo, // "if not so" - else statement
 
+    // Function constructs
+    Do,     // "do" - function definition
+    Return, // "return" - return statement
+
     // Boolean literals
     True,  // "true" - truthy
     False, // "false" - falsy
@@ -46,6 +50,7 @@ pub enum Token<'input> {
     // Punctuation
     LParen, // "("
     RParen, // ")"
+    Comma,  // ","
 
     // Variable length tokens
     Identifier(&'input str),  // Variable names
@@ -142,6 +147,8 @@ impl<'input> Token<'input> {
             "small pass",
             "if to say",
             "if not so",
+            "do",
+            "return",
             "true",
             "false",
             "and",

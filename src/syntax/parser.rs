@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::token::{SpannedToken, Token};
 
-/// Arena allocator for AST nodes - our answer to memory management without garbage collection.
+/// Arena allocator for AST nodes - provides cache-friendly memory layout and deterministic cleanup.
 ///
 /// Traditional tree structures with Box<> pointers work fine, but arenas give us several
 /// advantages: better cache locality (all nodes of same type are together), easier
@@ -39,14 +39,14 @@ impl<T> Arena<T> {
 pub struct NodeId(pub usize);
 
 // Type aliases make the code more self-documenting
-// These all use the same underlying NodeId but different types prevent confusion
+// These all use the same underlying NodeId type, providing semantic clarity without runtime overhead
 pub type StmtId = NodeId;
 pub type ExprId = NodeId;
 pub type CondId = NodeId;
 pub type BlockId = NodeId;
 
 /// Binary operators in NaijaScript expressions.
-/// Maps directly to the arithmetic operators in our BNF grammar.
+/// Maps directly to the arithmetic and logical operators in our BNF grammar.
 /// The names are more conventional than the Nigerian Pidgin keywords for easier code reading.
 #[derive(Debug)]
 pub enum BinOp {
@@ -72,24 +72,52 @@ pub enum CmpOp {
 /// Using string slices from the source avoids unnecessary allocations.
 #[derive(Debug)]
 pub enum Stmt<'src> {
-    Assign { var: &'src str, expr: ExprId, span: Span }, // "make x get 5"
-    AssignExisting { var: &'src str, expr: ExprId, span: Span }, // "x get 5"
-    Shout { expr: ExprId, span: Span },                  // "shout(x)"
-    If { cond: CondId, then_b: BlockId, else_b: Option<BlockId>, span: Span }, // "if to say(...) start...end"
-    Loop { cond: CondId, body: BlockId, span: Span }, // "jasi(...) start...end"
-    Block { block: BlockId, span: Span },             // "start...end" - standalone or nested block
+    // "make x get 5"
+    Assign { var: &'src str, expr: ExprId, span: Span },
+    // "x get 5"
+    AssignExisting { var: &'src str, expr: ExprId, span: Span },
+    // "shout(x)"
+    Shout { expr: ExprId, span: Span },
+    // "if to say(...) start...end"
+    If { cond: CondId, then_b: BlockId, else_b: Option<BlockId>, span: Span },
+    // "jasi(...) start...end"
+    Loop { cond: CondId, body: BlockId, span: Span },
+    // "start...end" - standalone or nested block
+    Block { block: BlockId, span: Span },
+    // Function definition: do <name>(<params>?) start ... end
+    FunctionDef { name: &'src str, params: &'src [&'src str], body: BlockId, span: Span },
+    // Return statement: return <expr>?
+    Return { expr: Option<ExprId>, span: Span },
+    // Expression statement (e.g., function calls)
+    Expression { expr: ExprId, span: Span },
 }
 
 /// Expression AST nodes for NaijaScript.
 /// Numbers and string literals are stored as string slices to preserve original formatting.
 #[derive(Debug)]
 pub enum Expr<'src> {
-    Number(&'src str, Span),                                    // 42, 3.14, etc.
-    String(Cow<'src, str>, Span),                               // "hello", etc.
-    Bool(bool, Span),                                           // "true", "false"
-    Var(&'src str, Span),                                       // variable references
-    Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span }, // arithmetic/logical operations
-    Not { expr: ExprId, span: Span },                           // logical not
+    Number(&'src str, Span),      // 42, 3.14, etc.
+    String(Cow<'src, str>, Span), // "hello", etc.
+    Bool(bool, Span),             // "true", "false"
+    Var(&'src str, Span),         // variable references
+    // arithmetic/logical operations
+    Binary {
+        op: BinOp,
+        lhs: ExprId,
+        rhs: ExprId,
+        span: Span,
+    },
+    // logical not
+    Not {
+        expr: ExprId,
+        span: Span,
+    },
+    /// Function call: <callee>(<args>?)
+    Call {
+        callee: ExprId,
+        args: &'src [ExprId],
+        span: Span,
+    },
 }
 
 /// Represents a condition in if statements or loops.
@@ -115,50 +143,36 @@ pub struct Block {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyntaxError {
     ExpectedStatement,
-    ExpectedIdentifierAfterMake,
+    ExpectedIdentifier,
     ExpectedGetAfterIdentifier,
-    ExpectedLParenAfterShout,
-    ExpectedRParenAfterShout,
-    ExpectedLParenAfterIf,
-    ExpectedRParenAfterIf,
-    ExpectedStartForThenBlock,
-    UnterminatedThenBlock,
+    ExpectedLParen,
+    ExpectedRParen,
+    ExpectedStartBlock,
     UnterminatedBlock,
-    ExpectedStartForElseBlock,
-    UnterminatedElseBlock,
-    ExpectedLParenAfterJasi,
-    ExpectedRParenAfterJasi,
-    ExpectedStartForLoopBody,
-    UnterminatedLoopBody,
     ExpectedComparisonOperator,
     ExpectedNumberOrVariableOrLParen,
     TrailingTokensAfterProgramEnd,
     ReservedKeywordAsIdentifier,
+    TrailingComma,
 }
 
 impl AsStr for SyntaxError {
     fn as_str(&self) -> &'static str {
         match self {
-            SyntaxError::ExpectedStatement => "Statement syntax no correct",
-            SyntaxError::ExpectedIdentifierAfterMake => "Assignment syntax no complete",
-            SyntaxError::ExpectedGetAfterIdentifier => "Assignment syntax no correct",
-            SyntaxError::ExpectedLParenAfterShout => "Shout syntax no complete",
-            SyntaxError::ExpectedRParenAfterShout => "Shout syntax no complete",
-            SyntaxError::ExpectedLParenAfterIf => "If statement syntax no complete",
-            SyntaxError::ExpectedRParenAfterIf => "If statement syntax no complete",
-            SyntaxError::ExpectedStartForThenBlock => "If block syntax no complete",
-            SyntaxError::UnterminatedThenBlock => "If block syntax no complete",
-            SyntaxError::UnterminatedBlock => "Block syntax no complete",
-            SyntaxError::ExpectedStartForElseBlock => "Else block syntax no complete",
-            SyntaxError::UnterminatedElseBlock => "Else block syntax no complete",
-            SyntaxError::ExpectedLParenAfterJasi => "Loop syntax no complete",
-            SyntaxError::ExpectedRParenAfterJasi => "Loop syntax no complete",
-            SyntaxError::ExpectedStartForLoopBody => "Loop block syntax no complete",
-            SyntaxError::UnterminatedLoopBody => "Loop block syntax no complete",
-            SyntaxError::ExpectedComparisonOperator => "Condition syntax no complete",
-            SyntaxError::ExpectedNumberOrVariableOrLParen => "Expression syntax no complete",
-            SyntaxError::TrailingTokensAfterProgramEnd => "Program syntax no complete",
+            SyntaxError::ExpectedStatement => "Missing statement",
+            SyntaxError::ExpectedIdentifier => "Missing identifier",
+            SyntaxError::ExpectedGetAfterIdentifier => "Missing `get` after identifier",
+            SyntaxError::ExpectedLParen => "Missing left parenthesis",
+            SyntaxError::ExpectedRParen => "Missing right parenthesis",
+            SyntaxError::ExpectedStartBlock => "Missing start block",
+            SyntaxError::UnterminatedBlock => "Missing end block",
+            SyntaxError::ExpectedComparisonOperator => "Missing comparison operator",
+            SyntaxError::ExpectedNumberOrVariableOrLParen => {
+                "Missing number, variable, or left parenthesis"
+            }
+            SyntaxError::TrailingTokensAfterProgramEnd => "Unexpected trailing tokens",
             SyntaxError::ReservedKeywordAsIdentifier => "Use of reserved keyword as identifier",
+            SyntaxError::TrailingComma => "Trailing comma not allowed",
         }
     }
 }
@@ -251,25 +265,34 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
 
     // Error recovery mechanism - skips tokens until we find a likely statement start.
     // This is essential for parsing multiple statements when earlier ones have errors.
-    // We look for statement keywords (make, shout, if to say, jasi) or block boundaries.
+    // We look for statement keywords (make, shout, if to say, jasi, do, return) or block boundaries.
     // Without this, one syntax error would make the rest of the file unparseable.
     #[inline]
     fn synchronize(&mut self) {
         while !matches!(
             self.cur.token,
-            Token::EOF | Token::Make | Token::Shout | Token::IfToSay | Token::Jasi | Token::End
+            Token::EOF
+                | Token::Make
+                | Token::Shout
+                | Token::IfToSay
+                | Token::Jasi
+                | Token::Do
+                | Token::Return
+                | Token::End
         ) {
             self.bump();
         }
     }
 
     // Dispatches to the appropriate statement parser based on the current token.
-    // This directly implements: <statement> ::= <assignment> | <output_statement> | <if_statement> | <loop_statement>
+    // This directly implements: <statement> ::= <assignment> | <output_statement> | <if_statement> | <loop_statement> | <function_def> | <return_statement> | <expression_statement> | <block>
     // Returns None on error to trigger error recovery in the caller.
     #[inline]
     fn parse_statement(&mut self) -> Option<StmtId> {
         let start = self.cur.span.start;
         match &self.cur.token {
+            Token::Do => self.parse_function_def(start),
+            Token::Return => self.parse_return(start),
             Token::Make => self.parse_assignment(start),
             Token::Shout => self.parse_shout(start),
             Token::IfToSay => self.parse_if(start),
@@ -312,23 +335,36 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     });
                     Some(sid)
                 } else {
-                    // Not a reassignment, error and do not consume
-                    let message: Cow<'static, str> =
-                        if let Some(suggestion) = Token::suggest_keyword(var_name) {
-                            Cow::Owned(format!(
-                                "I dey expect statement for here. Na `{suggestion}` you mean?",
-                            ))
-                        } else {
-                            Cow::Borrowed("I dey expect statement for here")
-                        };
-                    self.errors.emit(
-                        var_span.clone(),
-                        Severity::Error,
-                        "syntax",
-                        SyntaxError::ExpectedStatement.as_str(),
-                        vec![Label { span: var_span, message }],
-                    );
-                    None
+                    // Function calls need special handling because they look like variable references initially
+                    // We already consumed the identifier, so we peek ahead to see if parentheses follow
+                    // This disambiguates between "foo()" (valid expression statement) and "foo" (invalid bare reference)
+                    if let Token::LParen = self.cur.token {
+                        // Build function call expression starting with the variable we already parsed
+                        // We reuse parse_expression_continuation to handle the call syntax and any chained operations
+                        let var_expr = self.expr_arena.alloc(Expr::Var(var_name, var_span.clone()));
+                        let expr = self.parse_expression_continuation(var_expr, 0);
+                        let sid = self
+                            .stmt_arena
+                            .alloc(Stmt::Expression { expr, span: start..self.cur.span.end });
+                        Some(sid)
+                    } else {
+                        let message: Cow<'static, str> =
+                            if let Some(suggestion) = Token::suggest_keyword(var_name) {
+                                Cow::Owned(format!(
+                                    "I dey expect statement for here. Na `{suggestion}` you mean?",
+                                ))
+                            } else {
+                                Cow::Borrowed("I dey expect statement for here")
+                            };
+                        self.errors.emit(
+                            var_span.clone(),
+                            Severity::Error,
+                            "syntax",
+                            SyntaxError::ExpectedStatement.as_str(),
+                            vec![Label { span: var_span, message }],
+                        );
+                        None
+                    }
                 }
             }
             _ => {
@@ -345,6 +381,195 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 None
             }
         }
+    }
+
+    // Parses function definitions: do <name>(<params>?) start ... end
+    #[inline]
+    fn parse_function_def(&mut self, start: usize) -> Option<StmtId> {
+        let do_span = self.cur.span.clone();
+        self.bump(); // consume 'do'
+        // Parse function name
+        let name = match &self.cur.token {
+            Token::Identifier(n) => *n,
+            t if t.is_reserved_keyword() => {
+                self.errors.emit(
+                    self.cur.span.clone(),
+                    Severity::Error,
+                    "syntax",
+                    SyntaxError::ReservedKeywordAsIdentifier.as_str(),
+                    vec![Label {
+                        span: self.cur.span.clone(),
+                        message: Cow::Owned(format!(
+                            "You no fit use reserved word `{t}` as function name"
+                        )),
+                    }],
+                );
+                return None;
+            }
+            _ => {
+                self.errors.emit(
+                    do_span.clone(),
+                    Severity::Error,
+                    "syntax",
+                    SyntaxError::ExpectedIdentifier.as_str(),
+                    vec![Label {
+                        span: self.cur.span.clone(),
+                        message: Cow::Borrowed("Put function name after `do` for here"),
+                    }],
+                );
+                return None;
+            }
+        };
+        self.bump();
+        // Parse parameter list
+        if let Token::LParen = self.cur.token {
+            self.bump();
+        } else {
+            self.errors.emit(
+                self.cur.span.clone(),
+                Severity::Error,
+                "syntax",
+                SyntaxError::ExpectedLParen.as_str(),
+                vec![Label {
+                    span: self.cur.span.clone(),
+                    message: Cow::Borrowed("Put `(` after function name for here"),
+                }],
+            );
+            return None;
+        }
+        let mut params = Vec::new();
+        let mut seen_names = std::collections::HashSet::new();
+        while let Token::Identifier(p) = &self.cur.token {
+            if p.is_empty() || seen_names.contains(p) {
+                self.errors.emit(
+                    self.cur.span.clone(),
+                    Severity::Error,
+                    "syntax",
+                    SyntaxError::ReservedKeywordAsIdentifier.as_str(),
+                    vec![Label {
+                        span: self.cur.span.clone(),
+                        message: Cow::Owned(format!("Duplicate or invalid parameter name `{p}`")),
+                    }],
+                );
+                return None;
+            }
+            if Token::is_reserved_keyword(&Token::Identifier(p)) {
+                self.errors.emit(
+                    self.cur.span.clone(),
+                    Severity::Error,
+                    "syntax",
+                    SyntaxError::ReservedKeywordAsIdentifier.as_str(),
+                    vec![Label {
+                        span: self.cur.span.clone(),
+                        message: Cow::Owned(format!(
+                            "You no fit use reserved word `{p}` as parameter name"
+                        )),
+                    }],
+                );
+                return None;
+            }
+            seen_names.insert(*p);
+            params.push(*p);
+            self.bump();
+            if let Token::Comma = self.cur.token {
+                self.bump();
+                if let Token::RParen = self.cur.token {
+                    self.errors.emit(
+                        self.cur.span.clone(),
+                        Severity::Error,
+                        "syntax",
+                        SyntaxError::ExpectedIdentifier.as_str(),
+                        vec![Label {
+                            span: self.cur.span.clone(),
+                            message: Cow::Borrowed("No trailing comma allowed in parameter list"),
+                        }],
+                    );
+                    return None;
+                }
+            } else {
+                break;
+            }
+        }
+        if let Token::RParen = self.cur.token {
+            self.bump();
+        } else {
+            self.errors.emit(
+                self.cur.span.clone(),
+                Severity::Error,
+                "syntax",
+                SyntaxError::ExpectedRParen.as_str(),
+                vec![Label {
+                    span: self.cur.span.clone(),
+                    message: Cow::Borrowed("Close parameter list with `)` for here"),
+                }],
+            );
+            return None;
+        }
+        if let Token::Start = self.cur.token {
+            self.bump();
+        } else {
+            self.errors.emit(
+                self.cur.span.clone(),
+                Severity::Error,
+                "syntax",
+                SyntaxError::ExpectedStartBlock.as_str(),
+                vec![Label {
+                    span: self.cur.span.clone(),
+                    message: Cow::Borrowed("Begin function body with `start` for here"),
+                }],
+            );
+            return None;
+        }
+        let body = self.parse_block_body();
+        if let Token::End = self.cur.token {
+            self.bump();
+        } else {
+            self.errors.emit(
+                self.cur.span.clone(),
+                Severity::Error,
+                "syntax",
+                SyntaxError::UnterminatedBlock.as_str(),
+                vec![Label {
+                    span: self.cur.span.clone(),
+                    message: Cow::Borrowed("Dis function body start here, but I no see `end`"),
+                }],
+            );
+        }
+        // Store parameters in arena to get proper lifetime
+        let params = if params.is_empty() {
+            &[]
+        } else {
+            // SAFETY: All &str values have 'src lifetime from token parsing
+            // We're transmuting &[&'src str] to &'src [&'src str] which is sound
+            // because the slice references data that lives for 'src
+            unsafe { std::mem::transmute::<&[&'src str], &'src [&'src str]>(params.as_slice()) }
+        };
+        let sid = self.stmt_arena.alloc(Stmt::FunctionDef {
+            name,
+            params,
+            body,
+            span: start..self.cur.span.end,
+        });
+        Some(sid)
+    }
+
+    // Parses return statements: return <expr>?
+    #[inline]
+    fn parse_return(&mut self, start: usize) -> Option<StmtId> {
+        self.bump(); // consume 'return'
+        let expr = match &self.cur.token {
+            Token::Number(_)
+            | Token::String(_)
+            | Token::True
+            | Token::False
+            | Token::Identifier(_)
+            | Token::Not
+            | Token::LParen => Some(self.parse_expression(0)),
+            Token::End | Token::EOF => None,
+            _ => Some(self.parse_expression(0)),
+        };
+        let sid = self.stmt_arena.alloc(Stmt::Return { expr, span: start..self.cur.span.end });
+        Some(sid)
     }
 
     // Parses "make variable get expression" assignments.
@@ -378,7 +603,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     make_span.clone(),
                     Severity::Error,
                     "syntax",
-                    SyntaxError::ExpectedIdentifierAfterMake.as_str(),
+                    SyntaxError::ExpectedIdentifier.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
                         message: Cow::Borrowed("Put variable name after `make` for here"),
@@ -422,7 +647,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 shout_span.clone(),
                 Severity::Error,
                 "syntax",
-                SyntaxError::ExpectedLParenAfterShout.as_str(),
+                SyntaxError::ExpectedLParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
                     message: Cow::Borrowed("Put `(` after `shout` for here"),
@@ -438,7 +663,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
-                SyntaxError::ExpectedRParenAfterShout.as_str(),
+                SyntaxError::ExpectedRParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
                     message: Cow::Borrowed("Close shout with `)` for here"),
@@ -464,7 +689,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 if_span.clone(),
                 Severity::Error,
                 "syntax",
-                SyntaxError::ExpectedLParenAfterIf.as_str(),
+                SyntaxError::ExpectedLParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
                     message: Cow::Borrowed("Put `(` after `if to say` for here"),
@@ -480,7 +705,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
-                SyntaxError::ExpectedRParenAfterIf.as_str(),
+                SyntaxError::ExpectedRParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
                     message: Cow::Borrowed("Close condition with `)` for here"),
@@ -497,7 +722,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
-                SyntaxError::ExpectedStartForThenBlock.as_str(),
+                SyntaxError::ExpectedStartBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
                     message: Cow::Borrowed("Begin block with `start` for here"),
@@ -513,7 +738,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
-                SyntaxError::UnterminatedThenBlock.as_str(),
+                SyntaxError::UnterminatedBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
                     message: Cow::Borrowed("Dis block start here, but I no see `end`"),
@@ -532,7 +757,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     self.cur.span.clone(),
                     Severity::Error,
                     "syntax",
-                    SyntaxError::ExpectedStartForElseBlock.as_str(),
+                    SyntaxError::ExpectedStartBlock.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
                         message: Cow::Borrowed("Begin else block with `start` for here"),
@@ -548,7 +773,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     else_span.clone(),
                     Severity::Error,
                     "syntax",
-                    SyntaxError::UnterminatedElseBlock.as_str(),
+                    SyntaxError::UnterminatedBlock.as_str(),
                     vec![Label {
                         span: else_span,
                         message: Cow::Borrowed("Dis else block start here, but I no see `end`"),
@@ -570,7 +795,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
 
     // Parses loop statements - simpler than if statements since there's no else clause.
     // Grammar: <loop_statement> ::= "jasi" "(" <condition> ")" <block>
-    // "jasi" appears to be Nigerian Pidgin for some kind of loop construct.
+    // "jasi" is the Nigerian Pidgin keyword for while loops.
     #[inline]
     fn parse_loop(&mut self, start: usize) -> Option<StmtId> {
         let loop_span = self.cur.span.clone();
@@ -582,7 +807,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 loop_span.clone(),
                 Severity::Error,
                 "syntax",
-                SyntaxError::ExpectedLParenAfterJasi.as_str(),
+                SyntaxError::ExpectedLParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
                     message: Cow::Borrowed("Put `(` after `jasi` for here"),
@@ -598,7 +823,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
-                SyntaxError::ExpectedRParenAfterJasi.as_str(),
+                SyntaxError::ExpectedRParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
                     message: Cow::Borrowed("Close loop condition with `)` for here"),
@@ -613,7 +838,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
-                SyntaxError::ExpectedStartForLoopBody.as_str(),
+                SyntaxError::ExpectedStartBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
                     message: Cow::Borrowed("Begin loop body with `start` for here"),
@@ -629,7 +854,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 self.cur.span.clone(),
                 Severity::Error,
                 "syntax",
-                SyntaxError::UnterminatedLoopBody.as_str(),
+                SyntaxError::UnterminatedBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
                     message: Cow::Borrowed("Dis loop body start here, but I no see `end`"),
@@ -686,7 +911,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
     fn parse_expression(&mut self, min_bp: u8) -> ExprId {
         let start = self.cur.span.start;
         // Parse the left-hand side (primary expression)
-        let mut lhs = match &self.cur.token {
+        let lhs = match &self.cur.token {
             Token::Number(n) => {
                 let s = self.cur.span.clone();
                 let id = self.expr_arena.alloc(Expr::Number(n, s));
@@ -754,8 +979,86 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             }
         };
 
-        // Parse binary operators with precedence climbing
+        self.parse_expression_continuation(lhs, min_bp)
+    }
+
+    // Continue parsing when we already have a left expression, handling operator precedence and function calls
+    // The lhs parameter lets us resume parsing from any expression node, which is essential for handling
+    // cases like "foo()" where we first parse "foo" as a variable, then discover it's actually a function call
+    // This pattern also enables clean handling of operator chaining like "a + b * c" where Pratt parsing
+    // builds the tree with correct precedence in a single forward pass
+    #[inline]
+    fn parse_expression_continuation(&mut self, mut lhs: ExprId, min_bp: u8) -> ExprId {
+        let start = match &self.expr_arena.nodes[lhs.0] {
+            Expr::Number(_, span) => span.start,
+            Expr::String(_, span) => span.start,
+            Expr::Bool(_, span) => span.start,
+            Expr::Var(_, span) => span.start,
+            Expr::Binary { span, .. } => span.start,
+            Expr::Not { span, .. } => span.start,
+            Expr::Call { span, .. } => span.start,
+        };
+
+        // Pratt parselet for function calls and binary operators
         loop {
+            // Function call: <expr>(<args>?)
+            if let Token::LParen = self.cur.token {
+                let call_start = start;
+                self.bump(); // consume '('
+                let mut args = Vec::new();
+                if !matches!(self.cur.token, Token::RParen) {
+                    loop {
+                        let arg = self.parse_expression(0);
+                        args.push(arg);
+                        if let Token::Comma = self.cur.token {
+                            self.bump();
+                            if let Token::RParen = self.cur.token {
+                                self.errors.emit(
+                                    self.cur.span.clone(),
+                                    Severity::Error,
+                                    "syntax",
+                                    SyntaxError::TrailingComma.as_str(),
+                                    vec![Label {
+                                        span: self.cur.span.clone(),
+                                        message: Cow::Borrowed(
+                                            "No trailing comma allowed in argument list",
+                                        ),
+                                    }],
+                                );
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                if let Token::RParen = self.cur.token {
+                    self.bump();
+                } else {
+                    self.errors.emit(
+                        self.cur.span.clone(),
+                        Severity::Error,
+                        "syntax",
+                        SyntaxError::ExpectedRParen.as_str(),
+                        vec![Label {
+                            span: self.cur.span.clone(),
+                            message: Cow::Borrowed("Close argument list with `)` for here"),
+                        }],
+                    );
+                }
+                let args = if args.is_empty() {
+                    &[]
+                } else {
+                    // SAFETY: ExprId has no lifetime requirements, so extending lifetime is safe
+                    unsafe { std::mem::transmute::<&[ExprId], &'src [ExprId]>(args.as_slice()) }
+                };
+                lhs = self.expr_arena.alloc(Expr::Call {
+                    callee: lhs,
+                    args,
+                    span: call_start..self.cur.span.end,
+                });
+                continue;
+            }
             let (op, l_bp, r_bp) = match &self.cur.token {
                 Token::Times => (BinOp::Times, 20, 21),
                 Token::Divide => (BinOp::Divide, 20, 21),
@@ -798,6 +1101,8 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 | Token::Shout
                 | Token::IfToSay
                 | Token::Jasi
+                | Token::Do
+                | Token::Return
                 | Token::Identifier(_)
                 | Token::Start
         ) {

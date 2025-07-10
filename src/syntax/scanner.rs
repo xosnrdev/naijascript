@@ -79,7 +79,7 @@ impl<'input> Lexer<'input> {
                 let token = self.scan_string(start);
                 return SpannedToken { token, span: start..self.pos };
             }
-            if let Some(token) = self.scan_paren(b) {
+            if let Some(token) = self.scan_punctuation(b) {
                 return SpannedToken { token, span: start..self.pos };
             }
             if Self::is_digit(b) {
@@ -319,7 +319,7 @@ impl<'input> Lexer<'input> {
     }
 
     #[inline(always)]
-    fn scan_paren(&mut self, b: u8) -> Option<Token<'input>> {
+    fn scan_punctuation(&mut self, b: u8) -> Option<Token<'input>> {
         match b {
             b'(' => {
                 self.bump();
@@ -328,6 +328,10 @@ impl<'input> Lexer<'input> {
             b')' => {
                 self.bump();
                 Some(Token::RParen)
+            }
+            b',' => {
+                self.bump();
+                Some(Token::Comma)
             }
             _ => None,
         }
@@ -466,6 +470,8 @@ impl<'input> Lexer<'input> {
             "pass" => Token::Pass,
             "true" => Token::True,
             "false" => Token::False,
+            "do" => Token::Do,
+            "return" => Token::Return,
             // If not a keyword, it's an identifier
             other => {
                 // Let's make sure the identifier is valid:

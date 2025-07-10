@@ -195,6 +195,8 @@ impl<'src> SemAnalyzer<'src> {
             Stmt::Block { block, .. } => {
                 self.check_block(*block);
             }
+            Stmt::FunctionDef { .. } | Stmt::Return { .. } => todo!(),
+            Stmt::Expression { .. } => todo!(),
         }
     }
 
@@ -387,6 +389,7 @@ impl<'src> SemAnalyzer<'src> {
                     );
                 }
             }
+            Expr::Call { .. } => todo!(),
         }
     }
 
@@ -433,6 +436,7 @@ impl<'src> SemAnalyzer<'src> {
                 let t = self.infer_expr_type(*expr)?;
                 if t == VarType::Bool { Some(VarType::Bool) } else { None }
             }
+            Expr::Call { .. } => todo!(),
         }
     }
 }

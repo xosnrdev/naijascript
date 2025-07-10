@@ -2,10 +2,14 @@
 
 <statement_list> ::= <statement> | <statement> <statement_list>
 
-<statement> ::= <assignment> | <reassignment> | <output_statement> | <if_statement> | <loop_statement> | <block>
+<statement> ::= <assignment> | <reassignment> | <output_statement> | <if_statement> | <loop_statement> | <block> | <function_def> | <return_statement>
 
 <assignment> ::= "make" <variable> "get" <expression>
 <reassignment> ::= <variable> "get" <expression>
+
+<function_def> ::= "do" <identifier> "(" <param_list>? ")" "start" <statement_list> "end"
+<param_list> ::= <identifier> | <identifier> "," <param_list>
+<return_statement> ::= "return" <expression>?
 
 <variable> ::= <identifier>
 
@@ -21,7 +25,9 @@
 
 <term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor> | <term> "mod" <factor>
 
-<factor> ::= <number> | <string> | <boolean> | <variable> | "(" <expression> ")"
+<factor> ::= <number> | <string> | <boolean> | <variable> | <function_call> | "(" <expression> ")"
+<function_call> ::= <identifier> "(" <arg_list>? ")"
+<arg_list> ::= <expression> | <expression> "," <arg_list>
 
 <boolean> ::= "true" | "false"
 
