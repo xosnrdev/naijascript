@@ -158,7 +158,7 @@ fn test_parse_function_def_with_params() {
 #[test]
 fn test_parse_function_def_trailing_comma() {
     let src = "do foo(a, b,) start end";
-    assert_parse!(src, SyntaxError::TrailingComma);
+    assert_parse!(src);
 }
 
 #[test]
@@ -177,12 +177,6 @@ fn test_parse_function_def_missing_start() {
 fn test_parse_function_def_missing_end() {
     let src = "do foo() start shout(1)";
     assert_parse!(src, SyntaxError::UnterminatedBlock);
-}
-
-#[test]
-fn test_parse_function_def_duplicate_param() {
-    let src = "do foo(a, a) start end";
-    assert_parse!(src, SyntaxError::DuplicateIdentifier);
 }
 
 #[test]
@@ -230,7 +224,7 @@ fn test_parse_function_call_with_args() {
 #[test]
 fn test_parse_function_call_trailing_comma() {
     let src = "foo(1, 2,)";
-    assert_parse!(src, SyntaxError::TrailingComma);
+    assert_parse!(src);
 }
 
 #[test]

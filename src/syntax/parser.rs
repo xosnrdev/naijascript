@@ -1,7 +1,6 @@
 //! The syntax parser for NaijaScript.
 
 use std::borrow::Cow;
-use std::collections::HashSet;
 
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::token::{SpannedToken, Token};
@@ -154,8 +153,6 @@ pub enum SyntaxError {
     ExpectedNumberOrVariableOrLParen,
     TrailingTokensAfterProgramEnd,
     ReservedKeywordAsIdentifier,
-    TrailingComma,
-    DuplicateIdentifier,
 }
 
 impl AsStr for SyntaxError {
@@ -174,8 +171,6 @@ impl AsStr for SyntaxError {
             }
             SyntaxError::TrailingTokensAfterProgramEnd => "Unexpected trailing tokens",
             SyntaxError::ReservedKeywordAsIdentifier => "Use of reserved keyword as identifier",
-            SyntaxError::TrailingComma => "Trailing comma not allowed",
-            SyntaxError::DuplicateIdentifier => "Duplicate identifier",
         }
     }
 }
@@ -441,25 +436,9 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             return None;
         }
         let mut params = Vec::new();
-        let mut seen_names = HashSet::new();
         loop {
             match &self.cur.token {
                 Token::Identifier(p) => {
-                    if p.is_empty() || seen_names.contains(p) {
-                        self.errors.emit(
-                            self.cur.span.clone(),
-                            Severity::Error,
-                            "syntax",
-                            SyntaxError::DuplicateIdentifier.as_str(),
-                            vec![Label {
-                                span: self.cur.span.clone(),
-                                message: Cow::Owned(format!(
-                                    "Duplicate or invalid parameter name `{p}`"
-                                )),
-                            }],
-                        );
-                        return None;
-                    }
                     if Token::is_reserved_keyword(&Token::Identifier(p)) {
                         self.errors.emit(
                             self.cur.span.clone(),
@@ -475,26 +454,10 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                         );
                         return None;
                     }
-                    seen_names.insert(*p);
                     params.push(*p);
                     self.bump();
                     if let Token::Comma = self.cur.token {
                         self.bump();
-                        if let Token::RParen = self.cur.token {
-                            self.errors.emit(
-                                self.cur.span.clone(),
-                                Severity::Error,
-                                "syntax",
-                                SyntaxError::TrailingComma.as_str(),
-                                vec![Label {
-                                    span: self.cur.span.clone(),
-                                    message: Cow::Borrowed(
-                                        "No trailing comma allowed in parameter list",
-                                    ),
-                                }],
-                            );
-                            return None;
-                        }
                     } else {
                         break;
                     }
@@ -1039,19 +1002,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                         args.push(arg);
                         if let Token::Comma = self.cur.token {
                             self.bump();
-                            if let Token::RParen = self.cur.token {
-                                self.errors.emit(
-                                    self.cur.span.clone(),
-                                    Severity::Error,
-                                    "syntax",
-                                    SyntaxError::TrailingComma.as_str(),
-                                    vec![Label {
-                                        span: self.cur.span.clone(),
-                                        message: Cow::Borrowed(
-                                            "No trailing comma allowed in argument list",
-                                        ),
-                                    }],
-                                );
+                            if matches!(self.cur.token, Token::RParen) {
                                 break;
                             }
                         } else {
