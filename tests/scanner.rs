@@ -89,6 +89,12 @@ fn test_scan_invalid_identifier() {
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
 }
 
+#[test]
+fn test_scan_identifier_with_underscores() {
+    let src = "_foo_bar_123";
+    assert_tokens!(src, &[Token::Identifier("_foo_bar_123"),]);
+}
+
 //------------------------------------------------------------------------
 // NUMBERS
 //------------------------------------------------------------------------
@@ -108,6 +114,17 @@ fn test_scan_invalid_number() {
     let label = &errors.diagnostics[0].labels[0];
     assert_eq!(label.span, 1..2);
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidNumber.as_str()));
+}
+
+#[test]
+fn test_scan_number_with_underscore_error() {
+    let src = "123_foo";
+    let mut lexer = Lexer::new(src);
+    let _ = lexer.next();
+    let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 0..3);
+    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
 }
 
 //------------------------------------------------------------------------
