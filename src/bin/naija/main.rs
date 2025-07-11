@@ -22,13 +22,13 @@ use naijascript::syntax::token::SpannedToken;
 )]
 struct Cli {
     /// Script file wey you wan run, e.g. naija script.ns
-    pub script: Option<String>,
+    script: Option<String>,
     /// Code wey you wan run sharp sharp, e.g. naija --eval "shout("hello world")"
     #[arg(short, long)]
-    pub eval: Option<String>,
+    eval: Option<String>,
     /// Enter REPL mode to dey run code one by one (naija --interactive)
     #[arg(short, long)]
-    pub interactive: bool,
+    interactive: bool,
 }
 
 /// Entry point for the NaijaScript CLI.

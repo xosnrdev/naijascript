@@ -1,27 +1,32 @@
 /// Built-in functions available in NaijaScript.
-///
-/// These are globally available functions implemented in the interpreter
-/// rather than defined by user code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Builtin {
     /// Output function that prints values to console
     Shout,
 }
 
-impl Builtin {
-    /// Get the name of the built-in function as it appears in source code
-    #[inline]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Builtin::Shout => "shout",
-        }
-    }
+/// Represents the type of a value or return type in NaijaScript
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BuiltinReturnType {
+    Number,
+    String,
+    Bool,
+}
 
+impl Builtin {
     /// Get the expected parameter count for the built-in function
     #[inline]
     pub const fn arity(self) -> usize {
         match self {
             Builtin::Shout => 1,
+        }
+    }
+
+    /// Get the return type of the built-in function
+    #[inline]
+    pub const fn return_type(self) -> BuiltinReturnType {
+        match self {
+            Builtin::Shout => BuiltinReturnType::Number,
         }
     }
 

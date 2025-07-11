@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
 use crate::syntax::token::{SpannedToken, Token};
 
-/// Represents the type of lexical errors that can occur during tokenization
+/// Represents errors that can occur during lexical analysis.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LexError {
     UnexpectedChar,
@@ -27,14 +27,14 @@ impl AsStr for LexError {
     }
 }
 
-/// Our lexical analyzer that breaks source text into tokens
-///
-/// We use a byte-based scanner for performance rather than working with Unicode
-/// characters directly. This is significantly faster for ASCII-heavy code.
+/// The interface for the NaijaScript lexer.
 pub struct Lexer<'input> {
-    pub src: &'input str,    // Original source text (kept for slicing)
-    pub pos: usize,          // Current position in the source
-    pub errors: Diagnostics, // Collection of encountered errors
+    /// The original source text
+    pub src: &'input str,
+    /// Current position in the source text
+    pub pos: usize,
+    /// Collection of errors encountered during scanning
+    pub errors: Diagnostics,
 }
 
 impl<'input> Lexer<'input> {

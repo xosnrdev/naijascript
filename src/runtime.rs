@@ -34,17 +34,14 @@ impl AsStr for RuntimeErrorKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct RuntimeError<'src> {
-    /// The specific kind of runtime error that occurred.
-    pub kind: RuntimeErrorKind,
-    /// Reference to the source span.
-    pub span: &'src Span,
+struct RuntimeError<'src> {
+    // The specific kind of runtime error that occurred.
+    kind: RuntimeErrorKind,
+    // Reference to the source span.
+    span: &'src Span,
 }
 
 /// The value types our interpreter can work with at runtime.
-///
-/// Numbers are f64 to match JavaScript/Lua simplicity,
-/// and strings use Cow<str> for zero-copy handling.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value<'src> {
     /// All numbers are f64 to keep arithmetic simple and avoid int/float distinction
@@ -53,16 +50,13 @@ pub enum Value<'src> {
     Str(Cow<'src, str>),
     /// Standard boolean values
     Bool(bool),
-    /// Function definition for callable values
-    Function(FunctionDef<'src>),
 }
 
-/// Function definition stored at runtime, leveraging semantic analysis guarantees
 #[derive(Debug, Clone)]
-pub struct FunctionDef<'src> {
+struct FunctionDef<'src> {
     name: &'src str,
-    params: ParamListId, // Arena reference, semantic analysis guarantees validity
-    body: BlockId,       // Arena reference, semantic analysis guarantees validity
+    params: ParamListId,
+    body: BlockId,
 }
 
 impl<'src> PartialEq for FunctionDef<'src> {
@@ -71,17 +65,17 @@ impl<'src> PartialEq for FunctionDef<'src> {
     }
 }
 
-/// Activation record for function calls, represents a function call frame
+// Activation record for function calls, represents a function call frame
 #[derive(Debug, Clone)]
 struct ActivationRecord<'src> {
-    local_vars: Vec<(&'src str, Value<'src>)>, // Parameters become local variables
+    local_vars: Vec<(&'src str, Value<'src>)>,
 }
 
-/// Controls how function execution should proceed after statements
+// Controls how function execution should proceed after statements
 #[derive(Debug, Clone, PartialEq)]
 enum ExecFlow<'src> {
     Continue,
-    Return(Value<'src>), // Early return with value
+    Return(Value<'src>),
 }
 
 impl std::fmt::Display for Value<'_> {
@@ -90,18 +84,12 @@ impl std::fmt::Display for Value<'_> {
             Value::Number(n) => write!(f, "{n}"),
             Value::Str(s) => write!(f, "{s}"),
             Value::Bool(b) => write!(f, "{b}"),
-            Value::Function(func) => write!(f, "[Function {}]", func.name),
         }
     }
 }
 
-/// Tree-walking interpreter for NaijaScript.
-///
-/// Tree-walking is simple to debug and understand,
-/// perfect for an educational language. The interpreter borrows AST
-/// data rather than owning it to keep memory usage low.
+/// The interface for the NaijaScript interpreter.
 pub struct Interpreter<'src> {
-    // Borrowed arena references, we never modify the AST
     stmts: &'src Arena<Stmt<'src>>,
     exprs: &'src Arena<Expr<'src>>,
     conds: &'src Arena<Cond>,
@@ -109,19 +97,19 @@ pub struct Interpreter<'src> {
     params: &'src Arena<ParamList<'src>>,
     args: &'src Arena<ArgList>,
 
-    /// Variable scopes, each Vec is a scope, inner Vec is variables in that scope
+    // Variable scopes, each Vec is a scope, inner Vec is variables in that scope
     env: Vec<Vec<(&'src str, Value<'src>)>>,
 
-    /// Global function table, functions are first-class but stored separately
+    // Global function table, functions are first-class but stored separately
     functions: Vec<FunctionDef<'src>>,
 
-    /// Call stack for function execution, prevents infinite recursion
+    // Call stack for function execution, prevents infinite recursion
     call_stack: Vec<ActivationRecord<'src>>,
 
-    /// Stack depth limit, reasonable default to prevent host crashes
+    // Stack depth limit, reasonable default to prevent host crashes
     max_call_depth: usize,
 
-    /// Error accumulator, we collect rather than panic for better UX
+    /// Collection of runtime errors encountered during execution
     pub errors: Diagnostics,
 
     /// Output from `shout()` function calls, public for caller access
@@ -148,7 +136,7 @@ impl<'src> Interpreter<'src> {
             env: Vec::new(),
             functions: Vec::new(),
             call_stack: Vec::new(),
-            max_call_depth: 1000, // Reasonable default to prevent stack overflow
+            max_call_depth: 1000,
             errors: Diagnostics::default(),
             output: Vec::new(),
         }
@@ -443,24 +431,21 @@ impl<'src> Interpreter<'src> {
         args: ArgListId,
         span: &'src Span,
     ) -> Result<Value<'src>, RuntimeError<'src>> {
-        // Extract function name, semantic analysis guarantees it's a variable
         let func_name = match &self.exprs.nodes[callee.0] {
             Expr::Var(name, ..) => *name,
             _ => unreachable!("Semantic analysis should guarantee callee is a variable"),
         };
 
-        // Check if this is a built-in function first
         if let Some(builtin) = Builtin::from_name(func_name) {
             return self.eval_builtin_call(builtin, args);
         }
 
-        // Find user-defined function, semantic analysis guarantees it exists
         let func_def = self
             .functions
             .iter()
             .find(|f| f.name == func_name)
             .expect("Semantic analysis should guarantee function exists")
-            .clone(); // Clone to avoid borrow checker issues
+            .clone();
 
         // Prevent stack overflow from infinite recursion
         if self.call_stack.len() >= self.max_call_depth {
@@ -537,12 +522,12 @@ impl<'src> Interpreter<'src> {
 
     // Variable assignment, adds or updates in current scope
     fn insert_or_update(&mut self, var: &'src str, val: Value<'src>) {
-        if let Some((_, slot)) =
-            self.env.last_mut().unwrap().iter_mut().find(|(name, _)| *name == var)
-        {
-            *slot = val;
-        } else {
-            self.env.last_mut().unwrap().push((var, val));
+        if let Some(scope) = self.env.last_mut() {
+            if let Some((_, slot)) = scope.iter_mut().find(|(name, _)| *name == var) {
+                *slot = val;
+            } else {
+                scope.push((var, val));
+            }
         }
     }
 

@@ -3,23 +3,12 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 
-use crate::builtins::Builtin;
+use crate::builtins::{Builtin, BuiltinReturnType};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     self, Arena, ArgList, BinOp, Block, BlockId, Cond, CondId, Expr, ExprId, ParamList,
     ParamListId, Stmt, StmtId,
 };
-
-/// Identifies any node in our AST for precise error reporting.
-/// We use this instead of raw pointers because arena-based storage gives us
-/// memory safety while still allowing efficient lookups by index.
-#[derive(Copy, Clone, Debug)]
-pub enum NodeId {
-    Stmt(usize),
-    Expr(usize),
-    Cond(usize),
-    Block(usize),
-}
 
 /// Represents the type of semantic errors that can occur
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +49,16 @@ enum VarType {
     Dynamic,
 }
 
+impl From<BuiltinReturnType> for VarType {
+    fn from(builtin_type: BuiltinReturnType) -> Self {
+        match builtin_type {
+            BuiltinReturnType::Number => VarType::Number,
+            BuiltinReturnType::String => VarType::String,
+            BuiltinReturnType::Bool => VarType::Bool,
+        }
+    }
+}
+
 // Represents a function signature for semantic analysis
 #[derive(Debug)]
 struct FunctionSig<'src> {
@@ -67,6 +66,7 @@ struct FunctionSig<'src> {
     param_names: Vec<&'src str>,
     span: &'src Span,
     has_return: bool,
+    return_type: Option<VarType>,
 }
 
 /// The heart of our semantic analysis - this walks through NaijaScript code
@@ -94,7 +94,7 @@ pub struct SemAnalyzer<'src> {
     // Track current function context for return statement validation
     current_function: Option<&'src str>,
 
-    // Collect all errors instead of failing fast - gives better user experience
+    /// Collection of semantic errors found during analysis
     pub errors: Diagnostics,
 }
 
@@ -162,7 +162,7 @@ impl<'src> SemAnalyzer<'src> {
                     SemanticError::DeadCodeAfterReturn.as_str(),
                     vec![Label {
                         span: span.clone(),
-                        message: Cow::Borrowed("This code no go run because return dey before am"),
+                        message: Cow::Borrowed("Dis code no go run because you don already return"),
                     }],
                 );
             }
@@ -187,15 +187,13 @@ impl<'src> SemAnalyzer<'src> {
             Stmt::Assign { var, expr, span } => {
                 // We only want to prevent redeclaring a variable in the same block,
                 // so we check just the current (innermost) scope for duplicates
-                if self.scopes.last().unwrap().iter().any(|(name, ..)| name == var) {
-                    let orig_span = self
-                        .scopes
-                        .last()
-                        .unwrap()
-                        .iter()
-                        .find(|(name, ..)| name == var)
-                        .unwrap()
-                        .2;
+                if let Some((_, _, orig_span)) = self
+                    .scopes
+                    .last()
+                    .expect("scope stack should never be empty")
+                    .iter()
+                    .find(|(name, ..)| name == var)
+                {
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
@@ -215,8 +213,11 @@ impl<'src> SemAnalyzer<'src> {
                 } else {
                     // Let's figure out the type of this variable from the expression,
                     // then add it to our symbol table so future code knows it's declared.
-                    let typ = self.infer_expr_type(*expr).unwrap_or(VarType::Number); // fallback to Number if unknown
-                    self.scopes.last_mut().unwrap().push((var, typ, span));
+                    let typ = self.infer_expr_type(*expr).unwrap_or(VarType::Dynamic);
+                    self.scopes
+                        .last_mut()
+                        .expect("scope stack should never be empty")
+                        .push((var, typ, span));
                 }
                 // Always check the expression, even if variable was duplicate
                 // This catches more errors in one pass
@@ -275,12 +276,6 @@ impl<'src> SemAnalyzer<'src> {
         self.scopes.iter().rev().any(|scope| scope.iter().any(|(name, ..)| name == var))
     }
 
-    // Check if a function has already been declared
-    #[inline]
-    fn lookup_function(&self, func_name: &str) -> bool {
-        self.functions.iter().any(|sig| sig.name == func_name)
-    }
-
     // Find function signature by name
     #[inline]
     fn find_function(&self, func_name: &str) -> Option<&FunctionSig<'src>> {
@@ -296,8 +291,7 @@ impl<'src> SemAnalyzer<'src> {
         span: &'src Span,
     ) {
         // Check for duplicate function declaration
-        if self.lookup_function(name) {
-            let orig_span = self.find_function(name).unwrap().span;
+        if let Some(existing_func) = self.find_function(name) {
             self.errors.emit(
                 span.clone(),
                 Severity::Error,
@@ -305,7 +299,7 @@ impl<'src> SemAnalyzer<'src> {
                 SemanticError::DuplicateIdentifier.as_str(),
                 vec![
                     Label {
-                        span: orig_span.clone(),
+                        span: existing_func.span.clone(),
                         message: Cow::Borrowed("First time you define am here"),
                     },
                     Label {
@@ -314,34 +308,41 @@ impl<'src> SemAnalyzer<'src> {
                     },
                 ],
             );
-        } else {
-            let param_list = &self.params.nodes[params.0];
-
-            // Check for duplicate parameter names
-            let mut seen_params = HashSet::new();
-            for param_name in &param_list.params {
-                if !seen_params.insert(param_name) {
-                    self.errors.emit(
-                        span.clone(),
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::DuplicateIdentifier.as_str(),
-                        vec![Label {
-                            span: span.clone(),
-                            message: Cow::Owned(format!(
-                                "Parameter `{param_name}` dey appear more than once for dis function"
-                            )),
-                        }],
-                    );
-                }
-            }
-
-            // Store parameter names in function signature
-            let param_names = param_list.params.clone();
-
-            // Add function to symbol table
-            self.functions.push(FunctionSig { name, param_names, span, has_return: false });
+            return;
         }
+
+        let param_list = &self.params.nodes[params.0];
+
+        // Check for duplicate parameter names
+        let mut seen_params = HashSet::new();
+        for param_name in &param_list.params {
+            if !seen_params.insert(param_name) {
+                self.errors.emit(
+                    span.clone(),
+                    Severity::Error,
+                    "semantic",
+                    SemanticError::DuplicateIdentifier.as_str(),
+                    vec![Label {
+                        span: span.clone(),
+                        message: Cow::Owned(format!(
+                            "Parameter `{param_name}` dey appear more than once for dis function"
+                        )),
+                    }],
+                );
+            }
+        }
+
+        // Store parameter names in function signature
+        let param_names = param_list.params.clone();
+
+        // Add function to symbol table
+        self.functions.push(FunctionSig {
+            name,
+            param_names,
+            span,
+            has_return: false,
+            return_type: None,
+        });
 
         // Set current function context for return validation
         let prev_function = self.current_function;
@@ -352,7 +353,6 @@ impl<'src> SemAnalyzer<'src> {
 
         // Add parameters as variables with dynamic typing
         // Parameters can accept any type and their usage will be validated at runtime
-        let param_list = &self.params.nodes[params.0];
         for param_name in &param_list.params {
             self.scopes.last_mut().unwrap().push((param_name, VarType::Dynamic, span));
         }
@@ -383,12 +383,44 @@ impl<'src> SemAnalyzer<'src> {
                 }],
             );
         } else {
-            // Mark current function as having a return statement
+            let return_type = if let Some(expr_id) = expr {
+                self.infer_expr_type(expr_id)
+            } else {
+                Some(VarType::Dynamic)
+            };
+
             if let Some(current_func_name) = self.current_function
                 && let Some(func_sig) =
                     self.functions.iter_mut().find(|f| f.name == current_func_name)
             {
                 func_sig.has_return = true;
+
+                // Update function return type if we don't have one yet
+                if func_sig.return_type.is_none() {
+                    func_sig.return_type = return_type;
+                } else if let (Some(existing_type), Some(new_type)) =
+                    (func_sig.return_type, return_type)
+                {
+                    // Check if return types are consistent
+                    if existing_type != new_type
+                        && existing_type != VarType::Dynamic
+                        && new_type != VarType::Dynamic
+                    {
+                        self.errors.emit(
+                            span.clone(),
+                            Severity::Warning,
+                            "semantic",
+                            SemanticError::TypeMismatch.as_str(),
+                            vec![Label {
+                                span: span.clone(),
+                                message: Cow::Borrowed(
+                                    "Function dey return different types for different paths",
+                                ),
+                            }],
+                        );
+                        func_sig.return_type = Some(VarType::Dynamic);
+                    }
+                }
             }
         }
 
@@ -457,7 +489,7 @@ impl<'src> SemAnalyzer<'src> {
                         SemanticError::UndeclaredIdentifier.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Borrowed("This variable never dey before"),
+                            message: Cow::Borrowed("Dis variable never dey before"),
                         }],
                     );
                 }
@@ -679,25 +711,26 @@ impl<'src> SemAnalyzer<'src> {
                 let l = self.infer_expr_type(*lhs)?;
                 let r = self.infer_expr_type(*rhs)?;
                 match op {
-                    BinOp::Add | BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => {
-                        if l == VarType::Number && r == VarType::Number {
-                            Some(VarType::Number)
-                        } else if l == VarType::String
-                            && r == VarType::String
-                            && matches!(op, BinOp::Add)
-                        {
-                            Some(VarType::String)
-                        } else {
-                            None
-                        }
-                    }
-                    BinOp::And | BinOp::Or => {
-                        if l == VarType::Bool && r == VarType::Bool {
-                            Some(VarType::Bool)
-                        } else {
-                            None
-                        }
-                    }
+                    BinOp::Add => match (l, r) {
+                        (VarType::Number, VarType::Number) => Some(VarType::Number),
+                        (VarType::String, VarType::String) => Some(VarType::String),
+                        (VarType::Dynamic, VarType::Dynamic)
+                        | (VarType::Dynamic, VarType::Number)
+                        | (VarType::Number, VarType::Dynamic) => Some(VarType::Number),
+                        (VarType::Dynamic, VarType::String)
+                        | (VarType::String, VarType::Dynamic) => Some(VarType::String),
+                        _ => None,
+                    },
+                    BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => match (l, r) {
+                        (VarType::Number, VarType::Number) => Some(VarType::Number),
+                        (VarType::Dynamic, ..) | (.., VarType::Dynamic) => Some(VarType::Number),
+                        _ => None,
+                    },
+                    BinOp::And | BinOp::Or => match (l, r) {
+                        (VarType::Bool, VarType::Bool) => Some(VarType::Bool),
+                        (VarType::Dynamic, ..) | (.., VarType::Dynamic) => Some(VarType::Bool),
+                        _ => None,
+                    },
                 }
             }
             Expr::Not { expr, .. } => {
@@ -706,8 +739,10 @@ impl<'src> SemAnalyzer<'src> {
             }
             Expr::Call { callee, .. } => match &self.exprs.nodes[callee.0] {
                 Expr::Var(func_name, ..) => {
-                    if self.lookup_function(func_name) {
-                        Some(VarType::Number)
+                    if let Some(builtin) = Builtin::from_name(func_name) {
+                        Some(VarType::from(builtin.return_type()))
+                    } else if let Some(func_sig) = self.find_function(func_name) {
+                        func_sig.return_type.or(Some(VarType::Dynamic))
                     } else {
                         None
                     }

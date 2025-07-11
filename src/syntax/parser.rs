@@ -5,25 +5,18 @@ use std::borrow::Cow;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::token::{SpannedToken, Token};
 
-/// Arena allocator for AST nodes - provides cache-friendly memory layout and deterministic cleanup.
-///
-/// Traditional tree structures with Box<> pointers work fine, but arenas give us several
-/// advantages: better cache locality (all nodes of same type are together), easier
-/// serialization (just indices), and deterministic cleanup. Plus, no risk of cycles
-/// or dangling pointers that can plague tree structures.
+/// A simple arena allocator for AST nodes.
 #[derive(Default)]
 pub struct Arena<T> {
     pub nodes: Vec<T>,
 }
 
 impl<T> Arena<T> {
-    // Creates a fresh arena
     #[inline]
     const fn new() -> Self {
         Arena { nodes: Vec::new() }
     }
 
-    // Stores a node and returns its ID for later reference
     #[inline]
     fn alloc(&mut self, node: T) -> NodeId {
         let id = NodeId(self.nodes.len());
@@ -32,14 +25,10 @@ impl<T> Arena<T> {
     }
 }
 
-/// Wrapper around usize that prevents mixing up different node types.
-/// Without this, it's too easy to accidentally use a statement ID where we need
-/// an expression ID. The type system catches these mistakes at compile time.
+/// A unique identifier for AST nodes.
 #[derive(Copy, Clone, Debug)]
 pub struct NodeId(pub usize);
 
-// Type aliases make the code more self-documenting
-// These all use the same underlying NodeId type, providing semantic clarity without runtime overhead
 pub type StmtId = NodeId;
 pub type ExprId = NodeId;
 pub type CondId = NodeId;
@@ -59,9 +48,7 @@ pub struct ArgList {
     pub args: Vec<ExprId>,
 }
 
-/// Binary operators in NaijaScript expressions.
-/// Maps directly to the arithmetic and logical operators in our BNF grammar.
-/// The names are more conventional than the Nigerian Pidgin keywords for easier code reading.
+/// Binary operators for arithmetic and logical expressions.
 #[derive(Debug)]
 pub enum BinOp {
     Add,    // "add" keyword
@@ -73,7 +60,7 @@ pub enum BinOp {
     Or,     // "or" keyword (logical)
 }
 
-/// Comparison operators for conditions in if statements and loops.
+/// Comparison operators for conditions.
 #[derive(Debug)]
 pub enum CmpOp {
     Eq, // "na" - equals comparison
@@ -81,9 +68,7 @@ pub enum CmpOp {
     Lt, // "small pass" - less than
 }
 
-/// All the different statement types NaijaScript supports.
-/// This mirrors the grammar's statement alternatives exactly.
-/// Using string slices from the source avoids unnecessary allocations.
+/// Represents a statement in NaijaScript.
 #[derive(Debug)]
 pub enum Stmt<'src> {
     // "make x get 5"
@@ -104,8 +89,7 @@ pub enum Stmt<'src> {
     Expression { expr: ExprId, span: Span },
 }
 
-/// Expression AST nodes for NaijaScript.
-/// Numbers and string literals are stored as string slices to preserve original formatting.
+/// Represents an expression in NaijaScript.
 #[derive(Debug)]
 pub enum Expr<'src> {
     Number(&'src str, Span),      // 42, 3.14, etc.
@@ -132,9 +116,7 @@ pub enum Expr<'src> {
     },
 }
 
-/// Represents a condition in if statements or loops.
-/// Always a binary comparison between two expressions.
-/// The grammar only supports three comparison types right now.
+/// Represents a condition in an if or loop statement.
 #[derive(Debug)]
 pub struct Cond {
     pub op: CmpOp,
@@ -143,15 +125,14 @@ pub struct Cond {
     pub span: Span,
 }
 
-/// A block is just a collection of statements wrapped in "start"/"end".
-/// This keeps the AST structure simple while matching the grammar exactly.
+/// Represents a block of statements, which can be nested.
 #[derive(Debug)]
 pub struct Block {
     pub stmts: Vec<StmtId>,
     pub span: Span,
 }
 
-/// Represents the type of syntax errors that can occur during parsing.
+/// Represents syntax errors that can occur during parsing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyntaxError {
     ExpectedStatement,
@@ -187,21 +168,12 @@ impl AsStr for SyntaxError {
     }
 }
 
-/// The heart of NaijaScript parsing - converts tokens into AST nodes.
-///
-/// This is a recursive descent parser with single token lookahead. Simple but effective
-/// for our grammar. The key insight is that we use separate arenas for different node
-/// types, which gives us type safety without runtime overhead.
-///
-/// Error recovery strategy: when we hit a syntax error, we try to synchronize to the
-/// next statement boundary and continue parsing. This gives users multiple error
-/// messages in one parse, which is much more helpful than stopping at the first error.
+/// The interface for the NaijaScript parser.
 pub struct Parser<'src, I: Iterator<Item = SpannedToken<'src>>> {
     tokens: I,
-    cur: SpannedToken<'src>, // Current spanned token (one token lookahead)
-    errors: Diagnostics,     // Collect all syntax errors, don't fail fast
+    cur: SpannedToken<'src>,
+    errors: Diagnostics,
 
-    // Separate arenas for each AST node type
     pub stmt_arena: Arena<Stmt<'src>>,
     pub expr_arena: Arena<Expr<'src>>,
     pub cond_arena: Arena<Cond>,
@@ -211,11 +183,7 @@ pub struct Parser<'src, I: Iterator<Item = SpannedToken<'src>>> {
 }
 
 impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
-    /// Creates a new parser, primed and ready with the first token.
-    ///
-    /// This function takes an iterator of tokens, grabs the first one (so parsing can start immediately),
-    /// and sets up all the arenas and error tracking you'll need. It's the standard entry point for
-    /// turning a stream of tokens into a parser instance. If the token stream is empty, we just use a default token.
+    /// Create a new parser instance with the given token iterator.
     #[inline]
     pub fn new(mut tokens: I) -> Self {
         let first = tokens.next().unwrap_or_default();
@@ -241,10 +209,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
         });
     }
 
-    /// Main entry point for parsing a complete NaijaScript program.
-    /// Returns both the AST root and any syntax errors found.
-    /// The grammar says: <program> ::= <statement_list>
-    /// We treat the whole program as one big block of statements.
+    /// The main entry point for parsing a complete NaijaScript program.
     #[inline]
     pub fn parse_program(&mut self) -> (BlockId, Diagnostics) {
         let block_id = self.parse_program_body();
