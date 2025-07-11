@@ -189,6 +189,13 @@
             <code>jasi (count small pass 5) start ... end</code>
           </li>
           <li><b>start ... end</b>: Code block. <code>start ... end</code></li>
+          <li>
+            <b>do (...)</b>: Define function.
+            <code>do sum(a, b) start return a add b end</code>
+          </li>
+          <li>
+            <b>return</b>: Return from function. <code>return value</code>
+          </li>
           <li><b>Comments</b>: <code># This na comment</code></li>
           <li><b>Numbers</b>: <code>make pi get 3.142</code></li>
           <li><b>Strings</b>: <code>make name get "Naija"</code></li>
@@ -246,7 +253,11 @@
           showLineNumbers: true,
           showGutter: true,
           tabSize: 2,
-          value: 'shout("foo\\nbar")',
+          value: `# Sum of two numbers
+do sum(a, b) start
+  return a add b
+end
+shout(sum(5, 10)) # Should print 15`,
         });
         editor.setOptions({
           enableBasicAutocompletion: false,

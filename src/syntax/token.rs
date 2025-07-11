@@ -24,8 +24,7 @@ pub enum Token<'input> {
     Or,  // "or" - logical or
     Not, // "not" - logical not
 
-    // I/O and control flow
-    Shout, // "shout" - print to console
+    // Control flow
     Jasi,  // "jasi" - while loop construct (Nigerian slang for "keep going")
     Start, // "start" - block beginning
     End,   // "end" - block ending
@@ -39,6 +38,10 @@ pub enum Token<'input> {
     IfToSay, // "if to say" - if statement
     IfNotSo, // "if not so" - else statement
 
+    // Function constructs
+    Do,     // "do" - function definition
+    Return, // "return" - return statement
+
     // Boolean literals
     True,  // "true" - truthy
     False, // "false" - falsy
@@ -46,6 +49,7 @@ pub enum Token<'input> {
     // Punctuation
     LParen, // "("
     RParen, // ")"
+    Comma,  // ","
 
     // Variable length tokens
     Identifier(&'input str),  // Variable names
@@ -70,7 +74,6 @@ impl<'input> std::fmt::Display for Token<'input> {
             Token::And => write!(f, "and"),
             Token::Or => write!(f, "or"),
             Token::Not => write!(f, "not"),
-            Token::Shout => write!(f, "shout"),
             Token::Jasi => write!(f, "jasi"),
             Token::Start => write!(f, "start"),
             Token::End => write!(f, "end"),
@@ -108,7 +111,6 @@ impl<'input> Token<'input> {
                 | Token::And
                 | Token::Or
                 | Token::Not
-                | Token::Shout
                 | Token::Jasi
                 | Token::Start
                 | Token::End
@@ -133,7 +135,6 @@ impl<'input> Token<'input> {
             "times",
             "divide",
             "mod",
-            "shout",
             "jasi",
             "start",
             "end",
@@ -142,6 +143,8 @@ impl<'input> Token<'input> {
             "small pass",
             "if to say",
             "if not so",
+            "do",
+            "return",
             "true",
             "false",
             "and",

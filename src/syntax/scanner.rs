@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
 use crate::syntax::token::{SpannedToken, Token};
 
-/// Represents the type of lexical errors that can occur during tokenization
+/// Represents errors that can occur during lexical analysis.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LexError {
     UnexpectedChar,
@@ -19,22 +19,22 @@ impl AsStr for LexError {
     fn as_str(&self) -> &'static str {
         match self {
             LexError::UnexpectedChar => "Unexpected character",
-            LexError::InvalidNumber => "Number no correct",
-            LexError::InvalidIdentifier => "Identifier no correct",
-            LexError::InvalidStringEscape => "String escape no correct",
-            LexError::UnterminatedString => "String never close",
+            LexError::InvalidNumber => "Invalid number",
+            LexError::InvalidIdentifier => "Invalid identifier",
+            LexError::InvalidStringEscape => "Invalid string escape",
+            LexError::UnterminatedString => "Unterminated string",
         }
     }
 }
 
-/// Our lexical analyzer that breaks source text into tokens
-///
-/// We use a byte-based scanner for performance rather than working with Unicode
-/// characters directly. This is significantly faster for ASCII-heavy code.
+/// The interface for the NaijaScript lexer.
 pub struct Lexer<'input> {
-    pub src: &'input str,    // Original source text (kept for slicing)
-    pub pos: usize,          // Current position in the source
-    pub errors: Diagnostics, // Collection of encountered errors
+    /// The original source text
+    pub src: &'input str,
+    /// Current position in the source text
+    pub pos: usize,
+    /// Collection of errors encountered during scanning
+    pub errors: Diagnostics,
 }
 
 impl<'input> Lexer<'input> {
@@ -79,7 +79,7 @@ impl<'input> Lexer<'input> {
                 let token = self.scan_string(start);
                 return SpannedToken { token, span: start..self.pos };
             }
-            if let Some(token) = self.scan_paren(b) {
+            if let Some(token) = self.scan_punctuation(b) {
                 return SpannedToken { token, span: start..self.pos };
             }
             if Self::is_digit(b) {
@@ -319,7 +319,7 @@ impl<'input> Lexer<'input> {
     }
 
     #[inline(always)]
-    fn scan_paren(&mut self, b: u8) -> Option<Token<'input>> {
+    fn scan_punctuation(&mut self, b: u8) -> Option<Token<'input>> {
         match b {
             b'(' => {
                 self.bump();
@@ -328,6 +328,10 @@ impl<'input> Lexer<'input> {
             b')' => {
                 self.bump();
                 Some(Token::RParen)
+            }
+            b',' => {
+                self.bump();
+                Some(Token::Comma)
             }
             _ => None,
         }
@@ -458,7 +462,6 @@ impl<'input> Lexer<'input> {
             "and" => Token::And,
             "or" => Token::Or,
             "not" => Token::Not,
-            "shout" => Token::Shout,
             "jasi" => Token::Jasi,
             "start" => Token::Start,
             "end" => Token::End,
@@ -466,6 +469,8 @@ impl<'input> Lexer<'input> {
             "pass" => Token::Pass,
             "true" => Token::True,
             "false" => Token::False,
+            "do" => Token::Do,
+            "return" => Token::Return,
             // If not a keyword, it's an identifier
             other => {
                 // Let's make sure the identifier is valid:

@@ -18,6 +18,8 @@ macro_rules! assert_resolve {
             &parser.expr_arena,
             &parser.cond_arena,
             &parser.block_arena,
+            &parser.param_arena,
+            &parser.arg_arena,
         );
         analyzer.analyze(root);
         assert!(
@@ -31,12 +33,12 @@ macro_rules! assert_resolve {
 
 #[test]
 fn test_duplicate_variable_declaration() {
-    assert_resolve!("make x get 5 make x get 10", SemanticError::DuplicateDeclaration);
+    assert_resolve!("make x get 5 make x get 10", SemanticError::DuplicateIdentifier);
 }
 
 #[test]
 fn test_use_undeclared_variable() {
-    assert_resolve!("shout(x)", SemanticError::UseOfUndeclared);
+    assert_resolve!("shout(x)", SemanticError::UndeclaredIdentifier);
 }
 
 #[test]
@@ -46,7 +48,7 @@ fn test_assign_to_undeclared_variable() {
 
 #[test]
 fn test_undeclared_variable_in_condition() {
-    assert_resolve!("if to say (x na 1) start end", SemanticError::UseOfUndeclared);
+    assert_resolve!("if to say (x na 1) start end", SemanticError::UndeclaredIdentifier);
 }
 
 #[test]
@@ -91,12 +93,12 @@ fn test_boolean_arithmetic_operations() {
 
 #[test]
 fn test_block_scope_variable_not_visible_outside() {
-    assert_resolve!("start make x get 1 end shout(x)", SemanticError::UseOfUndeclared);
+    assert_resolve!("start make x get 1 end shout(x)", SemanticError::UndeclaredIdentifier);
 }
 
 #[test]
 fn test_block_scope_duplicate_in_same_block() {
-    assert_resolve!("start make x get 1 make x get 2 end", SemanticError::DuplicateDeclaration);
+    assert_resolve!("start make x get 1 make x get 2 end", SemanticError::DuplicateIdentifier);
 }
 
 #[test]
@@ -117,4 +119,66 @@ fn test_logical_or_type_error() {
 fn test_logical_not_type_error() {
     assert_resolve!("make x get not 1", SemanticError::TypeMismatch);
     assert_resolve!(r#"make x get not "foo""#, SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_duplicate_function_definition() {
+    assert_resolve!("do foo() start end do foo() start end", SemanticError::DuplicateIdentifier);
+}
+
+#[test]
+fn test_call_undeclared_function() {
+    assert_resolve!("foo()", SemanticError::UndeclaredIdentifier);
+}
+
+#[test]
+fn test_function_call_arity() {
+    assert_resolve!("do foo(x, y) start end foo(1)", SemanticError::FunctionCallArity);
+}
+
+#[test]
+fn test_return_outside_function() {
+    assert_resolve!("return 42", SemanticError::ReturnOutsideFunction);
+}
+
+#[test]
+fn test_dead_code_after_return() {
+    assert_resolve!(
+        "
+        do foo() start
+            return 42
+            make x get 10
+            shout(x)
+        end
+        ",
+        SemanticError::DeadCodeAfterReturn
+    );
+}
+
+#[test]
+fn test_function_call_in_condition_warning() {
+    assert_resolve!(
+        "
+        do foo() start
+            return 1
+        end
+        
+        do main() start
+            if to say (foo() na 1) start
+                shout(1)
+            end
+        end
+        ",
+        SemanticError::FunctionCallInCondition
+    );
+}
+
+#[test]
+fn test_parameters_not_visible_outside_function() {
+    assert_resolve!("do foo(x) start end shout(x)", SemanticError::UndeclaredIdentifier);
+}
+
+#[test]
+fn test_duplicate_parameter_names() {
+    assert_resolve!("do foo(x, x) start end", SemanticError::DuplicateIdentifier);
 }
