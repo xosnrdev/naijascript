@@ -75,9 +75,12 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
         &parser.arg_arena,
     );
     resolver.analyze(root);
-    if !resolver.errors.diagnostics.is_empty() {
+    if resolver.errors.has_errors() {
         resolver.errors.report(src, filename);
         return ExitCode::FAILURE;
+    }
+    if !resolver.errors.diagnostics.is_empty() {
+        resolver.errors.report(src, filename);
     }
 
     let mut rt = Interpreter::new(
@@ -89,9 +92,12 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
         &parser.arg_arena,
     );
     let err = rt.run(root);
-    if !err.diagnostics.is_empty() {
+    if err.has_errors() {
         err.report(src, filename);
         return ExitCode::FAILURE;
+    }
+    if !err.diagnostics.is_empty() {
+        err.report(src, filename);
     }
     for value in &rt.output {
         println!("{value}")

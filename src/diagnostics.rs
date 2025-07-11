@@ -99,6 +99,12 @@ impl Diagnostics {
         ansi_to_html::convert(&ansi).unwrap()
     }
 
+    /// Check if there are any error-level diagnostics
+    #[inline]
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics.iter().any(|d| d.severity == Severity::Error)
+    }
+
     // Render all diagnostics as a single ANSI string
     fn render_ansi(&self, src: &str, filename: &str) -> String {
         let mut buf = String::new();
