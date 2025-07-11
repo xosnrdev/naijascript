@@ -59,12 +59,6 @@ struct FunctionDef<'src> {
     body: BlockId,
 }
 
-impl<'src> PartialEq for FunctionDef<'src> {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
 // Activation record for function calls, represents a function call frame
 #[derive(Debug, Clone)]
 struct ActivationRecord<'src> {

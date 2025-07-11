@@ -352,7 +352,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::ExpectedStatement.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Borrowed("I dey expect `make`, `if to say`, `jasi`, function call, or variable reassignment for here"),
+                        message: Cow::Borrowed("I dey expect `do`, `return`, `make`, `if to say`, `jasi`, function call, or variable reassignment for here"),
                     }],
                 );
                 None
