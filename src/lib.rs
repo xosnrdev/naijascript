@@ -39,8 +39,9 @@ pub fn run_source(src: &str, filename: &str) -> String {
     if resolver.errors.has_errors() {
         return resolver.errors.report_html(src, filename);
     }
+    let mut non_err = String::new();
     if !resolver.errors.diagnostics.is_empty() {
-        resolver.errors.report_html(src, filename);
+        non_err.push_str(&resolver.errors.report_html(src, filename));
     }
 
     let mut rt = Interpreter::new(
@@ -56,7 +57,13 @@ pub fn run_source(src: &str, filename: &str) -> String {
         return err.report_html(src, filename);
     }
     if !err.diagnostics.is_empty() {
-        err.report_html(src, filename);
+        non_err.push_str(&err.report_html(src, filename));
     }
-    rt.output.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n")
+
+    let res = rt.output.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n");
+    if !non_err.is_empty() {
+        non_err.push_str(&res);
+        return non_err;
+    }
+    res
 }
