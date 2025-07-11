@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 
+use crate::builtins::Builtin;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     Arena, ArgList, ArgListId, BinOp, Block, BlockId, CmpOp, Cond, CondId, Expr, ExprId, ParamList,
@@ -123,7 +124,7 @@ pub struct Interpreter<'src> {
     /// Error accumulator, we collect rather than panic for better UX
     pub errors: Diagnostics,
 
-    /// Output from `shout()` statements, public for caller access
+    /// Output from `shout()` function calls, public for caller access
     pub output: Vec<Value<'src>>,
 }
 
@@ -209,11 +210,6 @@ impl<'src> Interpreter<'src> {
             Stmt::AssignExisting { var, expr, .. } => {
                 let val = self.eval_expr(*expr)?;
                 self.update_existing(var, val);
-                Ok(ExecFlow::Continue)
-            }
-            Stmt::Shout { expr, .. } => {
-                let val = self.eval_expr(*expr)?;
-                self.output.push(val);
                 Ok(ExecFlow::Continue)
             }
             Stmt::If { cond, then_b, else_b, .. } => {
@@ -453,7 +449,12 @@ impl<'src> Interpreter<'src> {
             _ => unreachable!("Semantic analysis should guarantee callee is a variable"),
         };
 
-        // Find function definition, semantic analysis guarantees it exists
+        // Check if this is a built-in function first
+        if let Some(builtin) = Builtin::from_name(func_name) {
+            return self.eval_builtin_call(builtin, args);
+        }
+
+        // Find user-defined function, semantic analysis guarantees it exists
         let func_def = self
             .functions
             .iter()
@@ -502,6 +503,36 @@ impl<'src> Interpreter<'src> {
         self.call_stack.pop();
 
         Ok(result)
+    }
+
+    // Built-in function execution
+    fn eval_builtin_call(
+        &mut self,
+        builtin: Builtin,
+        args: ArgListId,
+    ) -> Result<Value<'src>, RuntimeError<'src>> {
+        // Evaluate arguments in order
+        let arg_list = &self.args.nodes[args.0];
+        let mut arg_values = Vec::new();
+        for &arg_expr in &arg_list.args {
+            arg_values.push(self.eval_expr(arg_expr)?);
+        }
+
+        let expected_arity = builtin.arity();
+        assert_eq!(
+            arg_values.len(),
+            expected_arity,
+            "Semantic analysis should guarantee builtin parameter count"
+        );
+
+        // Execute the built-in function
+        match builtin {
+            Builtin::Shout => {
+                let value = &arg_values[0];
+                self.output.push(value.clone());
+                Ok(Value::Number(0.0))
+            }
+        }
     }
 
     // Variable assignment, adds or updates in current scope

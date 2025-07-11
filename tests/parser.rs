@@ -104,7 +104,7 @@ fn test_parse_invalid_statement() {
 #[test]
 fn test_parse_shout_missing_parenthesis() {
     let src = "shout 42";
-    assert_parse!(src, SyntaxError::ExpectedLParen);
+    assert_parse!(src, SyntaxError::ExpectedStatement);
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn test_parse_boolean_comparison() {
 
 #[test]
 fn test_reserved_keyword_as_identifier() {
-    let src = "make shout get 5";
+    let src = "make make get 5";
     assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
 }
 
@@ -187,7 +187,7 @@ fn test_parse_function_def_keyword_as_param() {
 
 #[test]
 fn test_parse_function_def_reserved_keyword_name() {
-    let src = "do shout() start end";
+    let src = "do make() start end";
     assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
 }
 

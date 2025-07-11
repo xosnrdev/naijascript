@@ -22,7 +22,6 @@ Keywords na special words wey get meaning for NaijaScript. You no fit use them a
 
 - `make`: Declare a new variable.
 - `get`: Assign a value to a variable.
-- `shout`: Print output to the console.
 - `if to say`: Conditional `if` statement.
 - `if not so`: Conditional `else` statement.
 - `jasi`: Loop construct.
@@ -106,13 +105,13 @@ This section dey explain wetin each part of the language dey do when e dey run.
 
 - **`make <variable> get <expression>`**: This one go create a new variable and give am the value of the expression.
 - **`<variable> get <expression>`**: This one go change the value of a variable wey you don already create.
-- **`shout(<expression>)`**: This one go evaluate the expression and print the result to the console.
 - **`if to say (<condition>) <block>`**: If the condition na true, the code inside the `start`...`end` block go run.
 - **`if to say (<condition>) <block> if not so <block>`**: If the condition na true, the first block go run. Otherwise, the second block go run.
 - **`jasi (<condition>) <block>`**: The code inside the block go run repeatedly as long as the condition dey true.
 - **`start ... end`**: You fit use block anywhere as a statement. Any variable you declare inside the block go only dey visible inside that block and any nested block.
 - **`do <name>(<parameters>) <block>`**: Define a function with the given name and parameters. The function body dey inside the block.
 - **`return <expression>`**: Return a value from a function. If no expression provided, function go return 0. Only valid inside function definitions.
+- **`<expression>`**: You fit use any expression as a statement. This dey useful for function calls wey you wan execute for their side effects.
 
 ### 5.2. Expressions
 
@@ -122,9 +121,15 @@ This section dey explain wetin each part of the language dey do when e dey run.
 - **Logical**: Expressions wey use `and`, `or`, and `not` dey join or change boolean values. Dem only work if the values na `true` or `false`. If you try use dem with number or string, e go cause a semantic error.
 - **Function Call**: You fit call a function by writing its name followed by arguments in parentheses. The function go run and return a value wey you fit use for further expressions.
 
-## 6. Built-in Intrinsics
+## 6. Built-in Functions
 
-NaijaScript no get a standard library for now. All functionality dey provided through the keywords.
+NaijaScript provides several built-in functions wey dey globally available:
+
+### 6.1. Output Functions
+
+- **`shout(expression)`**: Print the value of the expression to the console. This function take any value (number, string, or boolean) and display am. The function return 0 after printing.
+
+Built-in functions dey take precedence over user-defined functions with the same name. You fit call dem anywhere expression dey expected.
 
 ## 7. Implementation-Defined Behavior
 

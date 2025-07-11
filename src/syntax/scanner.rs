@@ -19,10 +19,10 @@ impl AsStr for LexError {
     fn as_str(&self) -> &'static str {
         match self {
             LexError::UnexpectedChar => "Unexpected character",
-            LexError::InvalidNumber => "Number no correct",
-            LexError::InvalidIdentifier => "Identifier no correct",
-            LexError::InvalidStringEscape => "String escape no correct",
-            LexError::UnterminatedString => "String never close",
+            LexError::InvalidNumber => "Invalid number",
+            LexError::InvalidIdentifier => "Invalid identifier",
+            LexError::InvalidStringEscape => "Invalid string escape",
+            LexError::UnterminatedString => "Unterminated string",
         }
     }
 }
@@ -462,7 +462,6 @@ impl<'input> Lexer<'input> {
             "and" => Token::And,
             "or" => Token::Or,
             "not" => Token::Not,
-            "shout" => Token::Shout,
             "jasi" => Token::Jasi,
             "start" => Token::Start,
             "end" => Token::End,

@@ -90,8 +90,6 @@ pub enum Stmt<'src> {
     Assign { var: &'src str, expr: ExprId, span: Span },
     // "x get 5"
     AssignExisting { var: &'src str, expr: ExprId, span: Span },
-    // "shout(x)"
-    Shout { expr: ExprId, span: Span },
     // "if to say(...) start...end"
     If { cond: CondId, then_b: BlockId, else_b: Option<BlockId>, span: Span },
     // "jasi(...) start...end"
@@ -281,7 +279,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
 
     // Error recovery mechanism - skips tokens until we find a likely statement start.
     // This is essential for parsing multiple statements when earlier ones have errors.
-    // We look for statement keywords (make, shout, if to say, jasi, do, return) or block boundaries.
+    // We look for statement keywords (make, if to say, jasi, do, return) or block boundaries.
     // Without this, one syntax error would make the rest of the file unparseable.
     #[inline]
     fn synchronize(&mut self) {
@@ -289,7 +287,6 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             self.cur.token,
             Token::EOF
                 | Token::Make
-                | Token::Shout
                 | Token::IfToSay
                 | Token::Jasi
                 | Token::Do
@@ -301,7 +298,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
     }
 
     // Dispatches to the appropriate statement parser based on the current token.
-    // This directly implements: <statement> ::= <assignment> | <output_statement> | <if_statement> | <loop_statement> | <function_def> | <return_statement> | <expression_statement> | <block>
+    // This directly implements: <statement> ::= <assignment> | <if_statement> | <loop_statement> | <function_def> | <return_statement> | <expression_statement> | <block>
     // Returns None on error to trigger error recovery in the caller.
     #[inline]
     fn parse_statement(&mut self) -> Option<StmtId> {
@@ -310,7 +307,6 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             Token::Do => self.parse_function_def(start),
             Token::Return => self.parse_return(start),
             Token::Make => self.parse_assignment(start),
-            Token::Shout => self.parse_shout(start),
             Token::IfToSay => self.parse_if(start),
             Token::Jasi => self.parse_loop(start),
             Token::Start => {
@@ -391,7 +387,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::ExpectedStatement.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Borrowed("I dey expect `make`, `shout`, `if to say`, `jasi`, or variable reassignment for here"),
+                        message: Cow::Borrowed("I dey expect `make`, `if to say`, `jasi`, function call, or variable reassignment for here"),
                     }],
                 );
                 None
@@ -631,47 +627,6 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
         let expr = self.parse_expression(0);
         let sid = self.stmt_arena.alloc(Stmt::Assign { var, expr, span: start..self.cur.span.end });
         Some(sid)
-    }
-
-    // Parses "shout(expression)" output statements.
-    // Grammar: <output_statement> ::= "shout" "(" <expression> ")"
-    // Straightforward function-call syntax - the parentheses are mandatory.
-    #[inline]
-    fn parse_shout(&mut self, start: usize) -> Option<StmtId> {
-        let shout_span = self.cur.span.clone();
-        self.bump(); // consume 'shout'
-        if let Token::LParen = self.cur.token {
-            self.bump();
-        } else {
-            self.errors.emit(
-                shout_span.clone(),
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedLParen.as_str(),
-                vec![Label {
-                    span: self.cur.span.clone(),
-                    message: Cow::Borrowed("Put `(` after `shout` for here"),
-                }],
-            );
-            return None;
-        }
-        let expr = self.parse_expression(0);
-        if let Token::RParen = self.cur.token {
-            self.bump();
-        } else {
-            self.errors.emit(
-                self.cur.span.clone(),
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedRParen.as_str(),
-                vec![Label {
-                    span: self.cur.span.clone(),
-                    message: Cow::Borrowed("Close shout with `)` for here"),
-                }],
-            );
-            return None;
-        }
-        Some(self.stmt_arena.alloc(Stmt::Shout { expr, span: start..self.cur.span.end }))
     }
 
     // Parses if statements with optional else blocks.
@@ -1081,7 +1036,6 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
         while matches!(
             &self.cur.token,
             Token::Make
-                | Token::Shout
                 | Token::IfToSay
                 | Token::Jasi
                 | Token::Do

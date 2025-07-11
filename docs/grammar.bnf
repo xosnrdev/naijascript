@@ -2,10 +2,11 @@
 
 <statement_list> ::= <statement> | <statement> <statement_list>
 
-<statement> ::= <assignment> | <reassignment> | <output_statement> | <if_statement> | <loop_statement> | <block> | <function_def> | <return_statement>
+<statement> ::= <assignment> | <reassignment> | <expression_statement> | <if_statement> | <loop_statement> | <block> | <function_def> | <return_statement>
 
 <assignment> ::= "make" <variable> "get" <expression>
 <reassignment> ::= <variable> "get" <expression>
+<expression_statement> ::= <expression>
 
 <function_def> ::= "do" <identifier> "(" <param_list>? ")" "start" <statement_list> "end"
 <param_list> ::= <identifier> | <identifier> "," <param_list>
@@ -36,8 +37,6 @@
 <escape_sequence> ::= "\"" | "\\" | "n" | "t"
 
 <number> ::= <digit>+ ("." <digit>+)?
-
-<output_statement> ::= "shout" "(" <expression> ")"
 
 <if_statement> ::= "if to say" "(" <condition> ")" <block> ("if not so" <block>)?
 

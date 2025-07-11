@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 
+use crate::builtins::Builtin;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     self, Arena, ArgList, BinOp, Block, BlockId, Cond, CondId, Expr, ExprId, ParamList,
@@ -146,7 +147,6 @@ impl<'src> SemAnalyzer<'src> {
                 let span = match stmt {
                     parser::Stmt::Assign { span, .. } => span,
                     parser::Stmt::AssignExisting { span, .. } => span,
-                    parser::Stmt::Shout { span, .. } => span,
                     parser::Stmt::If { span, .. } => span,
                     parser::Stmt::Loop { span, .. } => span,
                     parser::Stmt::Block { span, .. } => span,
@@ -236,10 +236,6 @@ impl<'src> SemAnalyzer<'src> {
                         }],
                     );
                 }
-                self.check_expr(*expr);
-            }
-            // Handle "shout(expression)" statements - just validate the expression
-            Stmt::Shout { expr, .. } => {
                 self.check_expr(*expr);
             }
             // Handle "if to say(condition) start...end" with optional "if not so"
@@ -600,9 +596,28 @@ impl<'src> SemAnalyzer<'src> {
                 // Check the callee expression
                 match &self.exprs.nodes[callee.0] {
                     Expr::Var(func_name, ..) => {
-                        // Check if function exists
-                        if let Some(func_sig) = self.find_function(func_name) {
-                            // Check parameter count
+                        // Check if this is a built-in function first
+                        if let Some(builtin) = Builtin::from_name(func_name) {
+                            // Check parameter count for built-in
+                            if arg_list.args.len() != builtin.arity() {
+                                self.errors.emit(
+                                    span.clone(),
+                                    Severity::Error,
+                                    "semantic",
+                                    SemanticError::FunctionCallArity.as_str(),
+                                    vec![Label {
+                                        span: span.clone(),
+                                        message: Cow::Owned(format!(
+                                            "`{}` expect {} parameters but you give {}",
+                                            func_name,
+                                            builtin.arity(),
+                                            arg_list.args.len()
+                                        )),
+                                    }],
+                                );
+                            }
+                        } else if let Some(func_sig) = self.find_function(func_name) {
+                            // Check parameter count for user-defined function
                             if arg_list.args.len() != func_sig.param_names.len() {
                                 self.errors.emit(
                                     span.clone(),
