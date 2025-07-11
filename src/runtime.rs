@@ -393,12 +393,30 @@ impl<'src> Interpreter<'src> {
                                     "Semantic analysis should guarantee only valid string operations"
                                 ),
                             },
-                            (Value::Str(..), Value::Number(..))
-                            | (Value::Number(..), Value::Str(..)) => {
-                                unreachable!(
-                                    "Semantic analysis should guarantee only valid type combinations"
-                                )
-                            }
+                            (Value::Str(ls), Value::Number(n)) => match op {
+                                BinOp::Add => {
+                                    let num_str = n.to_string();
+                                    let mut s = String::with_capacity(ls.len() + num_str.len());
+                                    s.push_str(&ls);
+                                    s.push_str(&num_str);
+                                    Ok(Value::Str(Cow::Owned(s)))
+                                }
+                                _ => unreachable!(
+                                    "Semantic analysis should guarantee only valid string-number operations"
+                                ),
+                            },
+                            (Value::Number(n), Value::Str(rs)) => match op {
+                                BinOp::Add => {
+                                    let num_str = n.to_string();
+                                    let mut s = String::with_capacity(num_str.len() + rs.len());
+                                    s.push_str(&num_str);
+                                    s.push_str(&rs);
+                                    Ok(Value::Str(Cow::Owned(s)))
+                                }
+                                _ => unreachable!(
+                                    "Semantic analysis should guarantee only valid number-string operations"
+                                ),
+                            },
                             _ => unreachable!(
                                 "Semantic analysis should guarantee only valid expressions"
                             ),

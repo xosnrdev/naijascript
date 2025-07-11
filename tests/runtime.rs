@@ -240,3 +240,59 @@ fn function_with_return_value() {
 fn function_call_as_expression() {
     assert_runtime!("do double(x) start return x times 2 end make result get double(5) shout(result)", output: vec![Value::Number(10.0)]);
 }
+
+#[test]
+fn string_parameter_concatenation() {
+    assert_runtime!(
+        r#"do greet(name) start shout("Hello " add name) end greet("World")"#,
+        output: vec![Value::Str(Cow::Owned("Hello World".to_string()))]
+    );
+}
+
+#[test]
+fn number_parameter_string_concatenation() {
+    assert_runtime!(
+        r#"do format(count) start shout("Items: " add count) end format(42)"#,
+        output: vec![Value::Str(Cow::Owned("Items: 42".to_string()))]
+    );
+}
+
+#[test]
+fn string_number_parameter_concatenation() {
+    assert_runtime!(
+        r#"do formatReverse(count, suffix) start shout(count add suffix) end formatReverse(42, " items")"#,
+        output: vec![Value::Str(Cow::Owned("42 items".to_string()))]
+    );
+}
+
+#[test]
+fn mixed_parameter_types_concatenation() {
+    assert_runtime!(
+        r#"do mixed(prefix, number, suffix) start shout(prefix add number add suffix) end mixed("Count: ", 42, " total")"#,
+        output: vec![Value::Str(Cow::Owned("Count: 42 total".to_string()))]
+    );
+}
+
+#[test]
+fn multiple_string_parameters() {
+    assert_runtime!(
+        r#"do join(first, second, third) start shout(first add " " add second add " " add third) end join("Hello", "beautiful", "world")"#,
+        output: vec![Value::Str(Cow::Owned("Hello beautiful world".to_string()))]
+    );
+}
+
+#[test]
+fn decimal_number_string_concatenation() {
+    assert_runtime!(
+        r#"do price(amount) start shout("$" add amount) end price(99.99)"#,
+        output: vec![Value::Str(Cow::Owned("$99.99".to_string()))]
+    );
+}
+
+#[test]
+fn boolean_parameter_operations() {
+    assert_runtime!(
+        r#"do check(flag) start if to say (flag na true) start shout("YES") end end check(true)"#,
+        output: vec![Value::Str(Cow::Owned("YES".to_string()))]
+    );
+}

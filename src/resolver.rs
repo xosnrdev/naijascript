@@ -56,6 +56,7 @@ enum VarType {
     Number,
     String,
     Bool,
+    Dynamic,
 }
 
 // Represents a function signature for semantic analysis
@@ -353,10 +354,11 @@ impl<'src> SemAnalyzer<'src> {
         // Create new scope for function parameters
         self.scopes.push(Vec::new());
 
-        // Now we can safely add each parameter as a variable!
+        // Add parameters as variables with dynamic typing
+        // Parameters can accept any type and their usage will be validated at runtime
         let param_list = &self.params.nodes[params.0];
         for param_name in &param_list.params {
-            self.scopes.last_mut().unwrap().push((param_name, VarType::Number, span));
+            self.scopes.last_mut().unwrap().push((param_name, VarType::Dynamic, span));
         }
 
         // Check function body using check_block to get dead code detection
@@ -419,6 +421,7 @@ impl<'src> SemAnalyzer<'src> {
             (Some(VarType::String), Some(VarType::String))
             | (Some(VarType::Number), Some(VarType::Number))
             | (Some(VarType::Bool), Some(VarType::Bool)) => {}
+            (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
             (Some(VarType::String), Some(VarType::Number))
             | (Some(VarType::Number), Some(VarType::String))
             | (Some(VarType::Bool), Some(VarType::Number))
@@ -473,6 +476,7 @@ impl<'src> SemAnalyzer<'src> {
                     BinOp::Add => match (l, r) {
                         (Some(VarType::Number), Some(VarType::Number))
                         | (Some(VarType::String), Some(VarType::String)) => {}
+                        (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
                         (Some(VarType::String), Some(VarType::Number))
                         | (Some(VarType::Number), Some(VarType::String)) => {
                             self.errors.emit(
@@ -507,6 +511,7 @@ impl<'src> SemAnalyzer<'src> {
                     BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => {
                         match (l, r) {
                             (Some(VarType::Number), Some(VarType::Number)) => {}
+                            (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
                             (Some(VarType::String), Some(VarType::String)) => {
                                 self.errors.emit(
                                     span.clone(),
@@ -553,6 +558,7 @@ impl<'src> SemAnalyzer<'src> {
                     }
                     BinOp::And | BinOp::Or => match (l, r) {
                         (Some(VarType::Bool), Some(VarType::Bool)) => {}
+                        (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
                         _ => {
                             self.errors.emit(
                                 span.clone(),
@@ -570,11 +576,11 @@ impl<'src> SemAnalyzer<'src> {
                     },
                 }
             }
-            // Unary not requires a boolean operand
+            // Unary not requires a boolean operand or dynamic type
             Expr::Not { expr, span } => {
                 self.check_expr(*expr);
                 let t = self.infer_expr_type(*expr);
-                if t != Some(VarType::Bool) {
+                if t != Some(VarType::Bool) && t != Some(VarType::Dynamic) {
                     self.errors.emit(
                         span.clone(),
                         Severity::Error,
