@@ -86,7 +86,7 @@ impl<'input> Lexer<'input> {
                 let token = self.scan_number(start);
                 return SpannedToken { token, span: start..self.pos };
             }
-            if Self::is_alpha(b) {
+            if Self::is_alpha_or_underscore(b) {
                 let token = self.scan_identifier_or_keyword(start);
                 return SpannedToken { token, span: start..self.pos };
             }
@@ -170,12 +170,12 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    // Checks if a byte is a letter (A-Z, a-z)
+    // Checks if a byte is a letter (A-Z, a-z) or underscore (_)
     //
     // Used for identifier and keyword detection
     #[inline(always)]
-    const fn is_alpha(b: u8) -> bool {
-        b.is_ascii_alphabetic()
+    const fn is_alpha_or_underscore(b: u8) -> bool {
+        b.is_ascii_alphabetic() || b == b'_'
     }
 
     // Checks if a byte is a digit (0-9)
@@ -189,13 +189,13 @@ impl<'input> Lexer<'input> {
     // Reads an entire word (identifier or keyword)
     //
     // We can use from_utf8_unchecked safely here because:
-    // 1. We only match ASCII alphabetic/numeric characters, which are valid UTF-8
+    // 1. We only match ASCII alphabetic/numeric/underscore characters, which are valid UTF-8
     // 2. The original source was already valid UTF-8
     // 3. The performance gain is significant in our benchmarks
     #[inline(always)]
     fn read_word(&mut self) -> &'input str {
         let start = self.pos;
-        while Self::is_alpha(self.peek()) || Self::is_digit(self.peek()) {
+        while Self::is_alpha_or_underscore(self.peek()) || Self::is_digit(self.peek()) {
             self.bump();
         }
         unsafe { std::str::from_utf8_unchecked(&self.src.as_bytes()[start..self.pos]) }
@@ -220,7 +220,7 @@ impl<'input> Lexer<'input> {
         let end = p + word.len();
         if end <= bytes.len()
             && &bytes[p..end] == word.as_bytes()
-            && (end == bytes.len() || !Self::is_alpha(bytes[end]))
+            && (end == bytes.len() || !Self::is_alpha_or_underscore(bytes[end]))
         {
             self.pos = end;
             return true;
@@ -390,12 +390,11 @@ impl<'input> Lexer<'input> {
             return self.next_token().token;
         }
 
-        // If the next character is a letter, that means the user wrote something like "1foo".
-        // That's not a valid number or identifier in NaijaScript, so let's catch it here.
-        // We'll emit an error to let the user know, but still return the number part as a token.
-        if Self::is_alpha(self.peek()) {
+        // If the next character is a letter or underscore (like "1foo" or "1_bar"),
+        // that's not a valid number or identifier in NaijaScript, so let's catch it here.
+        if Self::is_alpha_or_underscore(self.peek()) {
             let id_start = self.pos;
-            while Self::is_alpha(self.peek()) || Self::is_digit(self.peek()) {
+            while Self::is_alpha_or_underscore(self.peek()) || Self::is_digit(self.peek()) {
                 self.bump();
             }
             self.errors.emit(
@@ -474,11 +473,11 @@ impl<'input> Lexer<'input> {
             // If not a keyword, it's an identifier
             other => {
                 // Let's make sure the identifier is valid:
-                // - The first character must be a letter.
-                // - The rest can be letters or digits.
-                let mut chars = other.chars();
-                if let Some(first) = chars.next() {
-                    if !first.is_ascii_alphabetic() {
+                // - The first character must be a letter or underscore.
+                // - The rest can be letters, digits, or underscores.
+                let mut bytes = other.bytes();
+                if let Some(first) = bytes.next() {
+                    if !Self::is_alpha_or_underscore(first) {
                         self.errors.emit(
                             start..self.pos,
                             Severity::Error,
@@ -486,16 +485,18 @@ impl<'input> Lexer<'input> {
                             LexError::InvalidIdentifier.as_str(),
                             vec![Label {
                                 span: start..start + 1,
-                                message: Cow::Borrowed("Identifier must start with letter"),
+                                message: Cow::Borrowed(
+                                    "Identifier must start with letter or underscore",
+                                ),
                             }],
                         );
                     } else {
                         // Let's check if there are any invalid characters in the rest of the identifier.
-                        // We'll walk through each character, and if we find something that's not a letter or digit,
+                        // We'll walk through each character, and if we find something that's not a letter, digit, or underscore,
                         // we'll emit an error so the user knows exactly where the problem is.
                         let mut offset = 1;
-                        for c in chars {
-                            if !c.is_ascii_alphanumeric() {
+                        for b in bytes {
+                            if !b.is_ascii_alphanumeric() && b != b'_' {
                                 let bad_pos = start + offset;
                                 self.errors.emit(
                                     start..self.pos,
