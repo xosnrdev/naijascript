@@ -3,7 +3,7 @@ name = "naijascript"
 version = "0.10.6"
 edition = "2024"
 authors = ["Success Kingsley <xosnrdev@gmail.com>"]
-description = "A scripting language for learning, automation, and fun with Naija (Nigerian) lingo."
+description = "A scripting language interpreter inspired by the expressive linguistics of Naija (Nigerian Pidgin English)"
 repository = "https://github.com/xosnrdev/naijascript"
 license = "MIT"
 readme = false
@@ -33,7 +33,7 @@ zip = "4.0.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 ansi-to-html = "0.2.2"
-html-escape = { version = "0.2.13" }
+html-escape = "0.2.13" 
 wasm-bindgen = "0.2.100"
 
 [dev-dependencies]
