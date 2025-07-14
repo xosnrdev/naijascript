@@ -85,11 +85,11 @@ pub struct SemAnalyzer<'src> {
     params: &'src Arena<ParamList<'src>>,
     args: &'src Arena<ArgList>,
 
-    // We use a stack of symbol tables so each block gets its own list of variables
-    scopes: Vec<Vec<(&'src str, VarType, &'src Span)>>,
+    // Stack of variable symbol tables for block-scoped variables
+    variable_scopes: Vec<Vec<(&'src str, VarType, &'src Span)>>,
 
-    // Function symbol table for tracking function definitions
-    functions: Vec<FunctionSig<'src>>,
+    // Stack of function symbol tables for block-scoped functions
+    function_scopes: Vec<Vec<FunctionSig<'src>>>,
 
     // Track current function context for return statement validation
     current_function: Option<&'src str>,
@@ -116,8 +116,8 @@ impl<'src> SemAnalyzer<'src> {
             blocks,
             params,
             args,
-            scopes: Vec::new(),
-            functions: Vec::new(),
+            variable_scopes: Vec::new(),
+            function_scopes: Vec::new(),
             current_function: None,
             errors: Diagnostics::default(),
         }
@@ -127,16 +127,22 @@ impl<'src> SemAnalyzer<'src> {
     /// Takes the root block (representing the whole program) and recursively
     /// validates everything inside it.
     pub fn analyze(&mut self, root: BlockId) {
-        self.scopes.push(Vec::new()); // enter global scope
+        // Enter global scope
+        self.variable_scopes.push(Vec::new());
+        self.function_scopes.push(Vec::new());
         self.check_block(root);
-        self.scopes.pop(); // exit global scope
+        // Exit global scope
+        self.variable_scopes.pop();
+        self.function_scopes.pop();
     }
 
     // Validates all statements within a block.
     // Blocks in NaijaScript are wrapped with "start" and "end" keywords,
     // but here we just process the list of statements inside.
     fn check_block(&mut self, bid: BlockId) {
-        self.scopes.push(Vec::new()); // enter new block scope
+        // Enter global scope
+        self.variable_scopes.push(Vec::new());
+        self.function_scopes.push(Vec::new());
         let block = &self.blocks.nodes[bid.0];
 
         let mut has_return = false;
@@ -173,7 +179,9 @@ impl<'src> SemAnalyzer<'src> {
 
             self.check_stmt(sid);
         }
-        self.scopes.pop(); // exit block scope
+        // Exit global scope
+        self.variable_scopes.pop();
+        self.function_scopes.pop();
     }
 
     // The main semantic validation logic - handles each type of statement.
@@ -187,8 +195,8 @@ impl<'src> SemAnalyzer<'src> {
             Stmt::Assign { var, expr, span } => {
                 // We only want to prevent redeclaring a variable in the same block,
                 // so we check just the current (innermost) scope for duplicates
-                if let Some((_, _, orig_span)) = self
-                    .scopes
+                if let Some((.., orig_span)) = self
+                    .variable_scopes
                     .last()
                     .expect("scope stack should never be empty")
                     .iter()
@@ -214,7 +222,7 @@ impl<'src> SemAnalyzer<'src> {
                     // Let's figure out the type of this variable from the expression,
                     // then add it to our symbol table so future code knows it's declared.
                     let typ = self.infer_expr_type(*expr).unwrap_or(VarType::Dynamic);
-                    self.scopes
+                    self.variable_scopes
                         .last_mut()
                         .expect("scope stack should never be empty")
                         .push((var, typ, span));
@@ -273,13 +281,18 @@ impl<'src> SemAnalyzer<'src> {
     // starting from the innermost and moving outward
     #[inline]
     fn lookup_var(&self, var: &&'src str) -> bool {
-        self.scopes.iter().rev().any(|scope| scope.iter().any(|(name, ..)| name == var))
+        self.variable_scopes.iter().rev().any(|scope| scope.iter().any(|(name, ..)| name == var))
     }
 
     // Find function signature by name
     #[inline]
     fn find_function(&self, func_name: &str) -> Option<&FunctionSig<'src>> {
-        self.functions.iter().find(|sig| sig.name == func_name)
+        for scope in self.function_scopes.iter().rev() {
+            if let Some(sig) = scope.iter().find(|sig| sig.name == func_name) {
+                return Some(sig);
+            }
+        }
+        None
     }
 
     // Validates function definition
@@ -290,8 +303,10 @@ impl<'src> SemAnalyzer<'src> {
         body: BlockId,
         span: &'src Span,
     ) {
-        // Check for duplicate function declaration
-        if let Some(existing_func) = self.find_function(name) {
+        // Check for duplicate function declaration in current scope
+        if let Some(current_scope) = self.function_scopes.last()
+            && let Some(existing_func) = current_scope.iter().find(|sig| sig.name == name)
+        {
             self.errors.emit(
                 span.clone(),
                 Severity::Error,
@@ -335,26 +350,23 @@ impl<'src> SemAnalyzer<'src> {
         // Store parameter names in function signature
         let param_names = param_list.params.clone();
 
-        // Add function to symbol table
-        self.functions.push(FunctionSig {
-            name,
-            param_names,
-            span,
-            has_return: false,
-            return_type: None,
-        });
+        // Add function to current function scope
+        self.function_scopes
+            .last_mut()
+            .expect("function scope stack should never be empty")
+            .push(FunctionSig { name, param_names, span, has_return: false, return_type: None });
 
         // Set current function context for return validation
         let prev_function = self.current_function;
         self.current_function = Some(name);
 
         // Create new scope for function parameters
-        self.scopes.push(Vec::new());
+        self.variable_scopes.push(Vec::new());
 
         // Add parameters as variables with dynamic typing
         // Parameters can accept any type and their usage will be validated at runtime
         for param_name in &param_list.params {
-            self.scopes.last_mut().unwrap().push((param_name, VarType::Dynamic, span));
+            self.variable_scopes.last_mut().unwrap().push((param_name, VarType::Dynamic, span));
         }
 
         // Check function body using check_block to get dead code detection
@@ -362,7 +374,7 @@ impl<'src> SemAnalyzer<'src> {
         self.check_block(body);
 
         // Clean up parameter scope
-        self.scopes.pop();
+        self.variable_scopes.pop();
 
         // Restore previous function context
         self.current_function = prev_function;
@@ -389,36 +401,38 @@ impl<'src> SemAnalyzer<'src> {
                 Some(VarType::Dynamic)
             };
 
-            if let Some(current_func_name) = self.current_function
-                && let Some(func_sig) =
-                    self.functions.iter_mut().find(|f| f.name == current_func_name)
-            {
-                func_sig.has_return = true;
-
-                // Update function return type if we don't have one yet
-                if func_sig.return_type.is_none() {
-                    func_sig.return_type = return_type;
-                } else if let (Some(existing_type), Some(new_type)) =
-                    (func_sig.return_type, return_type)
+            if let Some(current_func_name) = self.current_function {
+                // Find the function signature in the innermost function scope for mutation
+                if let Some(scope) = self.function_scopes.last_mut()
+                    && let Some(func_sig) = scope.iter_mut().find(|f| f.name == current_func_name)
                 {
-                    // Check if return types are consistent
-                    if existing_type != new_type
-                        && existing_type != VarType::Dynamic
-                        && new_type != VarType::Dynamic
+                    func_sig.has_return = true;
+
+                    // Update function return type if we don't have one yet
+                    if func_sig.return_type.is_none() {
+                        func_sig.return_type = return_type;
+                    } else if let (Some(existing_type), Some(new_type)) =
+                        (func_sig.return_type, return_type)
                     {
-                        self.errors.emit(
-                            span.clone(),
-                            Severity::Warning,
-                            "semantic",
-                            SemanticError::TypeMismatch.as_str(),
-                            vec![Label {
-                                span: span.clone(),
-                                message: Cow::Borrowed(
-                                    "Function dey return different types for different paths",
-                                ),
-                            }],
-                        );
-                        func_sig.return_type = Some(VarType::Dynamic);
+                        // Check if return types are consistent
+                        if existing_type != new_type
+                            && existing_type != VarType::Dynamic
+                            && new_type != VarType::Dynamic
+                        {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Warning,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed(
+                                        "Function dey return different types for different paths",
+                                    ),
+                                }],
+                            );
+                            func_sig.return_type = Some(VarType::Dynamic);
+                        }
                     }
                 }
             }
@@ -700,7 +714,7 @@ impl<'src> SemAnalyzer<'src> {
             Expr::String(..) => Some(VarType::String),
             Expr::Bool(..) => Some(VarType::Bool),
             Expr::Var(v, ..) => {
-                for scope in self.scopes.iter().rev() {
+                for scope in self.variable_scopes.iter().rev() {
                     if let Some((_, t, ..)) = scope.iter().find(|(name, ..)| name == v) {
                         return Some(*t);
                     }
