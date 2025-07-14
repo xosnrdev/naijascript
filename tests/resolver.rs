@@ -155,24 +155,6 @@ fn test_dead_code_after_return() {
 }
 
 #[test]
-fn test_function_call_in_condition_warning() {
-    assert_resolve!(
-        "
-        do foo() start
-            return 1
-        end
-        
-        do main() start
-            if to say (foo() na 1) start
-                shout(1)
-            end
-        end
-        ",
-        SemanticError::FunctionCallInCondition
-    );
-}
-
-#[test]
 fn test_parameters_not_visible_outside_function() {
     assert_resolve!("do foo(x) start end shout(x)", SemanticError::UndeclaredIdentifier);
 }

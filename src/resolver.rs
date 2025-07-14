@@ -20,7 +20,6 @@ pub enum SemanticError {
     FunctionCallArity,
     ReturnOutsideFunction,
     DeadCodeAfterReturn,
-    FunctionCallInCondition,
 }
 
 impl AsStr for SemanticError {
@@ -34,7 +33,6 @@ impl AsStr for SemanticError {
             SemanticError::FunctionCallArity => "Invalid parameter count",
             SemanticError::ReturnOutsideFunction => "Return statement outside function",
             SemanticError::DeadCodeAfterReturn => "Dead code after return statement",
-            SemanticError::FunctionCallInCondition => "Function call in condition",
         }
     }
 }
@@ -468,7 +466,6 @@ impl<'src> SemAnalyzer<'src> {
                 }],
             );
         }
-        self.check_expr_for_function_calls(eid, "condition");
     }
 
     // Recursively validates expressions - the core of our semantic checking.
@@ -776,34 +773,6 @@ impl<'src> SemAnalyzer<'src> {
                 }
                 _ => None,
             },
-        }
-    }
-
-    // Recursively checks for function calls in expressions.
-    fn check_expr_for_function_calls(&mut self, eid: ExprId, context: &str) {
-        match &self.exprs.nodes[eid.0] {
-            Expr::Call { span, .. } => {
-                self.errors.emit(
-                    span.clone(),
-                    Severity::Warning,
-                    "semantic",
-                    SemanticError::FunctionCallInCondition.as_str(),
-                    vec![Label {
-                        span: span.clone(),
-                        message: Cow::Owned(format!(
-                            "Function call for {context} fit slow down your code if e dey run plenty times"
-                        )),
-                    }],
-                );
-            }
-            Expr::Binary { lhs, rhs, .. } => {
-                self.check_expr_for_function_calls(*lhs, context);
-                self.check_expr_for_function_calls(*rhs, context);
-            }
-            Expr::Not { expr, .. } => {
-                self.check_expr_for_function_calls(*expr, context);
-            }
-            Expr::Number(..) | Expr::String(..) | Expr::Bool(..) | Expr::Var(..) => {}
         }
     }
 }
