@@ -16,7 +16,6 @@ macro_rules! assert_resolve {
         let mut analyzer = SemAnalyzer::new(
             &parser.stmt_arena,
             &parser.expr_arena,
-            &parser.cond_arena,
             &parser.block_arena,
             &parser.param_arena,
             &parser.arg_arena,

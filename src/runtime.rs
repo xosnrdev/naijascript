@@ -5,8 +5,8 @@ use std::borrow::Cow;
 use crate::builtins::Builtin;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
-    Arena, ArgList, ArgListId, BinOp, Block, BlockId, CmpOp, Cond, CondId, Expr, ExprId, ParamList,
-    ParamListId, Stmt, StmtId,
+    Arena, ArgList, ArgListId, BinOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId, Stmt,
+    StmtId,
 };
 
 /// Runtime errors that can occur during NaijaScript execution.
@@ -86,7 +86,6 @@ impl std::fmt::Display for Value<'_> {
 pub struct Interpreter<'src> {
     stmts: &'src Arena<Stmt<'src>>,
     exprs: &'src Arena<Expr<'src>>,
-    conds: &'src Arena<Cond>,
     blocks: &'src Arena<Block>,
     params: &'src Arena<ParamList<'src>>,
     args: &'src Arena<ArgList>,
@@ -115,7 +114,6 @@ impl<'src> Interpreter<'src> {
     pub fn new(
         stmts: &'src Arena<Stmt<'src>>,
         exprs: &'src Arena<Expr<'src>>,
-        conds: &'src Arena<Cond>,
         blocks: &'src Arena<Block>,
         params: &'src Arena<ParamList<'src>>,
         args: &'src Arena<ArgList>,
@@ -123,7 +121,6 @@ impl<'src> Interpreter<'src> {
         Interpreter {
             stmts,
             exprs,
-            conds,
             blocks,
             params,
             args,
@@ -195,7 +192,14 @@ impl<'src> Interpreter<'src> {
                 Ok(ExecFlow::Continue)
             }
             Stmt::If { cond, then_b, else_b, .. } => {
-                if self.eval_cond(*cond)? {
+                let condition_value = self.eval_expr(*cond)?;
+                let is_truthy = match condition_value {
+                    Value::Bool(b) => b,
+                    _ => unreachable!(
+                        "Semantic analysis should guarantee only boolean expressions in conditions"
+                    ),
+                };
+                if is_truthy {
                     self.exec_block_with_flow(*then_b)
                 } else if let Some(eb) = else_b {
                     self.exec_block_with_flow(*eb)
@@ -204,7 +208,17 @@ impl<'src> Interpreter<'src> {
                 }
             }
             Stmt::Loop { cond, body, .. } => {
-                while self.eval_cond(*cond)? {
+                loop {
+                    let condition_value = self.eval_expr(*cond)?;
+                    let should_continue = match condition_value {
+                        Value::Bool(b) => b,
+                        _ => unreachable!(
+                            "Semantic analysis should guarantee only boolean expressions in loop conditions"
+                        ),
+                    };
+                    if !should_continue {
+                        break;
+                    }
                     match self.exec_block_with_flow(*body)? {
                         ExecFlow::Continue => continue,
                         flow @ ExecFlow::Return(..) => return Ok(flow), // Bubble up return
@@ -252,44 +266,6 @@ impl<'src> Interpreter<'src> {
 
         self.env.pop(); // exit block scope
         Ok(ExecFlow::Continue)
-    }
-
-    // Condition evaluation, compares two expressions using the specified operator
-    //
-    // Number, string, and boolean comparisons are supported. Semantic analysis
-    // guarantees both sides have compatible types.
-    fn eval_cond(&mut self, cid: CondId) -> Result<bool, RuntimeError<'src>> {
-        let c = &self.conds.nodes[cid.0];
-        let lhs = self.eval_expr(c.lhs)?;
-        let rhs = self.eval_expr(c.rhs)?;
-        match (&lhs, &rhs) {
-            (Value::Number(l), Value::Number(r)) => {
-                let result = match c.op {
-                    CmpOp::Eq => l == r,
-                    CmpOp::Gt => l > r,
-                    CmpOp::Lt => l < r,
-                };
-                Ok(result)
-            }
-            (Value::Str(l), Value::Str(r)) => {
-                let result = match c.op {
-                    CmpOp::Eq => l == r,
-                    CmpOp::Gt => l > r,
-                    CmpOp::Lt => l < r,
-                };
-                Ok(result)
-            }
-            (Value::Bool(l), Value::Bool(r)) => {
-                let result = match c.op {
-                    CmpOp::Eq => l == r,
-                    // Boolean ordering: false < true
-                    CmpOp::Gt => l > r,
-                    CmpOp::Lt => l < r,
-                };
-                Ok(result)
-            }
-            _ => unreachable!("Semantic analysis should guarantee only valid comparisons"),
-        }
     }
 
     fn eval_expr(&mut self, eid: ExprId) -> Result<Value<'src>, RuntimeError<'src>> {
@@ -358,6 +334,9 @@ impl<'src> Interpreter<'src> {
                                         }))
                                     }
                                 }
+                                BinOp::Eq => Ok(Value::Bool(lv == rv)),
+                                BinOp::Gt => Ok(Value::Bool(lv > rv)),
+                                BinOp::Lt => Ok(Value::Bool(lv < rv)),
                                 _ => unreachable!("Unexpected op for numbers"),
                             },
                             (Value::Str(ls), Value::Str(rs)) => match op {
@@ -367,6 +346,9 @@ impl<'src> Interpreter<'src> {
                                     s.push_str(&rs);
                                     Ok(Value::Str(Cow::Owned(s)))
                                 }
+                                BinOp::Eq => Ok(Value::Bool(ls == rs)),
+                                BinOp::Gt => Ok(Value::Bool(ls > rs)),
+                                BinOp::Lt => Ok(Value::Bool(ls < rs)),
                                 _ => unreachable!(
                                     "Semantic analysis should guarantee only valid string operations"
                                 ),
@@ -393,6 +375,14 @@ impl<'src> Interpreter<'src> {
                                 }
                                 _ => unreachable!(
                                     "Semantic analysis should guarantee only valid number-string operations"
+                                ),
+                            },
+                            (Value::Bool(lv), Value::Bool(rv)) => match op {
+                                BinOp::Eq => Ok(Value::Bool(lv == rv)),
+                                BinOp::Gt => Ok(Value::Bool(lv & !rv)), // false < true
+                                BinOp::Lt => Ok(Value::Bool(!lv & rv)),
+                                _ => unreachable!(
+                                    "Semantic analysis should guarantee only valid boolean operations"
                                 ),
                             },
                             _ => unreachable!(

@@ -30,7 +30,6 @@ pub fn run_source(src: &str, filename: &str) -> String {
     let mut resolver = SemAnalyzer::new(
         &parser.stmt_arena,
         &parser.expr_arena,
-        &parser.cond_arena,
         &parser.block_arena,
         &parser.param_arena,
         &parser.arg_arena,
@@ -47,7 +46,6 @@ pub fn run_source(src: &str, filename: &str) -> String {
     let mut rt = Interpreter::new(
         &parser.stmt_arena,
         &parser.expr_arena,
-        &parser.cond_arena,
         &parser.block_arena,
         &parser.param_arena,
         &parser.arg_arena,

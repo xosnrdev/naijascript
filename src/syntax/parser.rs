@@ -31,7 +31,6 @@ pub struct NodeId(pub usize);
 
 pub type StmtId = NodeId;
 pub type ExprId = NodeId;
-pub type CondId = NodeId;
 pub type BlockId = NodeId;
 pub type ParamListId = NodeId;
 pub type ArgListId = NodeId;
@@ -58,14 +57,9 @@ pub enum BinOp {
     Mod,    // "mod" keyword
     And,    // "and" keyword (logical)
     Or,     // "or" keyword (logical)
-}
-
-/// Comparison operators for conditions.
-#[derive(Debug)]
-pub enum CmpOp {
-    Eq, // "na" - equals comparison
-    Gt, // "pass" - greater than
-    Lt, // "small pass" - less than
+    Eq,     // "na" keyword (equals)
+    Gt,     // "pass" keyword (greater than)
+    Lt,     // "small pass" keyword (less than)
 }
 
 /// Represents a statement in NaijaScript.
@@ -76,9 +70,9 @@ pub enum Stmt<'src> {
     // "x get 5"
     AssignExisting { var: &'src str, expr: ExprId, span: Span },
     // "if to say(...) start...end"
-    If { cond: CondId, then_b: BlockId, else_b: Option<BlockId>, span: Span },
+    If { cond: ExprId, then_b: BlockId, else_b: Option<BlockId>, span: Span },
     // "jasi(...) start...end"
-    Loop { cond: CondId, body: BlockId, span: Span },
+    Loop { cond: ExprId, body: BlockId, span: Span },
     // "start...end" - standalone or nested block
     Block { block: BlockId, span: Span },
     // Function definition: do <name>(<params>?) start ... end
@@ -114,15 +108,6 @@ pub enum Expr<'src> {
         args: ArgListId,
         span: Span,
     },
-}
-
-/// Represents a condition in an if or loop statement.
-#[derive(Debug)]
-pub struct Cond {
-    pub op: CmpOp,
-    pub lhs: ExprId,
-    pub rhs: ExprId,
-    pub span: Span,
 }
 
 /// Represents a block of statements, which can be nested.
@@ -176,7 +161,6 @@ pub struct Parser<'src, I: Iterator<Item = SpannedToken<'src>>> {
 
     pub stmt_arena: Arena<Stmt<'src>>,
     pub expr_arena: Arena<Expr<'src>>,
-    pub cond_arena: Arena<Cond>,
     pub block_arena: Arena<Block>,
     pub param_arena: Arena<ParamList<'src>>,
     pub arg_arena: Arena<ArgList>,
@@ -193,7 +177,6 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             errors: Diagnostics::default(),
             stmt_arena: Arena::new(),
             expr_arena: Arena::new(),
-            cond_arena: Arena::new(),
             block_arena: Arena::new(),
             param_arena: Arena::new(),
             arg_arena: Arena::new(),
@@ -617,7 +600,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             );
             return None;
         }
-        let cond = self.parse_condition();
+        let cond = self.parse_expression(0);
         if let Token::RParen = self.cur.token {
             self.bump();
         } else {
@@ -735,7 +718,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             );
             return None;
         }
-        let cond = self.parse_condition();
+        let cond = self.parse_expression(0);
         if let Token::RParen = self.cur.token {
             self.bump();
         } else {
@@ -783,38 +766,6 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
         }
         let sid = self.stmt_arena.alloc(Stmt::Loop { cond, body, span: start..self.cur.span.end });
         Some(sid)
-    }
-
-    // Parses condition expressions for if statements and loops.
-    // Grammar: <condition> ::= <expression> "na" <expression> | <expression> "pass" <expression> | <expression> "small pass" <expression>
-    // Always a binary comparison - no compound conditions yet.
-    #[inline]
-    fn parse_condition(&mut self) -> CondId {
-        let start = self.cur.span.start;
-        let lhs = self.parse_expression(0);
-        let op = match &self.cur.token {
-            Token::Na => CmpOp::Eq,        // "na" means equals
-            Token::Pass => CmpOp::Gt,      // "pass" means greater than
-            Token::SmallPass => CmpOp::Lt, // "small pass" means less than
-            _ => {
-                self.errors.emit(
-                    self.cur.span.clone(),
-                    Severity::Error,
-                    "syntax",
-                    SyntaxError::ExpectedComparisonOperator.as_str(),
-                    vec![Label {
-                        span: self.cur.span.clone(),
-                        message: Cow::Borrowed(
-                            "Use `na`, `pass`, or `small pass` to compare for here",
-                        ),
-                    }],
-                );
-                CmpOp::Eq // fallback to something reasonable
-            }
-        };
-        self.bump();
-        let rhs = self.parse_expression(0);
-        self.cond_arena.alloc(Cond { op, lhs, rhs, span: start..self.cur.span.end })
     }
 
     // Expression parsing using Pratt parsing technique for operator precedence.
@@ -968,6 +919,9 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 Token::Mod => (BinOp::Mod, 20, 21),
                 Token::Add => (BinOp::Add, 10, 11),
                 Token::Minus => (BinOp::Minus, 10, 11),
+                Token::Na => (BinOp::Eq, 7, 8),
+                Token::Pass => (BinOp::Gt, 7, 8),
+                Token::SmallPass => (BinOp::Lt, 7, 8),
                 Token::And => (BinOp::And, 5, 6),
                 Token::Or => (BinOp::Or, 1, 2),
                 _ => break, // No more operators
