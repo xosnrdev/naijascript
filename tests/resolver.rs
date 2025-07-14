@@ -182,3 +182,29 @@ fn test_parameters_not_visible_outside_function() {
 fn test_duplicate_parameter_names() {
     assert_resolve!("do foo(x, x) start end", SemanticError::DuplicateIdentifier);
 }
+
+#[test]
+fn test_function_not_visible_outside_block() {
+    assert_resolve!(
+        r#"
+        start
+            do foo() start end
+        end
+        foo()
+        "#,
+        SemanticError::UndeclaredIdentifier
+    );
+}
+
+#[test]
+fn test_duplicate_function_in_same_block() {
+    assert_resolve!(
+        r#"
+        start
+            do foo() start end
+            do foo() start end
+        end
+        "#,
+        SemanticError::DuplicateIdentifier
+    );
+}
