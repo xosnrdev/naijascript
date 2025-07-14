@@ -676,7 +676,7 @@ impl<'src> SemAnalyzer<'src> {
                                     vec![Label {
                                         span: span.clone(),
                                         message: Cow::Owned(format!(
-                                            "Function `{}` expect {} parameters but you give {}",
+                                            "Function `{}` expect {} arguments but you pass {}",
                                             func_name,
                                             func_sig.param_names.len(),
                                             arg_list.args.len()
