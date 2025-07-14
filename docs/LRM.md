@@ -94,8 +94,7 @@ Type inference dey automatic. You no need to declare the type of a variable.
 - **Declaration**: You must declare a variable with the `make` keyword before you use am.
   - `make myVar get 10`
 - **Redeclaration**: You no fit declare a variable wey you don already declare for the same block.
-- **Scope**: Any variable wey you declare inside a `start ... end` block go only dey visible inside that block and any nested block. Variable wey you declare for outside block no go dey visible inside the block if you redeclare am inside. This help prevent accidental variable shadowing or leakage, and na the same way modern programming languages dey behave.
-- **Function Scope**: Functions create their own scope. Parameters become local variables inside the function. Variables declared inside a function no go affect variables for outside scope with the same name.
+- **Scope**: Any variable or function wey you declare inside a `start ... end` block go only dey visible inside that block and any nested block. Variable or function wey you declare for outside block no go dey visible inside the block if you redeclare am inside. This help prevent accidental variable or function shadowing or leakage, and na the same way modern programming languages dey behave. After the block end, the function or variable no go dey visible again for outside.
 
 ## 5. Dynamic Semantics
 
