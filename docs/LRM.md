@@ -12,9 +12,9 @@ This section dey describe how NaijaScript code dey break down into individual to
 
 ### 2.1. Identifiers
 
-Identifiers na the names you give to your variables. Dem fit contain letters (a-z, A-Z) and numbers (0-9), but dem must to start with a letter.
+Identifiers na the names you give to your variables. Dem fit contain letters (a-z, A-Z), numbers (0-9), and underscore (\_), but dem must to start with a letter or underscore.
 
-Example: `myVar`, `age`, `totalAmount`
+Example: `myVar`, `age`, `totalAmount`, `my_var`, `_hiddenValue`
 
 ### 2.2. Keywords
 
