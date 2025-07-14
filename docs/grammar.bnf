@@ -1,51 +1,106 @@
 <program> ::= <statement_list>
 
-<statement_list> ::= <statement> | <statement> <statement_list>
+<statement_list> ::= <statement>*   // 0 or more statements
 
-<statement> ::= <assignment> | <reassignment> | <expression_statement> | <if_statement> | <loop_statement> | <block> | <function_def> | <return_statement>
+<statement> ::= <assignment>
+              | <reassignment>
+              | <expression_statement>
+              | <if_statement>
+              | <loop_statement>
+              | <block>
+              | <function_def>
+              | <return_statement>
+              | <comment>
 
+// ---------------------
+// Variable Assignments
+// ---------------------
 <assignment> ::= "make" <variable> "get" <expression>
 <reassignment> ::= <variable> "get" <expression>
 <expression_statement> ::= <expression>
 
+// ---------------------
+// Functions
+// ---------------------
 <function_def> ::= "do" <identifier> "(" <param_list>? ")" "start" <statement_list> "end"
-<param_list> ::= <identifier> | <identifier> "," <param_list>
+<param_list> ::= <identifier> ("," <identifier>)*
+
 <return_statement> ::= "return" <expression>?
 
+// ---------------------
+// Function Calls
+// ---------------------
+<function_call> ::= <identifier> "(" <arg_list>? ")"
+<arg_list> ::= <expression> ("," <expression>)*
+
+// ---------------------
+// Conditionals
+// ---------------------
+<if_statement> ::= "if to say" "(" <expression> ")" <block> <else_clause>?
+
+<else_clause> ::= "if not so" <block>
+                | "if to say" "(" <expression> ")" <block> <else_clause>?
+                | ε
+
+// ---------------------
+// Loops
+// ---------------------
+<loop_statement> ::= "jasi" "(" <expression> ")" <block>
+
+// ---------------------
+// Block
+// ---------------------
+<block> ::= "start" <statement_list> "end"
+
+// ---------------------
+// Comments
+// ---------------------
+<comment> ::= "#" <comment_text>
+<comment_text> ::= { any character except newline }
+
+// ---------------------
+// Identifiers & Variables
+// ---------------------
 <variable> ::= <identifier>
 
 <identifier> ::= <id_start> <id_continue>*
 <id_start> ::= <letter> | "_"
 <id_continue> ::= <letter> | <digit> | "_"
 
-<letter> ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" | "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z"
+// Reserved keywords must be excluded in implementation
+// e.g., do, make, get, if, jasi, start, end, return, true, false, add, minus, times, divide, mod, or, and, not
 
-<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+<letter> ::= "a" | ... | "Z"  // all ASCII letters
+<digit> ::= "0" | ... | "9"
 
-<expression> ::= <logic_term> | <expression> "or" <logic_term> | <expression> "add" <term> | <expression> "minus" <term>
-<logic_term> ::= <logic_factor> | <logic_term> "and" <logic_factor> | <term>
-<logic_factor> ::= "not" <factor> | <factor>
+// ---------------------
+// Expressions (precedence climbing)
+// ---------------------
 
-<term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor> | <term> "mod" <factor>
+<expression> ::= <logic_or>
 
-<factor> ::= <number> | <string> | <boolean> | <variable> | <function_call> | "(" <expression> ")"
-<function_call> ::= <identifier> "(" <arg_list>? ")"
-<arg_list> ::= <expression> | <expression> "," <arg_list>
+<logic_or> ::= <logic_and> ("or" <logic_and>)*
+<logic_and> ::= <equality> ("and" <equality>)*
+<equality> ::= <comparison> (("na" | "pass" | "small pass") <comparison>)*
+<comparison> ::= <arith_expr>
 
+<arith_expr> ::= <term> (("add" | "minus") <term>)*
+<term> ::= <factor> (("times" | "divide" | "mod") <factor>)*
+<factor> ::= "not" <factor>
+           | "(" <expression> ")"
+           | <function_call>
+           | <variable>
+           | <number>
+           | <string>
+           | <boolean>
+
+// ---------------------
+// Literals
+// ---------------------
 <boolean> ::= "true" | "false"
 
-<string> ::= "\"" { <string_char> } "\""
+<string> ::= "\"" <string_char>* "\""
 <string_char> ::= any character except "\"" or "\\" | "\\" <escape_sequence>
 <escape_sequence> ::= "\"" | "\\" | "n" | "t"
 
 <number> ::= <digit>+ ("." <digit>+)?
-
-<if_statement> ::= "if to say" "(" <condition> ")" <block> ("if not so" <block>)?
-
-<loop_statement> ::= "jasi" "(" <condition> ")" <block>
-
-<condition> ::= <expression> "na" <expression> | <expression> "pass" <expression> | <expression> "small pass" <expression>
-
-<block> ::= "start" <statement_list> "end"
-
-<comment> ::= "#" { any character except "\n" }
