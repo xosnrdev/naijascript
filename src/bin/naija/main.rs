@@ -69,7 +69,6 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
     let mut resolver = SemAnalyzer::new(
         &parser.stmt_arena,
         &parser.expr_arena,
-        &parser.cond_arena,
         &parser.block_arena,
         &parser.param_arena,
         &parser.arg_arena,
@@ -86,7 +85,6 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
     let mut rt = Interpreter::new(
         &parser.stmt_arena,
         &parser.expr_arena,
-        &parser.cond_arena,
         &parser.block_arena,
         &parser.param_arena,
         &parser.arg_arena,

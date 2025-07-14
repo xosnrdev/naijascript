@@ -6,8 +6,7 @@ use std::collections::HashSet;
 use crate::builtins::{Builtin, BuiltinReturnType};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
-    self, Arena, ArgList, BinOp, Block, BlockId, Cond, CondId, Expr, ExprId, ParamList,
-    ParamListId, Stmt, StmtId,
+    self, Arena, ArgList, BinOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId, Stmt, StmtId,
 };
 
 /// Represents the type of semantic errors that can occur
@@ -21,7 +20,6 @@ pub enum SemanticError {
     FunctionCallArity,
     ReturnOutsideFunction,
     DeadCodeAfterReturn,
-    FunctionCallInCondition,
 }
 
 impl AsStr for SemanticError {
@@ -35,7 +33,6 @@ impl AsStr for SemanticError {
             SemanticError::FunctionCallArity => "Invalid parameter count",
             SemanticError::ReturnOutsideFunction => "Return statement outside function",
             SemanticError::DeadCodeAfterReturn => "Dead code after return statement",
-            SemanticError::FunctionCallInCondition => "Function call in condition",
         }
     }
 }
@@ -80,7 +77,6 @@ pub struct SemAnalyzer<'src> {
     // We don't own this data, just analyze what the parser built
     stmts: &'src Arena<Stmt<'src>>,
     exprs: &'src Arena<Expr<'src>>,
-    conds: &'src Arena<Cond>,
     blocks: &'src Arena<Block>,
     params: &'src Arena<ParamList<'src>>,
     args: &'src Arena<ArgList>,
@@ -104,7 +100,6 @@ impl<'src> SemAnalyzer<'src> {
     pub fn new(
         stmts: &'src Arena<Stmt<'src>>,
         exprs: &'src Arena<Expr<'src>>,
-        conds: &'src Arena<Cond>,
         blocks: &'src Arena<Block>,
         params: &'src Arena<ParamList<'src>>,
         args: &'src Arena<ArgList>,
@@ -112,7 +107,6 @@ impl<'src> SemAnalyzer<'src> {
         SemAnalyzer {
             stmts,
             exprs,
-            conds,
             blocks,
             params,
             args,
@@ -249,7 +243,8 @@ impl<'src> SemAnalyzer<'src> {
             }
             // Handle "if to say(condition) start...end" with optional "if not so"
             Stmt::If { cond, then_b, else_b, .. } => {
-                self.check_cond(*cond);
+                self.check_expr(*cond);
+                self.require_boolean_expr(*cond);
                 self.check_block(*then_b);
                 // Else block is optional in the grammar
                 if let Some(eb) = else_b {
@@ -258,7 +253,8 @@ impl<'src> SemAnalyzer<'src> {
             }
             // Handle "jasi(condition) start...end" loop statements
             Stmt::Loop { cond, body, .. } => {
-                self.check_cond(*cond);
+                self.check_expr(*cond);
+                self.require_boolean_expr(*cond);
                 self.check_block(*body);
             }
             // Handle nested blocks
@@ -444,44 +440,31 @@ impl<'src> SemAnalyzer<'src> {
         }
     }
 
-    // Validates condition expressions used in if statements and loops.
-    // NaijaScript conditions are binary comparisons: "na" (equals),
-    // "pass" (greater), "small pass" (less than).
-    // Both sides must be valid expressions.
-    fn check_cond(&mut self, cid: CondId) {
-        let cond = &self.conds.nodes[cid.0];
-
-        // Check for function calls in conditions
-        self.check_expr_for_function_calls(cond.lhs, "condition");
-        self.check_expr_for_function_calls(cond.rhs, "condition");
-
-        self.check_expr(cond.lhs);
-        self.check_expr(cond.rhs);
-        let lhs_type = self.infer_expr_type(cond.lhs);
-        let rhs_type = self.infer_expr_type(cond.rhs);
-        match (lhs_type, rhs_type) {
-            (Some(VarType::String), Some(VarType::String))
-            | (Some(VarType::Number), Some(VarType::Number))
-            | (Some(VarType::Bool), Some(VarType::Bool)) => {}
-            (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
-            (Some(VarType::String), Some(VarType::Number))
-            | (Some(VarType::Number), Some(VarType::String))
-            | (Some(VarType::Bool), Some(VarType::Number))
-            | (Some(VarType::Number), Some(VarType::Bool))
-            | (Some(VarType::Bool), Some(VarType::String))
-            | (Some(VarType::String), Some(VarType::Bool)) => {
-                self.errors.emit(
-                    cond.span.clone(),
-                    Severity::Error,
-                    "semantic",
-                    SemanticError::TypeMismatch.as_str(),
-                    vec![Label {
-                        span: cond.span.clone(),
-                        message: Cow::Borrowed("You no fit compare different types together"),
-                    }],
-                );
-            }
-            _ => {}
+    // Checks that an expression used in a condition evaluates to a boolean type.
+    fn require_boolean_expr(&mut self, eid: ExprId) {
+        let expr_type = self.infer_expr_type(eid);
+        if let Some(t) = expr_type
+            && !matches!(t, VarType::Bool | VarType::Dynamic)
+        {
+            let span = match &self.exprs.nodes[eid.0] {
+                Expr::Number(.., span) => span.clone(),
+                Expr::String(.., span) => span.clone(),
+                Expr::Bool(.., span) => span.clone(),
+                Expr::Var(.., span) => span.clone(),
+                Expr::Binary { span, .. } => span.clone(),
+                Expr::Not { span, .. } => span.clone(),
+                Expr::Call { span, .. } => span.clone(),
+            };
+            self.errors.emit(
+                span.clone(),
+                Severity::Error,
+                "semantic",
+                SemanticError::TypeMismatch.as_str(),
+                vec![Label {
+                    span,
+                    message: Cow::Borrowed("Condition dey expect boolean value or dynamic type"),
+                }],
+            );
         }
     }
 
@@ -598,6 +581,26 @@ impl<'src> SemAnalyzer<'src> {
                             _ => {}
                         }
                     }
+                    BinOp::Eq | BinOp::Gt | BinOp::Lt => match (l, r) {
+                        (Some(VarType::Number), Some(VarType::Number)) => {}
+                        (Some(VarType::String), Some(VarType::String)) => {}
+                        (Some(VarType::Bool), Some(VarType::Bool)) => {}
+                        (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
+                        _ => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed(
+                                        "Comparison operators dey only work with numbers, strings, or booleans",
+                                    ),
+                                }],
+                            );
+                        }
+                    },
                     BinOp::And | BinOp::Or => match (l, r) {
                         (Some(VarType::Bool), Some(VarType::Bool)) => {}
                         (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
@@ -673,7 +676,7 @@ impl<'src> SemAnalyzer<'src> {
                                     vec![Label {
                                         span: span.clone(),
                                         message: Cow::Owned(format!(
-                                            "Function `{}` expect {} parameters but you give {}",
+                                            "Function `{}` expect {} arguments but you pass {}",
                                             func_name,
                                             func_sig.param_names.len(),
                                             arg_list.args.len()
@@ -707,7 +710,7 @@ impl<'src> SemAnalyzer<'src> {
         }
     }
 
-    // Infer the type of an expression, using the symbol table for variables
+    // Infers the type of an expression based on its structure and context.
     fn infer_expr_type(&self, eid: ExprId) -> Option<VarType> {
         match &self.exprs.nodes[eid.0] {
             Expr::Number(..) => Some(VarType::Number),
@@ -740,6 +743,13 @@ impl<'src> SemAnalyzer<'src> {
                         (VarType::Dynamic, ..) | (.., VarType::Dynamic) => Some(VarType::Number),
                         _ => None,
                     },
+                    BinOp::Eq | BinOp::Gt | BinOp::Lt => match (l, r) {
+                        (VarType::Number, VarType::Number) => Some(VarType::Bool),
+                        (VarType::String, VarType::String) => Some(VarType::Bool),
+                        (VarType::Bool, VarType::Bool) => Some(VarType::Bool),
+                        (VarType::Dynamic, ..) | (.., VarType::Dynamic) => Some(VarType::Bool),
+                        _ => None,
+                    },
                     BinOp::And | BinOp::Or => match (l, r) {
                         (VarType::Bool, VarType::Bool) => Some(VarType::Bool),
                         (VarType::Dynamic, ..) | (.., VarType::Dynamic) => Some(VarType::Bool),
@@ -763,33 +773,6 @@ impl<'src> SemAnalyzer<'src> {
                 }
                 _ => None,
             },
-        }
-    }
-
-    fn check_expr_for_function_calls(&mut self, eid: ExprId, context: &str) {
-        match &self.exprs.nodes[eid.0] {
-            Expr::Call { span, .. } => {
-                self.errors.emit(
-                    span.clone(),
-                    Severity::Warning,
-                    "semantic",
-                    SemanticError::FunctionCallInCondition.as_str(),
-                    vec![Label {
-                        span: span.clone(),
-                        message: Cow::Owned(format!(
-                            "Function call for {context} fit slow down your code if e dey run plenty times"
-                        )),
-                    }],
-                );
-            }
-            Expr::Binary { lhs, rhs, .. } => {
-                self.check_expr_for_function_calls(*lhs, context);
-                self.check_expr_for_function_calls(*rhs, context);
-            }
-            Expr::Not { expr, .. } => {
-                self.check_expr_for_function_calls(*expr, context);
-            }
-            Expr::Number(..) | Expr::String(..) | Expr::Bool(..) | Expr::Var(..) => {}
         }
     }
 }

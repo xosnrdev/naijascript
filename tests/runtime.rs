@@ -19,7 +19,6 @@ macro_rules! assert_runtime {
         let mut interp = Interpreter::new(
             &parser.stmt_arena,
             &parser.expr_arena,
-            &parser.cond_arena,
             &parser.block_arena,
             &parser.param_arena,
             &parser.arg_arena,
@@ -38,7 +37,6 @@ macro_rules! assert_runtime {
         let mut interp = Interpreter::new(
             &parser.stmt_arena,
             &parser.expr_arena,
-            &parser.cond_arena,
             &parser.block_arena,
             &parser.param_arena,
             &parser.arg_arena,

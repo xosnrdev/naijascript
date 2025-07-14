@@ -16,7 +16,6 @@ macro_rules! assert_resolve {
         let mut analyzer = SemAnalyzer::new(
             &parser.stmt_arena,
             &parser.expr_arena,
-            &parser.cond_arena,
             &parser.block_arena,
             &parser.param_arena,
             &parser.arg_arena,
@@ -152,24 +151,6 @@ fn test_dead_code_after_return() {
         end
         ",
         SemanticError::DeadCodeAfterReturn
-    );
-}
-
-#[test]
-fn test_function_call_in_condition_warning() {
-    assert_resolve!(
-        "
-        do foo() start
-            return 1
-        end
-        
-        do main() start
-            if to say (foo() na 1) start
-                shout(1)
-            end
-        end
-        ",
-        SemanticError::FunctionCallInCondition
     );
 }
 

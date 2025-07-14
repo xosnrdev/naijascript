@@ -104,9 +104,9 @@ This section dey explain wetin each part of the language dey do when e dey run.
 
 - **`make <variable> get <expression>`**: This one go create a new variable and give am the value of the expression.
 - **`<variable> get <expression>`**: This one go change the value of a variable wey you don already create.
-- **`if to say (<condition>) <block>`**: If the condition na true, the code inside the `start`...`end` block go run.
+- **`if to say (<condition>) <block>`**: If the condition na true, the code inside the `start`...`end` block go run. The condition fit be simple comparison or complex compound condition using `and`, `or`, and `not` operators.
 - **`if to say (<condition>) <block> if not so <block>`**: If the condition na true, the first block go run. Otherwise, the second block go run.
-- **`jasi (<condition>) <block>`**: The code inside the block go run repeatedly as long as the condition dey true.
+- **`jasi (<condition>) <block>`**: The code inside the block go run repeatedly as long as the condition dey true. Like `if to say`, the condition fit be compound expression with multiple logical operators.
 - **`start ... end`**: You fit use block anywhere as a statement. Any variable you declare inside the block go only dey visible inside that block and any nested block.
 - **`do <name>(<parameters>) <block>`**: Define a function with the given name and parameters. The function body dey inside the block.
 - **`return <expression>`**: Return a value from a function. If no expression provided, function go return 0. Only valid inside function definitions.
