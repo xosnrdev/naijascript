@@ -15,7 +15,8 @@ switch ($arch) {
   default { Write-Error 'Oga, your machine arch no dey supported. Abeg use x86_64 or aarch64.'; exit 1 }
 }
 
-$bin = "naijaup-$platform-$arch"
+$target = "$arch-$platform"
+$bin = "naijaup"
 $repo = "xosnrdev/naijascript"
 
 # --- Fetch Latest Version ---
@@ -27,26 +28,28 @@ catch {
   Write-Error "Wahala! I no fit find latest version for GitHub. Check your network."; exit 1
 }
 
-$assetUrl = "https://github.com/$repo/releases/download/$tag/$bin-$tag.zip"
-$shaUrl = "https://github.com/$repo/releases/download/$tag/$bin-$tag.sha256"
+$assetUrl = "https://github.com/$repo/releases/download/$tag/${bin}-v${tag}-$target.zip"
+$shaUrl = "https://github.com/$repo/releases/download/$tag/${bin}-v${tag}-$target.sha256"
 $tmp = New-TemporaryFile | Split-Path
 Set-Location $tmp
 
 # --- Download Binary and Checksum ---
 Write-Host "I dey download $bin..."
-Invoke-WebRequest -Uri $assetUrl -OutFile "$bin-$tag.zip"
-Invoke-WebRequest -Uri $shaUrl -OutFile "$bin-$tag.sha256"
 
-# --- Extract Archive ---
-Expand-Archive "$bin-$tag.zip" -DestinationPath .
+Invoke-WebRequest -Uri $assetUrl -OutFile "${bin}-v${tag}-$target.zip"
+Invoke-WebRequest -Uri $shaUrl -OutFile "${bin}-v${tag}-$target.sha256"
 
-# --- Verify Checksum of Extracted Binary ---
-Write-Host "I dey check say file correct..."
-$expected = (Get-Content "$bin-$tag.sha256").Split(' ')[0]
-$actual = (Get-FileHash naijaup.exe -Algorithm SHA256).Hash.ToLower()
+
+# --- Verify Checksum of Archive ---
+Write-Host "I dey check say archive correct..."
+$expected = (Get-Content "${bin}-v${tag}-$target.sha256").Split(' ')[0]
+$actual = (Get-FileHash "${bin}-v${tag}-$target.zip" -Algorithm SHA256).Hash.ToLower()
 if ($expected -ne $actual) {
   Write-Error "Omo! Checksum no match. No try run am o."; exit 1
 }
+
+# --- Extract Archive ---
+Expand-Archive "${bin}-v${tag}-$target.zip" -DestinationPath .
 
 # --- Install ---
 $installDir = "$env:USERPROFILE\.naijascript\bin"
