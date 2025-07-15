@@ -12,6 +12,9 @@ env:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
         include:
@@ -51,101 +54,66 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Install Rust toolchain
         run: |
           rustup toolchain install nightly --no-self-update --profile minimal --component rust-src
           rustup target add ${{ matrix.target }}
+
       - name: Install cross toolchain and sysroot for aarch64-unknown-linux-gnu
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
+
       - name: Build release binary
         run: |
           cargo build --config .cargo/release.toml --release --target ${{ matrix.target }} --bin ${{ matrix.bin_target }}
-      - name: Set bin_name
-        id: binname
-        shell: bash
-        run: |
-          case "${{ matrix.os }}" in
-            ubuntu-latest)   PLATFORM=linux ;;
-            macos-latest)    PLATFORM=macos ;;
-            windows-latest)  PLATFORM=windows ;;
-            *)               echo "Unknown OS"; exit 1 ;;
-          esac
 
-          case "${{ matrix.target }}" in
-            x86_64-unknown-linux-gnu|x86_64-apple-darwin|x86_64-pc-windows-msvc) ARCH=x86_64 ;;
-            aarch64-unknown-linux-gnu|aarch64-apple-darwin) ARCH=aarch64 ;;
-            *) echo "Unknown target"; exit 1 ;;
-          esac
+      - name: Set asset and archive names
+        id: assetinfo
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          NAME=${{ matrix.bin_target }}
+          TARGET=${{ matrix.target }}
+          EXT=tar.gz
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then EXT=zip; fi
+          ASSET_NAME="$NAME-$VERSION-$TARGET"
+          echo "asset_name=$ASSET_NAME" >> $GITHUB_OUTPUT
+          echo "ext=$EXT" >> $GITHUB_OUTPUT
 
-          BIN_NAME="${{ matrix.bin_target }}-$PLATFORM-$ARCH"
-          echo "bin_name=$BIN_NAME" >> $GITHUB_OUTPUT
-      - name: Rename binary
-        shell: bash
-        run: |
-          mv target/${{ matrix.target }}/release/${{ matrix.bin_target }}$(if [ "${{ matrix.os }}" = "windows-latest" ]; then echo ".exe"; fi) ${{ steps.binname.outputs.bin_name }}
-      - name: Compress artifact
-        shell: bash
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp ${{ steps.binname.outputs.bin_name }} ${{ matrix.bin_target }}.exe
-            7z a ${{ steps.binname.outputs.bin_name }}.zip ${{ matrix.bin_target }}.exe
-            rm ${{ matrix.bin_target }}.exe
-          else
-            cp ${{ steps.binname.outputs.bin_name }} ${{ matrix.bin_target }}
-            tar -czf ${{ steps.binname.outputs.bin_name }}.tar.gz ${{ matrix.bin_target }}
-            rm ${{ matrix.bin_target }}
-          fi
-      - name: Generate checksum (Windows)
+      - name: Archive binary (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          7z x ${{ steps.binname.outputs.bin_name }}.zip
-          $hash = Get-FileHash .\${{ matrix.bin_target }}.exe -Algorithm SHA256 | Select-Object -ExpandProperty Hash
-          "$hash  ${{ matrix.bin_target }}.exe" | Set-Content "${{ steps.binname.outputs.bin_name }}.sha256"
-          Remove-Item .\${{ matrix.bin_target }}.exe
-      - name: Generate checksum (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          tar -xzf ${{ steps.binname.outputs.bin_name }}.tar.gz
-          shasum -a 256 ${{ matrix.bin_target }} > ${{ steps.binname.outputs.bin_name }}.sha256
-          rm ${{ matrix.bin_target }}
-      - name: Generate checksum (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          tar -xzf ${{ steps.binname.outputs.bin_name }}.tar.gz
-          sha256sum ${{ matrix.bin_target }} > ${{ steps.binname.outputs.bin_name }}.sha256
-          rm ${{ matrix.bin_target }}
-      - name: Set versioned artifact names
-        id: version
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF##*/}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "bin_name_versioned=${{ steps.binname.outputs.bin_name }}-$VERSION" >> $GITHUB_OUTPUT
-      - name: Rename versioned artifacts
-        shell: bash
-        run: |
-          mv ${{ steps.binname.outputs.bin_name }} ${{ steps.version.outputs.bin_name_versioned }}
-          mv ${{ steps.binname.outputs.bin_name }}.sha256 ${{ steps.version.outputs.bin_name_versioned }}.sha256
-          if [ -f ${{ steps.binname.outputs.bin_name }}.tar.gz ]; then mv ${{ steps.binname.outputs.bin_name }}.tar.gz ${{ steps.version.outputs.bin_name_versioned }}.tar.gz; fi
-          if [ -f ${{ steps.binname.outputs.bin_name }}.zip ]; then mv ${{ steps.binname.outputs.bin_name }}.zip ${{ steps.version.outputs.bin_name_versioned }}.zip; fi
-      - name: Upload artifact (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.version.outputs.bin_name_versioned }}
-          path: |
-            ${{ steps.version.outputs.bin_name_versioned }}.zip
-            ${{ steps.version.outputs.bin_name_versioned }}.sha256
-      - name: Upload artifact (Unix)
+          $BinPath = "target/${{ matrix.target }}/release/${{ matrix.bin_target }}.exe"
+          Compress-Archive -Path $BinPath -DestinationPath "${{ steps.assetinfo.outputs.asset_name }}.zip"
+
+      - name: Archive binary (Unix/macOS)
         if: matrix.os != 'windows-latest'
+        run: |
+          BIN_PATH=target/${{ matrix.target }}/release/${{ matrix.bin_target }}
+          tar -czf ${{ steps.assetinfo.outputs.asset_name }}.tar.gz -C $(dirname "$BIN_PATH") $(basename "$BIN_PATH")
+
+      - name: Generate checksum
+        id: checksum
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            sha256sum ${{ steps.assetinfo.outputs.asset_name }}.zip > ${{ steps.assetinfo.outputs.asset_name }}.sha256
+            echo "artifacts=${{ steps.assetinfo.outputs.asset_name }}.zip ${{ steps.assetinfo.outputs.asset_name }}.sha256" >> $GITHUB_OUTPUT
+          else
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum ${{ steps.assetinfo.outputs.asset_name }}.tar.gz > ${{ steps.assetinfo.outputs.asset_name }}.sha256
+            else
+              shasum -a 256 ${{ steps.assetinfo.outputs.asset_name }}.tar.gz > ${{ steps.assetinfo.outputs.asset_name }}.sha256
+            fi
+            echo "artifacts=${{ steps.assetinfo.outputs.asset_name }}.tar.gz ${{ steps.assetinfo.outputs.asset_name }}.sha256" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.version.outputs.bin_name_versioned }}
-          path: |
-            ${{ steps.version.outputs.bin_name_versioned }}.tar.gz
-            ${{ steps.version.outputs.bin_name_versioned }}.sha256
+          name: ${{ steps.assetinfo.outputs.asset_name }}
+          path: ${{ steps.checksum.outputs.artifacts }}
+
   release:
     needs: build
     runs-on: ubuntu-latest

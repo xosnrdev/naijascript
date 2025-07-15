@@ -370,7 +370,8 @@ fn download_and_install(version: &str, vdir: &Path) -> Result<(), String> {
     let version_tag = version_tag(&normalize_version(version));
     let ext = archive_ext();
     let bin_name = bin_name();
-    let archive_name = format!("naija-{os}-{arch}-{version_tag}.{ext}");
+    let target = format!("{arch}-{os}");
+    let archive_name = format!("{bin_name}-v{version_tag}-{target}.{ext}");
     let url = format!("https://github.com/{REPO}/releases/download/{version_tag}/{archive_name}");
     print_info!("I dey download NaijaScript from: {url}");
     let client = reqwest::blocking::Client::builder()
@@ -503,7 +504,8 @@ fn self_update(client: &reqwest::blocking::Client) -> Result<(), String> {
     print_info!("I dey update naijaup from {} to {}...", current, latest);
     let ext = archive_ext();
     let bin_name = if os == "windows" { "naijaup.exe" } else { "naijaup" };
-    let archive_name = format!("naijaup-{os}-{arch}-v{latest}.{ext}");
+    let target = format!("{arch}-{os}");
+    let archive_name = format!("{bin_name}-v{latest}-{target}.{ext}");
     let url = format!("https://github.com/{REPO}/releases/download/v{latest}/{archive_name}");
     print_info!("I dey download latest naijaup from: {url}");
     let resp = client.get(&url).send().map_err(report_err!("Wahala! I no fit download"))?;
