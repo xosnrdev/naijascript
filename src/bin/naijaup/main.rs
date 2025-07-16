@@ -321,20 +321,21 @@ fn run() -> Result<(), String> {
 }
 
 fn get_platform() -> (&'static str, &'static str) {
-    // Returns platform/arch as used in release artifact naming. This must match the release workflow and bootstrap scripts for cross-platform correctness.
-    let os = if cfg!(target_os = "macos") {
-        "macos"
-    } else if cfg!(target_os = "linux") {
-        "linux"
-    } else if cfg!(target_os = "windows") {
-        "windows"
-    } else {
-        "unknown"
-    };
+    // Returns platform/arch as used in release artifact naming.
+    // This must match the release workflow and bootstrap scripts for cross-platform correctness.
     let arch = if cfg!(target_arch = "x86_64") {
         "x86_64"
     } else if cfg!(target_arch = "aarch64") {
         "aarch64"
+    } else {
+        "unknown"
+    };
+    let os = if cfg!(target_os = "macos") {
+        "apple-darwin"
+    } else if cfg!(target_os = "linux") {
+        "unknown-linux-gnu"
+    } else if cfg!(target_os = "windows") {
+        "pc-windows-msvc"
     } else {
         "unknown"
     };
@@ -371,7 +372,7 @@ fn download_and_install(version: &str, vdir: &Path) -> Result<(), String> {
     let ext = archive_ext();
     let bin_name = bin_name();
     let target = format!("{arch}-{os}");
-    let archive_name = format!("{bin_name}-v{version_tag}-{target}.{ext}");
+    let archive_name = format!("{bin_name}-{version_tag}-{target}.{ext}");
     let url = format!("https://github.com/{REPO}/releases/download/{version_tag}/{archive_name}");
     print_info!("I dey download NaijaScript from: {url}");
     let client = reqwest::blocking::Client::builder()

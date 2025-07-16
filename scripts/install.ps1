@@ -5,17 +5,17 @@ $os = $env:OS
 $arch = $env:PROCESSOR_ARCHITECTURE
 
 switch ($os) {
-  'Windows_NT' { $platform = 'windows' }
+  'Windows_NT' {
+    switch ($arch) {
+      'AMD64' { $target = 'x86_64-pc-windows-msvc' }
+      # FIXME: Workout true ARM64 support target
+      # For now, we use x86_64 for ARM64 Windows 
+      'ARM64' { $target = 'x86_64-pc-windows-msvc' }
+      default { Write-Error 'Oga, your machine arch no dey supported. Abeg use x86_64 or aarch64.'; exit 1 }
+    }
+  }
   default { Write-Error 'Oga, your OS no dey supported. Abeg use Windows.'; exit 1 }
 }
-
-switch ($arch) {
-  'AMD64' { $arch = 'x86_64' }
-  'ARM64' { $arch = 'aarch64' }
-  default { Write-Error 'Oga, your machine arch no dey supported. Abeg use x86_64 or aarch64.'; exit 1 }
-}
-
-$target = "$arch-$platform"
 $bin = "naijaup"
 $repo = "xosnrdev/naijascript"
 
@@ -28,28 +28,28 @@ catch {
   Write-Error "Wahala! I no fit find latest version for GitHub. Check your network."; exit 1
 }
 
-$assetUrl = "https://github.com/$repo/releases/download/$tag/${bin}-v${tag}-$target.zip"
-$shaUrl = "https://github.com/$repo/releases/download/$tag/${bin}-v${tag}-$target.sha256"
+$assetUrl = "https://github.com/$repo/releases/download/$tag/${bin}-${tag}-$target.zip"
+$shaUrl = "https://github.com/$repo/releases/download/$tag/${bin}-${tag}-$target.sha256"
 $tmp = New-TemporaryFile | Split-Path
 Set-Location $tmp
 
 # --- Download Binary and Checksum ---
 Write-Host "I dey download $bin..."
 
-Invoke-WebRequest -Uri $assetUrl -OutFile "${bin}-v${tag}-$target.zip"
-Invoke-WebRequest -Uri $shaUrl -OutFile "${bin}-v${tag}-$target.sha256"
+Invoke-WebRequest -Uri $assetUrl -OutFile "${bin}-${tag}-$target.zip"
+Invoke-WebRequest -Uri $shaUrl -OutFile "${bin}-${tag}-$target.sha256"
 
 
 # --- Verify Checksum of Archive ---
 Write-Host "I dey check say archive correct..."
-$expected = (Get-Content "${bin}-v${tag}-$target.sha256").Split(' ')[0]
-$actual = (Get-FileHash "${bin}-v${tag}-$target.zip" -Algorithm SHA256).Hash.ToLower()
+$expected = (Get-Content "${bin}-${tag}-$target.sha256").Split(' ')[0]
+$actual = (Get-FileHash "${bin}-${tag}-$target.zip" -Algorithm SHA256).Hash.ToLower()
 if ($expected -ne $actual) {
   Write-Error "Omo! Checksum no match. No try run am o."; exit 1
 }
 
 # --- Extract Archive ---
-Expand-Archive "${bin}-v${tag}-$target.zip" -DestinationPath .
+Expand-Archive "${bin}-${tag}-$target.zip" -DestinationPath .
 
 # --- Install ---
 $installDir = "$env:USERPROFILE\.naijascript\bin"

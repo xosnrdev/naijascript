@@ -5,20 +5,24 @@ set -euo pipefail
 OS=$(uname | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
-# --- Platform and Architecture Mapping ---
+ # --- Platform and Architecture Mapping ---
 case "$OS" in
-  linux)   PLATFORM=linux ;;
-  darwin)  PLATFORM=macos ;;
+  linux)
+    case "$ARCH" in
+      x86_64|amd64) TARGET="x86_64-unknown-linux-gnu" ;;
+      aarch64|arm64) TARGET="aarch64-unknown-linux-gnu" ;;
+      *) echo "Oga, your machine arch no dey supported. Abeg use x86_64 or aarch64." >&2; exit 1 ;;
+    esac
+    ;;
+  darwin)
+    case "$ARCH" in
+      x86_64|amd64) TARGET="x86_64-apple-darwin" ;;
+      aarch64|arm64) TARGET="aarch64-apple-darwin" ;;
+      *) echo "Oga, your machine arch no dey supported. Abeg use x86_64 or aarch64." >&2; exit 1 ;;
+    esac
+    ;;
   *) echo "Oga, your OS no dey supported. Abeg use Linux or Mac." >&2; exit 1 ;;
 esac
-
-case "$ARCH" in
-  x86_64|amd64) ARCH=x86_64 ;;
-  aarch64|arm64) ARCH=aarch64 ;;
-  *) echo "Oga, your machine arch no dey supported. Abeg use x86_64 or aarch64." >&2; exit 1 ;;
-esac
-
-TARGET="$ARCH-$PLATFORM"
 BIN=naijaup
 
 # --- Fetch Latest Version ---
@@ -28,8 +32,8 @@ if [ -z "$LATEST_TAG" ]; then
   echo "Wahala! I no fit find latest version for GitHub. Check your network." >&2; exit 1
 fi
 
-ASSET_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/${BIN}-v${LATEST_TAG}-$TARGET.tar.gz"
-SHA_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/${BIN}-v${LATEST_TAG}-$TARGET.sha256"
+ASSET_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/${BIN}-${LATEST_TAG}-$TARGET.tar.gz"
+SHA_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/${BIN}-${LATEST_TAG}-$TARGET.sha256"
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -37,6 +41,7 @@ cd "$TMPDIR"
 
 # --- Download Binary and Checksum ---
 echo "I dey download $BIN..."
+echo "ASSET_URL=$ASSET_URL"
 curl -fsSLO "$ASSET_URL"
 curl -fsSLO "$SHA_URL"
 
@@ -44,16 +49,16 @@ curl -fsSLO "$SHA_URL"
 # --- Verify Checksum of Archive ---
 echo "I dey check say archive correct..."
 if command -v sha256sum >/dev/null 2>&1; then
-  sha256sum -c "${BIN}-v${LATEST_TAG}-$TARGET.sha256" || { echo "Omo! Checksum no match. No try run am o." >&2; exit 1; }
+  sha256sum -c "${BIN}-${LATEST_TAG}-$TARGET.sha256" || { echo "Omo! Checksum no match. No try run am o." >&2; exit 1; }
 else
-  ACTUAL=$(shasum -a 256 "${BIN}-v${LATEST_TAG}-$TARGET.tar.gz" | awk '{print $1}')
-  EXPECTED=$(cut -d' ' -f1 "${BIN}-v${LATEST_TAG}-$TARGET.sha256")
+  ACTUAL=$(shasum -a 256 "${BIN}-${LATEST_TAG}-$TARGET.tar.gz" | awk '{print $1}')
+  EXPECTED=$(cut -d' ' -f1 "${BIN}-${LATEST_TAG}-$TARGET.sha256")
   [ "$ACTUAL" = "$EXPECTED" ] || { echo "Omo! Checksum no match. No try run am o." >&2; exit 1; }
 fi
 
 # --- Extract Archive ---
 echo "I dey extract $BIN..."
-tar -xzf "${BIN}-v${LATEST_TAG}-$TARGET.tar.gz"
+tar -xzf "${BIN}-${LATEST_TAG}-$TARGET.tar.gz"
 chmod +x naijaup
 
 # --- Install ---
