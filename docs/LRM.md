@@ -39,8 +39,8 @@ Literals na the fixed values wey you dey write directly for your code.
 
 - **Numbers**: NaijaScript dey support floating-point numbers.
   - Example: `10`, `3.142`, `0.5`
-- **Strings**: A sequence of characters inside double quotes.
-  - Example: `"Hello, World!"`, `"Naija no dey carry last"`
+- **Strings**: Sequence of characters inside double quotes (`"..."`) or single quotes (`'...'`). Supported escapes: `\\`, `\"`, `\'`, `\n`, `\t`, `\r`.
+  - Example: `"Hello, World!"`, `'Naija no dey carry last'`, `'foo\nbar'`
 - **Booleans**: Truth values wey be `true` and `false`.
   - `true` - mean say e correct or e happen.
   - `false` - mean say e no correct or e no happen.

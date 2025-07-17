@@ -91,23 +91,11 @@ pub enum Expr<'src> {
     Bool(bool, Span),             // "true", "false"
     Var(&'src str, Span),         // variable references
     // arithmetic/logical operations
-    Binary {
-        op: BinOp,
-        lhs: ExprId,
-        rhs: ExprId,
-        span: Span,
-    },
+    Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span },
     // logical not
-    Not {
-        expr: ExprId,
-        span: Span,
-    },
-    /// Function call: <callee>(<args>?)
-    Call {
-        callee: ExprId,
-        args: ArgListId,
-        span: Span,
-    },
+    Not { expr: ExprId, span: Span },
+    // Function call: <callee>(<args>?)
+    Call { callee: ExprId, args: ArgListId, span: Span },
 }
 
 /// Represents a block of statements, which can be nested.
