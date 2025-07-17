@@ -45,13 +45,6 @@ impl<'input> Lexer<'input> {
     }
 
     // Returns the next token and its span from the input.
-    //
-    // This is the main loop of the lexer. We process the input byte by byte,
-    // skipping whitespace, and then matching on the next character to decide
-    // what kind of token to produce. If we reach the end of input, we return EOF.
-    // For each token type (string, paren, number, identifier/keyword, or unexpected),
-    // we delegate to a helper function that handles the details.
-    // If we encounter something we don't recognize, we emit an error and keep going.
     #[inline(always)]
     fn next_token(&mut self) -> SpannedToken<'input> {
         loop {
@@ -75,8 +68,8 @@ impl<'input> Lexer<'input> {
             }
 
             // String literals
-            if b == b'"' {
-                let token = self.scan_string(start);
+            if b == b'"' || b == b'\'' {
+                let token = self.scan_string(start, b);
                 return SpannedToken { token, span: start..self.pos };
             }
             if let Some(token) = self.scan_punctuation(b) {
@@ -229,7 +222,7 @@ impl<'input> Lexer<'input> {
     }
 
     #[inline(always)]
-    fn scan_string(&mut self, start: usize) -> Token<'input> {
+    fn scan_string(&mut self, start: usize, quote: u8) -> Token<'input> {
         self.bump(); // Skip the opening quote
         let content_start = self.pos;
         let mut end = self.pos;
@@ -237,7 +230,7 @@ impl<'input> Lexer<'input> {
         let mut owned = String::new();
         while end < self.src.len() {
             let c = self.src.as_bytes()[end];
-            if c == b'"' {
+            if c == quote {
                 // Closing quote
                 if has_escape {
                     self.pos = end + 1;
@@ -263,7 +256,10 @@ impl<'input> Lexer<'input> {
                         LexError::UnterminatedString.as_str(),
                         vec![Label {
                             span: start..self.src.len(),
-                            message: Cow::Borrowed(r#"Dis string no get ending quote `"`"#),
+                            message: Cow::Owned(format!(
+                                "Dis string no get ending quote `{}`",
+                                quote as char
+                            )),
                         }],
                     );
                     self.pos = self.src.len();
@@ -271,7 +267,8 @@ impl<'input> Lexer<'input> {
                 }
                 let esc = self.src.as_bytes()[end + 1];
                 match esc {
-                    b'"' => owned.push('"'),
+                    b'"' if quote == b'"' => owned.push('"'),
+                    b'\'' if quote == b'\'' => owned.push('\''),
                     b'\\' => owned.push('\\'),
                     b'n' => owned.push('\n'),
                     b't' => owned.push('\t'),
@@ -307,7 +304,7 @@ impl<'input> Lexer<'input> {
             LexError::UnterminatedString.as_str(),
             vec![Label {
                 span: start..self.src.len(),
-                message: Cow::Borrowed(r#"Dis string no get ending quote `"`"#),
+                message: Cow::Owned(format!("Dis string no get ending quote `{}`", quote as char)),
             }],
         );
         self.pos = self.src.len();

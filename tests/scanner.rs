@@ -219,6 +219,29 @@ fn test_scan_unterminated_string() {
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str()));
 }
 
+#[test]
+fn test_scan_single_quoted_string() {
+    let src = "'foo bar'";
+    assert_tokens!(src, &[Token::String(Cow::Borrowed("foo bar"))]);
+}
+
+#[test]
+fn test_scan_single_quoted_string_with_escape() {
+    let src = r#"'foo\'bar'"#;
+    assert_tokens!(src, &[Token::String(Cow::Owned("foo'bar".to_string()))]);
+}
+
+#[test]
+fn test_scan_unterminated_single_quoted_string() {
+    let src = "'foo bar";
+    let mut lexer = Lexer::new(src);
+    let _ = lexer.next();
+    let errors = lexer.errors;
+    let label = &errors.diagnostics[0].labels[0];
+    assert_eq!(label.span, 0..src.len());
+    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str()));
+}
+
 //------------------------------------------------------------------------
 // COMMENTS
 //------------------------------------------------------------------------
