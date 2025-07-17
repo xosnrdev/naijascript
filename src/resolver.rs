@@ -66,12 +66,7 @@ struct FunctionSig<'src> {
     return_type: Option<VarType>,
 }
 
-/// The heart of our semantic analysis - this walks through NaijaScript code
-/// and catches logical errors that the parser can't detect.
-///
-/// Right now we're keeping things simple with a flat symbol table, meaning
-/// variables declared anywhere are visible everywhere. This matches how the
-/// grammar is structured but we could extend this later for block scoping.
+/// The interface for the NaijaScript semantic analyzer.
 pub struct SemAnalyzer<'src> {
     // These are borrowed references to the parser's AST arenas
     // We don't own this data, just analyze what the parser built
@@ -117,24 +112,22 @@ impl<'src> SemAnalyzer<'src> {
         }
     }
 
-    /// Main entry point for semantic checking.
-    /// Takes the root block (representing the whole program) and recursively
-    /// validates everything inside it.
+    /// Start semantic checking from the root block (the whole program).
+    /// Sets up the first scope, checks everything, and cleans up after.
     pub fn analyze(&mut self, root: BlockId) {
-        // Enter global scope
+        // Enter the first (global) scope
         self.variable_scopes.push(Vec::new());
         self.function_scopes.push(Vec::new());
         self.check_block(root);
-        // Exit global scope
+        // Leave the global scope
         self.variable_scopes.pop();
         self.function_scopes.pop();
     }
 
-    // Validates all statements within a block.
-    // Blocks in NaijaScript are wrapped with "start" and "end" keywords,
-    // but here we just process the list of statements inside.
+    // Check every statement inside a block.
+    // Each "start ... end" creates a new scope for variables and functions.
     fn check_block(&mut self, bid: BlockId) {
-        // Enter global scope
+        // Enter new block scope
         self.variable_scopes.push(Vec::new());
         self.function_scopes.push(Vec::new());
         let block = &self.blocks.nodes[bid.0];
@@ -173,7 +166,7 @@ impl<'src> SemAnalyzer<'src> {
 
             self.check_stmt(sid);
         }
-        // Exit global scope
+        // Leave this block scope
         self.variable_scopes.pop();
         self.function_scopes.pop();
     }

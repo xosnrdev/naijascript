@@ -12,7 +12,7 @@ use naijascript::syntax::parser::Parser;
 use naijascript::syntax::scanner::Lexer;
 use naijascript::syntax::token::SpannedToken;
 
-/// Command line arguments for the NaijaScript interpreter.
+// Command line arguments for the NaijaScript interpreter.
 #[derive(Debug, ClapParser)]
 #[command(
     about = "Scripting language wey you fit use learn, run things, and catch cruise.",
@@ -31,9 +31,9 @@ struct Cli {
     interactive: bool,
 }
 
-/// Entry point for the NaijaScript CLI.
-///
-/// Parses command line arguments and dispatches to the appropriate mode (eval, script, REPL, stdin).
+// Entry point for the NaijaScript CLI.
+//
+// Parses command line arguments and dispatches to the appropriate mode (eval, script, REPL, stdin).
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -50,7 +50,7 @@ fn main() -> ExitCode {
     }
 }
 
-/// Run source code from a &str, with full diagnostics and semantic analysis.
+// Run source code from a &str, with full diagnostics and semantic analysis.
 fn run_source(filename: &str, src: &str) -> ExitCode {
     let mut lexer = Lexer::new(src);
     let tokens: Vec<SpannedToken> = (&mut lexer).collect();
@@ -104,7 +104,7 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Runs a script file from disk.
+// Runs a script file from disk.
 fn run_file(script: &str) -> ExitCode {
     let stem = script.split_once('.').map_or(script, |(s, _)| s);
     if !(script.ends_with(".ns") || script.ends_with(".naija")) {
@@ -125,7 +125,7 @@ fn run_file(script: &str) -> ExitCode {
     run_source(script, &source)
 }
 
-/// Reads code from standard input and runs it as a script.
+// Reads code from standard input and runs it as a script.
 fn run_stdin() -> ExitCode {
     let mut buffer = String::new();
     if io::stdin().read_to_string(&mut buffer).is_err() {
@@ -135,7 +135,7 @@ fn run_stdin() -> ExitCode {
     run_source("<stdin>", &buffer)
 }
 
-/// Starts the interactive Read-Eval-Print Loop (REPL).
+// Starts the interactive Read-Eval-Print Loop (REPL).
 fn run_repl() -> ExitCode {
     println!("NaijaScript REPL (type 'exit' or Ctrl+D to comot)");
     let stdin = io::stdin();
