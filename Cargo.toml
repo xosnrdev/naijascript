@@ -54,3 +54,6 @@ split-debuginfo = "packed"  # generates a separate *.dwp/*.dSYM so the binary ca
 strip = "symbols"           # See split-debuginfo - allows us to drop the size by ~65%
 incremental = true          # Improves re-compile times
 
+[profile.bench]
+inherits = "release"
+panic = "unwind"
