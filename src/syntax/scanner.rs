@@ -96,9 +96,7 @@ impl<'input> Lexer<'input> {
                         LexError::UnexpectedChar.as_str(),
                         vec![Label {
                             span: start..self.pos + char_len,
-                            message: Cow::Borrowed(
-                                "I no sabi dis character. You fit use unicode as string",
-                            ),
+                            message: Cow::Borrowed("I no sabi dis character"),
                         }],
                     );
                     // Skip the entire Unicode character to avoid splitting it across byte boundaries
@@ -280,7 +278,7 @@ impl<'input> Lexer<'input> {
                             LexError::InvalidStringEscape.as_str(),
                             vec![Label {
                                 span: end..end + 2,
-                                message: Cow::Borrowed("Dis escape no correct"),
+                                message: Cow::Borrowed("Dis escape character no valid"),
                             }],
                         );
                         // Append the invalid escape character
@@ -401,7 +399,7 @@ impl<'input> Lexer<'input> {
                 LexError::InvalidIdentifier.as_str(),
                 vec![Label {
                     span: start..id_start,
-                    message: Cow::Borrowed("Identifier must start with letter"),
+                    message: Cow::Borrowed("Identifier must start with letter or underscore"),
                 }],
             );
             let num = &self.src[start..id_start];
