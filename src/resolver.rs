@@ -336,7 +336,7 @@ impl<'src> SemAnalyzer<'src> {
                 vec![
                     Label {
                         span: existing_func.span.clone(),
-                        message: Cow::Owned(format!("You don already define `{name}` for here",)),
+                        message: Cow::Owned(format!("You don already define `{name}` for here")),
                     },
                     Label {
                         span: span.clone(),
@@ -550,9 +550,7 @@ impl<'src> SemAnalyzer<'src> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Borrowed(
-                                        "You no fit add string and number together",
-                                    ),
+                                    message: Cow::Borrowed("You no fit add string and number"),
                                 }],
                             );
                         }
@@ -564,9 +562,7 @@ impl<'src> SemAnalyzer<'src> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Borrowed(
-                                        "You no fit add boolean values together",
-                                    ),
+                                    message: Cow::Borrowed("You no fit add boolean values"),
                                 }],
                             );
                         }
@@ -597,7 +593,7 @@ impl<'src> SemAnalyzer<'src> {
                                 vec![Label {
                                     span: span.clone(),
                                     message: Cow::Borrowed(
-                                        "You no fit do arithmetic with string and number together",
+                                        "You no fit do arithmetic with string and number",
                                     ),
                                 }],
                             );
