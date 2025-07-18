@@ -5,11 +5,9 @@ pub mod runtime;
 pub mod syntax;
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-#[cfg(target_arch = "wasm32")]
 use {
     crate::resolver::SemAnalyzer, crate::runtime::Interpreter, crate::syntax::parser::Parser,
-    crate::syntax::scanner::Lexer, crate::syntax::token::SpannedToken,
+    crate::syntax::scanner::Lexer, crate::syntax::token::SpannedToken, wasm_bindgen::prelude::*,
 };
 
 #[cfg(target_arch = "wasm32")]
