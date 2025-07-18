@@ -20,6 +20,7 @@ pub enum SemanticError {
     FunctionCallArity,
     ReturnOutsideFunction,
     DeadCodeAfterReturn,
+    ReservedKeywordAsIdentifier,
 }
 
 impl AsStr for SemanticError {
@@ -33,6 +34,7 @@ impl AsStr for SemanticError {
             SemanticError::FunctionCallArity => "Invalid parameter count",
             SemanticError::ReturnOutsideFunction => "Return statement outside function",
             SemanticError::DeadCodeAfterReturn => "Dead code after return statement",
+            SemanticError::ReservedKeywordAsIdentifier => "Use of reserved keyword as identifier",
         }
     }
 }
@@ -180,6 +182,20 @@ impl<'src> SemAnalyzer<'src> {
         match &self.stmts.nodes[sid.0] {
             // Handle "make variable get expression" statements
             Stmt::Assign { var, expr, span } => {
+                if Builtin::from_name(var).is_some() {
+                    self.errors.emit(
+                        span.clone(),
+                        Severity::Error,
+                        "semantic",
+                        SemanticError::ReservedKeywordAsIdentifier.as_str(),
+                        vec![Label {
+                            span: span.clone(),
+                            message: Cow::Owned(format!(
+                                "`{var}` dey reserved, you no fit use am as variable name",
+                            )),
+                        }],
+                    );
+                }
                 // We only want to prevent redeclaring a variable in the same block,
                 // so we check just the current (innermost) scope for duplicates
                 if let Some((.., orig_span)) = self
@@ -255,6 +271,20 @@ impl<'src> SemAnalyzer<'src> {
                 self.check_block(*block);
             }
             Stmt::FunctionDef { name, params, body, span } => {
+                if Builtin::from_name(name).is_some() {
+                    self.errors.emit(
+                        span.clone(),
+                        Severity::Error,
+                        "semantic",
+                        SemanticError::ReservedKeywordAsIdentifier.as_str(),
+                        vec![Label {
+                            span: span.clone(),
+                            message: Cow::Owned(format!(
+                                "`{name}` dey reserved, you no fit use am as function name",
+                            )),
+                        }],
+                    );
+                }
                 self.check_function_def(name, *params, *body, span);
             }
             Stmt::Return { expr, span } => {
@@ -320,6 +350,20 @@ impl<'src> SemAnalyzer<'src> {
         // Check for duplicate parameter names
         let mut seen_params = HashSet::new();
         for param_name in &param_list.params {
+            if Builtin::from_name(param_name).is_some() {
+                self.errors.emit(
+                    span.clone(),
+                    Severity::Error,
+                    "semantic",
+                    SemanticError::ReservedKeywordAsIdentifier.as_str(),
+                    vec![Label {
+                        span: span.clone(),
+                        message: Cow::Owned(format!(
+                            "`{param_name}` dey reserved, you no fit use am as parameter name",
+                        )),
+                    }],
+                );
+            }
             if !seen_params.insert(param_name) {
                 self.errors.emit(
                     span.clone(),

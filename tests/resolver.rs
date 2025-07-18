@@ -189,3 +189,18 @@ fn test_duplicate_function_in_same_block() {
         SemanticError::DuplicateIdentifier
     );
 }
+
+#[test]
+fn test_reserved_keyword_as_variable_name() {
+    assert_resolve!("make shout get 1", SemanticError::ReservedKeywordAsIdentifier);
+}
+
+#[test]
+fn test_reserved_keyword_as_function_name() {
+    assert_resolve!("do shout() start end", SemanticError::ReservedKeywordAsIdentifier);
+}
+
+#[test]
+fn test_reserved_keyword_as_parameter_name() {
+    assert_resolve!("do foo(shout) start end", SemanticError::ReservedKeywordAsIdentifier);
+}
