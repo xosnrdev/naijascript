@@ -157,7 +157,7 @@ impl<'src> SemAnalyzer<'src> {
                     SemanticError::DeadCodeAfterReturn.as_str(),
                     vec![Label {
                         span: span.clone(),
-                        message: Cow::Borrowed("Dis code no go run because you don already return"),
+                        message: Cow::Borrowed("Code after return statement dey unreachable"),
                     }],
                 );
             }
@@ -213,7 +213,9 @@ impl<'src> SemAnalyzer<'src> {
                         vec![
                             Label {
                                 span: (*orig_span).clone(),
-                                message: Cow::Borrowed("First time you declare am here"),
+                                message: Cow::Owned(format!(
+                                    "You don already declare `{var}` for here",
+                                )),
                             },
                             Label {
                                 span: span.clone(),
@@ -244,7 +246,7 @@ impl<'src> SemAnalyzer<'src> {
                         SemanticError::AssignmentToUndeclared.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Borrowed("This variable never dey before"),
+                            message: Cow::Borrowed("You never declare dis variable before"),
                         }],
                     );
                 }
@@ -334,7 +336,7 @@ impl<'src> SemAnalyzer<'src> {
                 vec![
                     Label {
                         span: existing_func.span.clone(),
-                        message: Cow::Borrowed("First time you define am here"),
+                        message: Cow::Owned(format!("You don already define `{name}` for here",)),
                     },
                     Label {
                         span: span.clone(),
@@ -424,7 +426,7 @@ impl<'src> SemAnalyzer<'src> {
                 SemanticError::ReturnOutsideFunction.as_str(),
                 vec![Label {
                     span: span.clone(),
-                    message: Cow::Borrowed("Return statement must be inside function body"),
+                    message: Cow::Borrowed("You fit only use `return` inside function"),
                 }],
             );
         } else {
@@ -460,7 +462,7 @@ impl<'src> SemAnalyzer<'src> {
                                 vec![Label {
                                     span: span.clone(),
                                     message: Cow::Borrowed(
-                                        "Function dey return different types for different paths",
+                                        "Return types for dis function no match",
                                     ),
                                 }],
                             );
@@ -499,7 +501,7 @@ impl<'src> SemAnalyzer<'src> {
                 SemanticError::TypeMismatch.as_str(),
                 vec![Label {
                     span,
-                    message: Cow::Borrowed("Condition dey expect boolean value or dynamic type"),
+                    message: Cow::Borrowed("Condition for here suppose be true or false"),
                 }],
             );
         }
@@ -523,7 +525,7 @@ impl<'src> SemAnalyzer<'src> {
                         SemanticError::UndeclaredIdentifier.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Borrowed("Dis variable never dey before"),
+                            message: Cow::Borrowed("You never declare dis variable before"),
                         }],
                     );
                 }
@@ -563,6 +565,52 @@ impl<'src> SemAnalyzer<'src> {
                                 vec![Label {
                                     span: span.clone(),
                                     message: Cow::Borrowed(
+                                        "You no fit add boolean values together",
+                                    ),
+                                }],
+                            );
+                        }
+                        _ => {}
+                    },
+                    BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => match (l, r) {
+                        (Some(VarType::Number), Some(VarType::Number)) => {}
+                        (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
+                        (Some(VarType::String), Some(VarType::String)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::InvalidStringOperation.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed("You no fit do arithmetic with strings"),
+                                }],
+                            );
+                        }
+                        (Some(VarType::String), Some(VarType::Number))
+                        | (Some(VarType::Number), Some(VarType::String)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed(
+                                        "You no fit do arithmetic with string and number together",
+                                    ),
+                                }],
+                            );
+                        }
+                        (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed(
                                         "You no fit do arithmetic with boolean values",
                                     ),
                                 }],
@@ -570,54 +618,6 @@ impl<'src> SemAnalyzer<'src> {
                         }
                         _ => {}
                     },
-                    BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => {
-                        match (l, r) {
-                            (Some(VarType::Number), Some(VarType::Number)) => {}
-                            (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
-                            (Some(VarType::String), Some(VarType::String)) => {
-                                self.errors.emit(
-                                    span.clone(),
-                                    Severity::Error,
-                                    "semantic",
-                                    SemanticError::InvalidStringOperation.as_str(),
-                                    vec![Label {
-                                        span: span.clone(),
-                                        message: Cow::Borrowed(
-                                            "You no fit minus/times/divide/mod string for here",
-                                        ),
-                                    }],
-                                );
-                            }
-                            (Some(VarType::String), Some(VarType::Number))
-                            | (Some(VarType::Number), Some(VarType::String)) => {
-                                self.errors.emit(
-                                span.clone(),
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
-                                vec![Label {
-                                    span: span.clone(),
-                                    message: Cow::Borrowed("You no fit do arithmetic with string and number together"),
-                                }],
-                            );
-                            }
-                            (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
-                                self.errors.emit(
-                                    span.clone(),
-                                    Severity::Error,
-                                    "semantic",
-                                    SemanticError::TypeMismatch.as_str(),
-                                    vec![Label {
-                                        span: span.clone(),
-                                        message: Cow::Borrowed(
-                                            "You no fit do arithmetic with boolean values",
-                                        ),
-                                    }],
-                                );
-                            }
-                            _ => {}
-                        }
-                    }
                     BinOp::Eq | BinOp::Gt | BinOp::Lt => match (l, r) {
                         (Some(VarType::Number), Some(VarType::Number)) => {}
                         (Some(VarType::String), Some(VarType::String)) => {}
@@ -632,7 +632,7 @@ impl<'src> SemAnalyzer<'src> {
                                 vec![Label {
                                     span: span.clone(),
                                     message: Cow::Borrowed(
-                                        "Comparison operators dey only work with numbers, strings, or booleans",
+                                        "You fit only compare numbers, strings, or booleans",
                                     ),
                                 }],
                             );
@@ -650,7 +650,7 @@ impl<'src> SemAnalyzer<'src> {
                                 vec![Label {
                                     span: span.clone(),
                                     message: Cow::Borrowed(
-                                        "Logical operators dey only work with boolean values",
+                                        "Logical operators fit only work with boolean values",
                                     ),
                                 }],
                             );
@@ -670,7 +670,7 @@ impl<'src> SemAnalyzer<'src> {
                         SemanticError::TypeMismatch.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Borrowed("You fit only use `not` for boolean values"),
+                            message: Cow::Borrowed("You fit only use `not` with boolean"),
                         }],
                     );
                 }
@@ -694,7 +694,7 @@ impl<'src> SemAnalyzer<'src> {
                                     vec![Label {
                                         span: span.clone(),
                                         message: Cow::Owned(format!(
-                                            "`{}` expect {} parameters but you give {}",
+                                            "Function `{}` expect {} arguments but you pass {}",
                                             func_name,
                                             builtin.arity(),
                                             arg_list.args.len()
@@ -729,9 +729,7 @@ impl<'src> SemAnalyzer<'src> {
                                 SemanticError::UndeclaredIdentifier.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Owned(format!(
-                                        "Function `{func_name}` never dey before"
-                                    )),
+                                    message: Cow::Borrowed("You never define dis function before"),
                                 }],
                             );
                         }
