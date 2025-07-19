@@ -574,14 +574,44 @@ fn self_uninstall(yes: bool) -> Result<(), String> {
     #[cfg(windows)]
     {
         if let Some(home) = dirs::home_dir() {
-            let symlink_path = home.join(r".naijaup\bin\naija.exe");
+            let local_bin = home.join(r".naijaup\bin");
+            let symlink_path = local_bin.join(r"\naija.exe");
             let result = remove_if_exists(&symlink_path).map_err(std::io::Error::other);
             print_removal_result(result, &symlink_path);
+            remove_bin_dir_from_path(&local_bin);
         }
     }
     print_removal_result(fs::remove_file(&exe), &exe);
     print_success!("E don finish! Naijaup and all NaijaScript don comot.");
     Ok(())
+}
+
+#[cfg(windows)]
+fn remove_bin_dir_from_path(local_bin: &std::path::Path) {
+    use std::env;
+    use std::process::Command;
+
+    let bin_dir = local_bin.to_string_lossy();
+    let path = match env::var("PATH") {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let new_path: String = path
+        .split(';')
+        .filter(|p| !p.trim().eq_ignore_ascii_case(&bin_dir))
+        .collect::<Vec<_>>()
+        .join(";");
+
+    if new_path != path {
+        match Command::new("setx").arg("PATH").arg(&new_path).status() {
+            Ok(s) if s.success() => print_success!(
+                "I don commot {bin_dir} from your PATH. Restart your terminal to see changes."
+            ),
+            _ => print_warn!(
+                "I no fit commot {bin_dir} from your PATH automatically. Try remove am manually from Environment Variables."
+            ),
+        }
+    }
 }
 
 fn fetch_available_versions(client: &reqwest::blocking::Client) -> Result<Vec<String>, String> {
