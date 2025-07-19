@@ -154,21 +154,29 @@ fn read_trimmed_file(path: &Path) -> Option<String> {
     None
 }
 
-/// Extract all tag_name values from a GitHub releases JSON string using a static regex.
-/// This is much faster and lighter than serde_json for flat fields, but will break if the API changes.
+// Extract tag names that have a matching binary asset in the JSON response.
 fn extract_tag_names(json: &str) -> Vec<String> {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r#"tag_name"\s*:\s*"([^"]+)""#).unwrap());
+    let (os, arch) = get_platform();
+    let ext = archive_ext();
+    let target = format!("{arch}-{os}");
+
     re.captures_iter(json)
-        .filter_map(|cap| cap.get(1).map(|m| m.as_str().trim_start_matches('v').to_owned()))
+        .filter_map(|cap| {
+            let tag = cap.get(1)?.as_str();
+            let asset = format!("naija-{tag}-{target}.{ext}");
+            json.contains(&asset).then(|| tag.trim_start_matches('v').to_owned())
+        })
         .collect()
 }
 
 fn fetch_latest_version_tag(client: &reqwest::blocking::Client) -> Result<String, String> {
     let url = &format!("https://api.github.com/repos/{REPO}/releases/latest");
     let resp = client.get(url).send().map_err(report_err!("Wahala! I no fit reach GitHub"))?;
-    if !resp.status().is_success() {
-        return Err(format!("Wahala! GitHub no gree (status: {})", resp.status()));
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("Wahala! GitHub no gree (status: {status})"));
     }
     let text = resp.text().map_err(report_err!("Wahala! I no fit read GitHub response"))?;
     extract_tag_names(&text).into_iter().next().ok_or_else(|| {
@@ -372,7 +380,7 @@ fn download_and_install(version: &str, vdir: &Path) -> Result<(), String> {
     let ext = archive_ext();
     let bin_name = bin_name();
     let target = format!("{arch}-{os}");
-    let archive_name = format!("{bin_name}-{version_tag}-{target}.{ext}");
+    let archive_name = format!("naija-{version_tag}-{target}.{ext}");
     let url = format!("https://github.com/{REPO}/releases/download/{version_tag}/{archive_name}");
     print_info!("I dey download NaijaScript from: {url}");
     let client = reqwest::blocking::Client::builder()
