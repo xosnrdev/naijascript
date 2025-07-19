@@ -574,11 +574,10 @@ fn self_uninstall(yes: bool) -> Result<(), String> {
     #[cfg(windows)]
     {
         if let Some(home) = dirs::home_dir() {
-            let local_bin = home.join(r".naijaup\bin");
-            let symlink_path = local_bin.join(r"\naija.exe");
+            let symlink_path = home.join(r".naijaup\bin\naija.exe");
             let result = remove_if_exists(&symlink_path).map_err(std::io::Error::other);
             print_removal_result(result, &symlink_path);
-            remove_bin_dir_from_path(&local_bin);
+            remove_bin_dir_from_path(symlink_path.parent().unwrap());
         }
     }
     print_removal_result(fs::remove_file(&exe), &exe);
