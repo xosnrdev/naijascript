@@ -600,7 +600,7 @@ fn fetch_available_versions(client: &reqwest::blocking::Client) -> Result<Vec<St
     Ok(versions)
 }
 
-// Create a symlink for the default 'naija' binary to enable running 'naija' from anywhere in the shell.
+// Create a symlink for the default `naija` binary to enable running `naija` from anywhere in the shell.
 fn update_default_symlink(version: &str) -> Result<(), String> {
     let norm_version = normalize_version(version);
     let vdir = versions_dir().join(&norm_version);
@@ -622,7 +622,7 @@ fn update_default_symlink(version: &str) -> Result<(), String> {
         symlink(&bin_path, &symlink_path)
             .map_err(report_err!("Wahala! I no fit create symlink"))?;
         print_info!("I don set symlink: {} -> {}", symlink_path.display(), bin_path.display());
-        print_info!("Make sure ~/.local/bin dey your PATH to use 'naija' directly.");
+        print_info!("Make sure ~/.local/bin dey your PATH to use `naija` directly.");
     }
     #[cfg(windows)]
     {
@@ -641,18 +641,41 @@ fn update_default_symlink(version: &str) -> Result<(), String> {
                     symlink_path.display(),
                     bin_path.display()
                 );
-                print_info!(
-                    "Make sure {} dey your PATH to use 'naija' directly.",
+                add_bin_dir_to_path(&local_bin);
+            }
+            _ => {
+                print_warn!(
+                    "I no fit create symlink for {}. Try run `naijaup` as administrator or add {} to your PATH manually.",
+                    symlink_path.display(),
                     local_bin.display()
                 );
-            }
-            Err(e) => {
-                print_warn!("I no fit create symlink on Windows: {e}");
-                print_info!("Add this to your PATH to use 'naija': {}", vdir.display());
             }
         }
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn add_bin_dir_to_path(local_bin: &std::path::Path) {
+    use std::env;
+    use std::process::Command;
+
+    let bin_dir = local_bin.to_string_lossy();
+    if env::var("PATH").is_ok_and(|p| p.split(';').any(|d| d.eq_ignore_ascii_case(&bin_dir))) {
+        print_info!("{bin_dir} already dey your PATH.");
+        return;
+    }
+    let new_path = env::var("PATH")
+        .map(|p| if p.ends_with(';') { format!("{p}{bin_dir}") } else { format!("{p};{bin_dir}") })
+        .unwrap_or_else(|_| bin_dir.to_string());
+    match Command::new("setx").arg("PATH").arg(&new_path).status() {
+        Ok(s) if s.success() => print_success!(
+            "I don add {bin_dir} to your PATH. Restart your terminal to use `naija` directly."
+        ),
+        _ => print_warn!(
+            "I no fit add {bin_dir} to your PATH automatically. Try add am manually or run `naijaup` as administrator."
+        ),
+    }
 }
 
 #[test]
