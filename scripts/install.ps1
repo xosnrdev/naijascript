@@ -30,7 +30,10 @@ catch {
 
 $assetUrl = "https://github.com/$repo/releases/download/$tag/${bin}-${tag}-$target.zip"
 $shaUrl = "https://github.com/$repo/releases/download/$tag/${bin}-${tag}-$target.sha256"
-$tmp = New-TemporaryFile | Split-Path
+
+# --- Create a unique temp directory ---
+$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+New-Item -ItemType Directory -Path $tmp | Out-Null
 Set-Location $tmp
 
 # --- Download Binary and Checksum ---
