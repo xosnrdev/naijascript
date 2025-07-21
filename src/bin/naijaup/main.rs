@@ -1,5 +1,8 @@
 //! The official Toolchain Manager for NaijaScript
 
+#[cfg(target_os = "windows")]
+mod windows;
+
 use std::borrow::Cow;
 use std::fs;
 use std::fs::File;
@@ -85,14 +88,14 @@ macro_rules! print_error {
 
 fn main() {
     if let Err(e) = run() {
-        print_error!("{}", e);
+        print_error!("{e}");
         std::process::exit(1);
     }
 }
 
 fn ensure_dir_exists(path: &Path) -> Result<(), String> {
     if !path.exists() {
-        fs::create_dir_all(path).map_err(report_err!("Wahala! I no fit create directory"))?;
+        fs::create_dir_all(path).map_err(report_err!("I no fit create directory"))?;
     }
     Ok(())
 }
@@ -121,12 +124,12 @@ fn remove_if_exists(path: &Path) -> Result<(), String> {
     let ft = meta.file_type();
     // Always use remove_file for symlinks to avoid following the link.
     if ft.is_symlink() {
-        fs::remove_file(path).map_err(report_err!("Wahala! I no fit remove symlink"))?;
+        fs::remove_file(path).map_err(report_err!("I no fit remove symlink"))?;
     } else if ft.is_dir() {
         // Only use remove_dir_all for real directories, never for symlinks.
-        fs::remove_dir_all(path).map_err(report_err!("Wahala! I no fit remove directory"))?;
+        fs::remove_dir_all(path).map_err(report_err!("I no fit remove directory"))?;
     } else {
-        fs::remove_file(path).map_err(report_err!("Wahala! I no fit remove file"))?;
+        fs::remove_file(path).map_err(report_err!("I no fit remove file"))?;
     }
     Ok(())
 }
@@ -173,15 +176,16 @@ fn extract_tag_names(json: &str) -> Vec<String> {
 
 fn fetch_latest_version_tag(client: &reqwest::blocking::Client) -> Result<String, String> {
     let url = &format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let resp = client.get(url).send().map_err(report_err!("Wahala! I no fit reach GitHub"))?;
-    let status = resp.status();
+    let res = client.get(url).send().map_err(report_err!("I no fit reach GitHub"))?;
+    let status = res.status();
     if !status.is_success() {
-        return Err(format!("Wahala! GitHub no gree (status: {status})"));
+        return Err(format!("Request fail with status: {status}. Try again later."));
     }
-    let text = resp.text().map_err(report_err!("Wahala! I no fit read GitHub response"))?;
-    extract_tag_names(&text).into_iter().next().ok_or_else(|| {
-        "Wahala! I no fit find latest version tag for NaijaScript. Maybe GitHub API don change or no release dey.".to_string()
-    })
+    let text = res.text().map_err(report_err!("I no fit read GitHub response"))?;
+    extract_tag_names(&text)
+        .into_iter()
+        .next()
+        .ok_or("I no fit process latest version tag.".to_string())
 }
 
 fn resolve_version<'a>(
@@ -209,19 +213,19 @@ fn run() -> Result<(), String> {
     let client = reqwest::blocking::Client::builder()
         .user_agent("naijaup")
         .build()
-        .map_err(report_err!("Wahala! I no fit create HTTP client"))?;
+        .map_err(report_err!("I no fit create HTTP client"))?;
     match &cli.command {
         Commands::Install { version } => {
             let resolved_version = resolve_version(version, &client)?;
             let norm_version = normalize_version(&resolved_version);
             let vdir = version_dir(&norm_version);
             if vdir.exists() {
-                print_info!("Oga, version {norm_version} don already dey your system.");
+                print_info!("Version {norm_version} don already dey your system.");
             } else {
                 ensure_dir_exists(&vdir)?;
                 match download_and_install(&norm_version, &vdir) {
                     Ok(()) => {
-                        print_success!("I don install NaijaScript version: {norm_version}")
+                        print_success!("I don install version: {norm_version}")
                     }
                     Err(e) => {
                         let _ = remove_if_exists(&vdir);
@@ -233,11 +237,11 @@ fn run() -> Result<(), String> {
         Commands::List => {
             let versions = installed_versions();
             if versions.is_empty() {
-                print_info!("Oga, you never install any version yet.");
+                print_info!("I no see any installed version.");
             } else {
                 print_success!("See all the versions wey you don install:");
                 for v in versions {
-                    print_info!("  - {}", v);
+                    print_info!("  - {v}");
                 }
             }
         }
@@ -247,14 +251,14 @@ fn run() -> Result<(), String> {
             let vdir = version_dir(&norm_version);
             if !vdir.exists() {
                 return Err(format!(
-                    "Oga, you never install version {norm_version} yet. Run 'naijaup install {norm_version}' first."
+                    "You never install version {norm_version} yet. Run `naijaup install {norm_version}` first"
                 ));
             }
             let current_default = find_toolchain_version().map(|v| normalize_version(&v));
             if let Some(def) = current_default
                 && def == norm_version
             {
-                print_success!("{norm_version} already be your default NaijaScript version");
+                print_success!("Version {norm_version} na default already.");
                 return Ok(());
             }
             let conf = config_file();
@@ -262,19 +266,19 @@ fn run() -> Result<(), String> {
                 ensure_dir_exists(parent)?;
             }
             fs::write(&conf, format!("default = \"{norm_version}\"\n"))
-                .map_err(report_err!("Wahala! I no fit write config"))?;
+                .map_err(report_err!("I no fit write config"))?;
             print_success!("I don set {norm_version} as your default NaijaScript version");
             update_default_symlink(&norm_version)?;
         }
         Commands::Run { script, args } => {
             let version = find_toolchain_version().ok_or_else(||
-                "Oga, I no sabi which NaijaScript version to use. Set default or add .naijascript-toolchain.".to_string()
+                "I no sabi the NaijaScript version to use. Set default or add .naijascript-toolchain.".to_string()
             )?;
             let norm_version = normalize_version(&version);
             let bin = version_bin_path(&norm_version);
             if !bin.exists() {
                 return Err(format!(
-                    "Wahala! I no see NaijaScript version {norm_version} for your system. Run 'naijaup install {norm_version}' first."
+                    "I no see NaijaScript version {norm_version} for your system. Run `naijaup install {norm_version}` first."
                 ));
             }
             let mut cmd = Command::new(bin);
@@ -286,7 +290,7 @@ fn run() -> Result<(), String> {
             match status {
                 Ok(s) if s.success() => {}
                 Ok(s) => std::process::exit(s.code().unwrap_or(1)),
-                Err(e) => return Err(format!("Wahala! I no fit run your script: {e}")),
+                Err(e) => return Err(format!("I no fit run your script: {e}")),
             }
         }
         Commands::Self_ { action } => match action {
@@ -297,7 +301,7 @@ fn run() -> Result<(), String> {
             let norm_version = normalize_version(version);
             let vdir = version_dir(&norm_version);
             if !vdir.exists() {
-                print_info!("Oga, version {norm_version} no dey your system.");
+                print_info!("Version {norm_version} no dey your system.");
                 return Ok(());
             }
             let default_version = find_toolchain_version().map(|v| normalize_version(&v));
@@ -305,7 +309,7 @@ fn run() -> Result<(), String> {
                 && def == norm_version
             {
                 print_warn!(
-                    "You wan uninstall your default version ({norm_version})? Set another default first."
+                    "You wan remove your default version ({norm_version})? Set another default first."
                 );
                 return Ok(());
             }
@@ -316,11 +320,11 @@ fn run() -> Result<(), String> {
             print_info!("I dey fetch all NaijaScript versions wey dey online...");
             let versions = fetch_available_versions(&client)?;
             if versions.is_empty() {
-                print_info!("I no see any version for online.");
+                print_info!("I no see any available version online.");
             } else {
-                print_success!("See all the versions wey dey online:");
+                print_success!("See all the available version online:");
                 for v in versions {
-                    print_info!("  - {}", v);
+                    print_info!("  - {v}");
                 }
             }
         }
@@ -386,15 +390,13 @@ fn download_and_install(version: &str, vdir: &Path) -> Result<(), String> {
     let client = reqwest::blocking::Client::builder()
         .user_agent("naijaup")
         .build()
-        .map_err(report_err!("Wahala! I no fit create HTTP client"))?;
-    let resp = client.get(&url).send().map_err(report_err!("Wahala! I no fit download"))?;
-    if !resp.status().is_success() {
-        return Err(format!(
-            "Wahala! I no see version {version} for online (status: {})",
-            resp.status()
-        ));
+        .map_err(report_err!("I no fit create HTTP client"))?;
+    let res = client.get(&url).send().map_err(report_err!("I no fit download"))?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("Request fail with status: {status}. Try again later."));
     }
-    let bytes = resp.bytes().map_err(report_err!("Wahala! I no fit read download"))?;
+    let bytes = res.bytes().map_err(report_err!("I no fit read download"))?;
     let out_path = vdir.join(bin_name);
     extract_bin_from_archive(&bytes, bin_name, &out_path, ext)?;
     Ok(())
@@ -410,34 +412,30 @@ fn extract_bin_from_archive(
     let mut found = false;
     if ext == "zip" {
         let reader = Cursor::new(bytes);
-        let mut zip =
-            zip::ZipArchive::new(reader).map_err(report_err!("Wahala! I no fit open zip"))?;
-        let mut file = zip
-            .by_name(bin_name)
-            .map_err(|e| format!("Wahala! I no see {bin_name} inside zip: {e}"))?;
-        let mut out = File::create(out_path).map_err(report_err!("Wahala! I no fit save file"))?;
-        io::copy(&mut file, &mut out).map_err(report_err!("Wahala! I no fit write file"))?;
+        let mut zip = zip::ZipArchive::new(reader).map_err(report_err!("I no fit open zip"))?;
+        let mut file =
+            zip.by_name(bin_name).map_err(|e| format!("I no see {bin_name} inside zip: {e}"))?;
+        let mut out = File::create(out_path).map_err(report_err!("I no fit save file"))?;
+        io::copy(&mut file, &mut out).map_err(report_err!("I no fit write file"))?;
         found = true;
     } else {
         let reader = Cursor::new(bytes);
         let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(reader));
-        for entry in archive.entries().map_err(report_err!("Wahala! I no fit read tar"))? {
-            let mut entry = entry.map_err(report_err!("Wahala! I no fit read tar entry"))?;
-            let path = entry.path().map_err(report_err!("Wahala! I no fit get tar path"))?;
+        for entry in archive.entries().map_err(report_err!("I no fit read tar"))? {
+            let mut entry = entry.map_err(report_err!("I no fit read tar entry"))?;
+            let path = entry.path().map_err(report_err!("I no fit get tar path"))?;
             if path.file_name().map(|n| n == bin_name).unwrap_or(false) {
-                let mut out =
-                    File::create(out_path).map_err(report_err!("Wahala! I no fit save file"))?;
-                io::copy(&mut entry, &mut out)
-                    .map_err(report_err!("Wahala! I no fit write file"))?;
+                let mut out = File::create(out_path).map_err(report_err!("I no fit save file"))?;
+                io::copy(&mut entry, &mut out).map_err(report_err!("I no fit write file"))?;
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
                     let mut perms = fs::metadata(out_path)
-                        .map_err(report_err!("Wahala! I no fit get permissions"))?
+                        .map_err(report_err!("I no fit get permissions"))?
                         .permissions();
                     perms.set_mode(0o755);
                     fs::set_permissions(out_path, perms)
-                        .map_err(report_err!("Wahala! I no fit set permissions"))?;
+                        .map_err(report_err!("I no fit set permissions"))?;
                 }
                 found = true;
                 break;
@@ -446,15 +444,13 @@ fn extract_bin_from_archive(
     }
     if !found {
         // Fail if the expected binary is not present, to avoid silent or partial installs.
-        return Err(format!("Wahala! I no see {bin_name} inside archive."));
+        return Err(format!("I no see {bin_name} inside archive."));
     }
     Ok(())
 }
 
 fn naijaup_dir() -> PathBuf {
-    dirs::home_dir()
-        .expect("Oga, I no fit find your home directory. Naijaup need am to work.")
-        .join(".naijaup")
+    dirs::home_dir().expect("I no fit find your home directory").join(".naijaup")
 }
 
 fn versions_dir() -> PathBuf {
@@ -496,62 +492,74 @@ fn self_update(client: &reqwest::blocking::Client) -> Result<(), String> {
         return Err("I no sabi your OS or architecture".to_string());
     }
     let tag_url = &format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let resp = client.get(tag_url).send().map_err(report_err!("Wahala! I no fit reach GitHub"))?;
-    if !resp.status().is_success() {
-        return Err(format!("Wahala! GitHub no gree (status: {})", resp.status()));
+    let res = client.get(tag_url).send().map_err(report_err!("I no fit reach GitHub"))?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("Request fail with status: {status}. Try again later."));
     }
-    let text = resp.text().map_err(report_err!("Wahala! I no fit read GitHub response"))?;
-    let tag = extract_tag_names(&text).into_iter().next().ok_or_else(|| {
-        "Wahala! I no fit find latest version tag for naijaup update. Maybe GitHub API don change or no release dey.".to_string()
-    })?;
+    let text = res.text().map_err(report_err!("I no fit read GitHub response"))?;
+    let tag = extract_tag_names(&text)
+        .into_iter()
+        .next()
+        .ok_or("I no fit process latest version for `naijaup` update.")?;
     let latest = tag.as_str();
     let current = env!("CARGO_PKG_VERSION");
     if latest == current {
-        print_success!("Naijaup already dey latest version ({})", current);
+        print_success!("Naijaup dey up-to-date (v{current})");
         return Ok(());
     }
-    print_info!("I dey update naijaup from {} to {}...", current, latest);
+    print_info!("I dey update naijaup from {current} to {latest}...");
     let ext = archive_ext();
     let bin_name = if os == "windows" { "naijaup.exe" } else { "naijaup" };
     let target = format!("{arch}-{os}");
     let archive_name = format!("{bin_name}-v{latest}-{target}.{ext}");
     let url = format!("https://github.com/{REPO}/releases/download/v{latest}/{archive_name}");
     print_info!("I dey download latest naijaup from: {url}");
-    let resp = client.get(&url).send().map_err(report_err!("Wahala! I no fit download"))?;
-    if !resp.status().is_success() {
-        return Err(format!(
-            "Wahala! I no see latest naijaup for online (status: {})",
-            resp.status()
-        ));
+    let res = client.get(&url).send().map_err(report_err!("I no fit download"))?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("Request fail with status: {status}. Try again later."));
     }
-    let bytes = resp.bytes().map_err(report_err!("Wahala! I no fit read download"))?;
-    let exe = std::env::current_exe().map_err(report_err!("Wahala! I no fit find myself"))?;
+    let bytes = res.bytes().map_err(report_err!("I no fit read Github response"))?;
+    let exe = std::env::current_exe().map_err(report_err!("I no fit find current exe"))?;
     let tmp_path = exe.with_extension("tmp");
     extract_bin_from_archive(&bytes, bin_name, &tmp_path, ext)?;
-    fs::rename(&tmp_path, &exe).map_err(report_err!("Wahala! I no fit update myself"))?;
-    print_success!("Naijaup don update finish! Try run am again.");
+    fs::rename(&tmp_path, &exe).map_err(report_err!("I no fit update to latest version"))?;
+    print_success!("I don update naijaup to version {latest}!");
     Ok(())
 }
 
 fn print_removal_result(result: std::io::Result<()>, path: &Path) {
+    let path = path.display();
     match result {
-        Ok(_) => print_success!("I don comot: {}", path.display()),
+        Ok(_) => print_success!("I don comot: {path}"),
         Err(e) => {
-            print_warn!(
-                "Omo, I no fit comot {} (abeg try remove am by yourself): {e}",
-                path.display()
-            )
+            print_warn!("I no fit comot {path} because of: {e}")
         }
     }
 }
 
+fn fetch_available_versions(client: &reqwest::blocking::Client) -> Result<Vec<String>, String> {
+    let url = &format!("https://api.github.com/repos/{REPO}/releases");
+    let res = client.get(url).send().map_err(report_err!("I no fit reach GitHub"))?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("Request fail with status: {status}. Try again later."));
+    }
+    let text = res.text().map_err(report_err!("I no fit read Github response"))?;
+    let versions = extract_tag_names(&text);
+    if versions.is_empty() {
+        println!("I no see any version available online.");
+    }
+    Ok(versions)
+}
+
 fn self_uninstall(yes: bool) -> Result<(), String> {
     let home = naijaup_dir();
-    let exe = std::env::current_exe()
-        .map_err(|e| format!("Oga, I no fit find where naijaup dey run from: {e}"))?;
+    let exe = std::env::current_exe().map_err(report_err!("I no fit find path"))?;
     if !yes {
         print!(
-            "\x1b[33m[warn]\x1b[0m Oga, this one go comot ALL NaijaScript versions, config, and naijaup itself. You sure? [y/N]: "
+            "\x1b[33m[warn]\x1b[0m You sure say you wan uninstall NaijaScript? You no fit undo dis action. Type 'y' or 'yes' to confirm: "
         );
         io::stdout().flush().ok();
         let mut input = String::new();
@@ -574,64 +582,49 @@ fn self_uninstall(yes: bool) -> Result<(), String> {
     #[cfg(windows)]
     {
         if let Some(home) = dirs::home_dir() {
-            let symlink_path = home.join(r".naijaup\bin\naija.exe");
-            let result = remove_if_exists(&symlink_path).map_err(std::io::Error::other);
-            print_removal_result(result, &symlink_path);
+            let bin_dir = home.join(r".naijaup\bin");
+            let symlink_path = bin_dir.join("naija.exe");
+            for (result, path) in [
+                (remove_if_exists(&symlink_path).map_err(std::io::Error::other), &symlink_path),
+                (windows::remove_from_path(&bin_dir).map_err(std::io::Error::other), &bin_dir),
+            ] {
+                print_removal_result(result, path);
+            }
         }
     }
     print_removal_result(fs::remove_file(&exe), &exe);
-    print_success!("E don finish! Naijaup and all NaijaScript don comot.");
+    print_success!("I don comot NaijaScript from your system. Try restart your shell.");
     Ok(())
 }
 
-fn fetch_available_versions(client: &reqwest::blocking::Client) -> Result<Vec<String>, String> {
-    let url = &format!("https://api.github.com/repos/{REPO}/releases");
-    let resp = client.get(url).send().map_err(report_err!("Wahala! I no fit reach GitHub"))?;
-    if !resp.status().is_success() {
-        return Err(format!("Wahala! GitHub no gree (status: {})", resp.status()));
-    }
-    let text = resp.text().map_err(report_err!("Wahala! I no fit read GitHub response"))?;
-    let versions = extract_tag_names(&text);
-    if versions.is_empty() {
-        println!(
-            "Oga, I no fit find any version for GitHub releases. Maybe dem change API or no release dey."
-        );
-    }
-    Ok(versions)
-}
-
-// Create a symlink for the default 'naija' binary to enable running 'naija' from anywhere in the shell.
+// Create a symlink for the default `naija` binary to enable running `naija` from anywhere in the shell.
 fn update_default_symlink(version: &str) -> Result<(), String> {
     let norm_version = normalize_version(version);
     let vdir = versions_dir().join(&norm_version);
     let bin_path = vdir.join(bin_name());
     if !bin_path.exists() {
         // Avoid creating a symlink to a missing binary, which would break the user's PATH and lead to hard-to-debug errors.
-        return Err(format!("Wahala! I no see binary for version {norm_version}."));
+        return Err(format!("I no see binary for version {norm_version}."));
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::symlink;
-        let home = dirs::home_dir()
-            .ok_or_else(|| "Oga, I no fit find your home directory.".to_string())?;
+        let home = dirs::home_dir().ok_or("I no fit find your home directory.")?;
         let local_bin = home.join(".local/bin");
         ensure_dir_exists(&local_bin)?;
         let symlink_path = local_bin.join("naija");
         remove_if_exists(&symlink_path)?;
         // Always recreate the symlink to ensure the default is up to date, even if the user previously set a different version.
-        symlink(&bin_path, &symlink_path)
-            .map_err(report_err!("Wahala! I no fit create symlink"))?;
+        symlink(&bin_path, &symlink_path).map_err(report_err!("I no fit create symlink"))?;
         print_info!("I don set symlink: {} -> {}", symlink_path.display(), bin_path.display());
-        print_info!("Make sure ~/.local/bin dey your PATH to use 'naija' directly.");
+        print_info!("Make sure ~/.local/bin dey your PATH to use `naija` directly.");
     }
     #[cfg(windows)]
     {
         use std::os::windows::fs::symlink_file;
-        let home = dirs::home_dir()
-            .ok_or_else(|| "Oga, I no fit find your home directory.".to_string())?;
-        let local_bin = home.join(".naijaup\\bin");
-        ensure_dir_exists(&local_bin)?;
-        let symlink_path = local_bin.join("naija.exe");
+        let bin_dir = naijaup_dir().join("bin");
+        ensure_dir_exists(&bin_dir)?;
+        let symlink_path = bin_dir.join("naija.exe");
         remove_if_exists(&symlink_path)?;
         // On Windows, symlink creation may fail if not run as admin or on some filesystems; handle gracefully and inform the user.
         match symlink_file(&bin_path, &symlink_path) {
@@ -641,14 +634,20 @@ fn update_default_symlink(version: &str) -> Result<(), String> {
                     symlink_path.display(),
                     bin_path.display()
                 );
-                print_info!(
-                    "Make sure {} dey your PATH to use 'naija' directly.",
-                    local_bin.display()
-                );
+                match windows::add_to_path(&bin_dir) {
+                    Ok(_) => print_info!(
+                        "I don add {} to your PATH. Try restart your shell.",
+                        bin_dir.display()
+                    ),
+                    Err(e) => print_warn!("I no fit add {} to your PATH: {}", bin_dir.display(), e),
+                }
             }
-            Err(e) => {
-                print_warn!("I no fit create symlink on Windows: {e}");
-                print_info!("Add this to your PATH to use 'naija': {}", vdir.display());
+            _ => {
+                print_warn!(
+                    "I no fit create symlink for {}. Try run `naijaup` as administrator or add {} to your PATH manually.",
+                    symlink_path.display(),
+                    bin_dir.display()
+                );
             }
         }
     }
