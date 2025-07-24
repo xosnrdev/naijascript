@@ -212,12 +212,12 @@ fn test_function_return_type_add_mismatch() {
 
 #[test]
 fn test_function_return_type_sub_mismatch() {
-    assert_resolve!(r#"do diff(a) start return a minus "b" end"#, SemanticError::TypeMismatch);
+    assert_resolve!(r#"do sub(a) start return a minus "b" end"#, SemanticError::TypeMismatch);
 }
 
 #[test]
 fn test_function_return_type_mod_mismatch() {
-    assert_resolve!(r#"do modulus(a) start return a mod "b" end"#, SemanticError::TypeMismatch);
+    assert_resolve!(r#"do rem(a) start return a mod "b" end"#, SemanticError::TypeMismatch);
 }
 
 #[test]
@@ -227,5 +227,5 @@ fn test_function_return_type_div_mismatch() {
 
 #[test]
 fn test_function_return_type_mul_mismatch() {
-    assert_resolve!(r#"do multiply(a) start return a times "b" end"#, SemanticError::TypeMismatch);
+    assert_resolve!(r#"do mul(a) start return a times "b" end"#, SemanticError::TypeMismatch);
 }
