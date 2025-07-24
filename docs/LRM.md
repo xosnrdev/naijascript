@@ -114,8 +114,8 @@ This section dey explain wetin each part of the language dey do when e dey run.
 
 ### 5.2. Expressions
 
-- **Arithmetic**: Expressions with `add`, `minus`, `times`, `divide`, and `mod` go perform the calculation and return a `Number`. If you try to divide by zero or use mod with zero, e go cause a runtime error.
-- **String Concatenation**: You fit use the `add` operator to join two strings together.
+- **Arithmetic**: Expressions with `add`, `minus`, `times`, `divide`, and `mod` fit only work if both sides be number, or dynamic wey go be number at runtime. If you try use string or boolean with any arithmetic operator (even if the other side na dynamic), e go cause semantic error before your code run.
+- **String Concatenation**: You fit use the `add` operator to join two strings together, but only if both sides na string. If you try join string with number or boolean, e go cause semantic error.
 - **Comparison**: Expressions with `na`, `pass`, and `small pass` go compare two values and return a boolean result (true or false) for use in conditions.
 - **Logical**: Expressions wey use `and`, `or`, and `not` dey join or change boolean values. Dem only work if the values na `true` or `false`. If you try use dem with number or string, e go cause a semantic error.
 - **Function Call**: You fit call a function by writing its name followed by arguments in parentheses. The function go run and return a value wey you fit use for further expressions.
