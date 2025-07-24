@@ -204,3 +204,28 @@ fn test_reserved_keyword_as_function_name() {
 fn test_reserved_keyword_as_parameter_name() {
     assert_resolve!("do foo(shout) start end", SemanticError::ReservedKeywordAsIdentifier);
 }
+
+#[test]
+fn test_function_return_type_add_mismatch() {
+    assert_resolve!(r#"do sum(a) start return a add "b" end"#, SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_function_return_type_sub_mismatch() {
+    assert_resolve!(r#"do diff(a) start return a minus "b" end"#, SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_function_return_type_mod_mismatch() {
+    assert_resolve!(r#"do modulus(a) start return a mod "b" end"#, SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_function_return_type_div_mismatch() {
+    assert_resolve!(r#"do div(a) start return a divide "b" end"#, SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_function_return_type_mul_mismatch() {
+    assert_resolve!(r#"do multiply(a) start return a times "b" end"#, SemanticError::TypeMismatch);
+}
