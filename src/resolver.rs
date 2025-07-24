@@ -540,7 +540,22 @@ impl<'src> SemAnalyzer<'src> {
                     BinOp::Add => match (l, r) {
                         (Some(VarType::Number), Some(VarType::Number))
                         | (Some(VarType::String), Some(VarType::String)) => {}
-                        (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
+                        (Some(VarType::Dynamic), Some(VarType::String))
+                        | (Some(VarType::String), Some(VarType::Dynamic))
+                        | (Some(VarType::Dynamic), Some(VarType::Number))
+                        | (Some(VarType::Number), Some(VarType::Dynamic)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed("You no fit add string and number"),
+                                }],
+                            );
+                        }
+                        (Some(VarType::Dynamic), Some(VarType::Dynamic)) => {}
                         (Some(VarType::String), Some(VarType::Number))
                         | (Some(VarType::Number), Some(VarType::String)) => {
                             self.errors.emit(
@@ -570,7 +585,26 @@ impl<'src> SemAnalyzer<'src> {
                     },
                     BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => match (l, r) {
                         (Some(VarType::Number), Some(VarType::Number)) => {}
-                        (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
+                        (Some(VarType::Dynamic), Some(VarType::Number))
+                        | (Some(VarType::Number), Some(VarType::Dynamic))
+                        | (Some(VarType::Dynamic), Some(VarType::Dynamic)) => {}
+                        (Some(VarType::Dynamic), Some(VarType::String))
+                        | (Some(VarType::String), Some(VarType::Dynamic))
+                        | (Some(VarType::Dynamic), Some(VarType::Bool))
+                        | (Some(VarType::Bool), Some(VarType::Dynamic)) => {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed(
+                                        "You fit only use arithmetic operators with numbers",
+                                    ),
+                                }],
+                            );
+                        }
                         (Some(VarType::String), Some(VarType::String)) => {
                             self.errors.emit(
                                 span.clone(),
