@@ -40,7 +40,7 @@ impl AsStr for SemanticError {
 }
 
 /// Represents the type of a variable in NaijaScript
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum VarType {
     Number,
     String,
@@ -404,6 +404,35 @@ impl<'src> SemAnalyzer<'src> {
             self.variable_scopes.last_mut().unwrap().push((param_name, VarType::Dynamic, span));
         }
 
+        // We collect return types from the function body, skipping nested functions.
+        let mut return_types = Vec::new();
+        self.collect_return_types(body, &mut return_types);
+
+        let unique_types: HashSet<VarType> = return_types.iter().copied().collect();
+        if unique_types.len() > 1 && !unique_types.contains(&VarType::Dynamic) {
+            self.errors.emit(
+                span.clone(),
+                Severity::Warning,
+                "semantic",
+                SemanticError::TypeMismatch.as_str(),
+                vec![Label {
+                    span: span.clone(),
+                    message: Cow::Borrowed("Return types for dis function no match"),
+                }],
+            );
+        }
+
+        // We want to set function return type to Dynamic if inconsistent, else to the single type
+        let func_scope = self.function_scopes.last_mut().unwrap();
+        if let Some(func_sig) = func_scope.iter_mut().find(|f| f.name == name) {
+            func_sig.has_return = !return_types.is_empty();
+            func_sig.return_type = if unique_types.len() == 1 {
+                Some(*unique_types.iter().next().unwrap())
+            } else {
+                Some(VarType::Dynamic)
+            };
+        }
+
         // Check function body using check_block to get dead code detection
         // Note: check_block will create its own scope, but that's fine for function bodies
         self.check_block(body);
@@ -413,6 +442,37 @@ impl<'src> SemAnalyzer<'src> {
 
         // Restore previous function context
         self.current_function = prev_function;
+    }
+
+    // Recursively walk statements in a block and collect return types for the current function only.
+    fn collect_return_types(&self, block_id: BlockId, types: &mut Vec<VarType>) {
+        let block = &self.blocks.nodes[block_id.0];
+        for &sid in &block.stmts {
+            match &self.stmts.nodes[sid.0] {
+                parser::Stmt::Return { expr, .. } => {
+                    let typ = if let Some(eid) = expr {
+                        self.infer_expr_type(*eid).unwrap_or(VarType::Dynamic)
+                    } else {
+                        VarType::Dynamic
+                    };
+                    types.push(typ);
+                }
+                parser::Stmt::If { then_b, else_b, .. } => {
+                    self.collect_return_types(*then_b, types);
+                    if let Some(eb) = else_b {
+                        self.collect_return_types(*eb, types);
+                    }
+                }
+                parser::Stmt::Loop { body, .. } => {
+                    self.collect_return_types(*body, types);
+                }
+                parser::Stmt::Block { block, .. } => {
+                    self.collect_return_types(*block, types);
+                }
+                parser::Stmt::FunctionDef { .. } => {}
+                _ => {}
+            }
+        }
     }
 
     // Validates return statements

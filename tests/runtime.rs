@@ -294,3 +294,31 @@ fn boolean_parameter_operations() {
         output: vec![Value::Str(Cow::Owned("YES".to_string()))]
     );
 }
+
+#[test]
+fn control_flow_else_return_type() {
+    assert_runtime!(
+        r#"
+        do join(a) start
+            if to say (true) start
+                return a add "baz"
+            end
+            return a
+        end
+        shout(join("foo"))
+        "#,
+        output: vec![Value::Str(Cow::Owned("foobaz".to_string()))]
+    );
+    assert_runtime!(
+        r#"
+        do join(a) start
+            if to say (false) start
+                return a add "baz"
+            end
+            return a
+        end
+        shout(join("baz"))
+        "#,
+        output: vec![Value::Str(Cow::Owned("baz".to_string()))]
+    );
+}
