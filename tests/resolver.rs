@@ -229,3 +229,18 @@ fn test_function_return_type_div_mismatch() {
 fn test_function_return_type_mul_mismatch() {
     assert_resolve!(r#"do mul(a) start return a times "b" end"#, SemanticError::TypeMismatch);
 }
+
+#[test]
+fn test_inconsistent_return_type() {
+    assert_resolve!(
+        r#"
+        do foo() start
+            if to say (true) start
+                return 1
+            end
+            return "two"
+        end
+        "#,
+        SemanticError::TypeMismatch
+    );
+}
