@@ -1,7 +1,7 @@
 //! The command line interface for NaijaScript interpreter.
 
 use std::fs;
-use std::io::{self, IsTerminal, Read, Write};
+use std::io::{self, IsTerminal, Read, Write, stdout};
 use std::process::ExitCode;
 
 use clap::Parser as ClapParser;
@@ -137,31 +137,34 @@ fn run_stdin() -> ExitCode {
 
 // Starts the interactive Read-Eval-Print Loop (REPL).
 fn run_repl() -> ExitCode {
+    use rustyline::DefaultEditor;
+    use rustyline::error::ReadlineError;
+
     println!("NaijaScript REPL (type 'exit' or Ctrl+D to comot)");
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
+    let mut rl = DefaultEditor::new().unwrap();
+
     loop {
-        print!("> ");
-        stdout.flush().ok();
-        let mut line = String::new();
-        let n = stdin.read_line(&mut line);
-        match n {
-            Ok(0) => {
-                println!("Oya, bye bye!");
-                break;
-            }
-            Ok(_) if line.trim() == "exit" => {
-                println!("Oya, bye bye!");
-                break;
-            }
-            Ok(_) => {
-                let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with("\x1b[") {
+        match rl.readline(">> ") {
+            Ok(line) => {
+                let _ = rl.add_history_entry(line.as_str());
+                let line = line.trim();
+                if line.is_empty() {
                     continue;
                 }
-                run_source("<repl>", trimmed);
+
+                let lower = line.to_lowercase();
+                if lower == "exit" {
+                    println!("Oya, bye bye!");
+                    break;
+                }
+                if lower == "clear" || lower == "cls" {
+                    print!("\x1B[2J\x1B[H");
+                    stdout().flush().ok();
+                    continue;
+                }
+                run_source("<repl>", line);
             }
-            Err(_) => {
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) | Err(_) => {
                 println!("Oya, bye bye!");
                 break;
             }
