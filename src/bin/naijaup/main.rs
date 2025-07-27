@@ -368,7 +368,7 @@ fn bin_name() -> &'static str {
 }
 
 fn archive_ext() -> &'static str {
-    if cfg!(windows) { "zip" } else { "tar.gz" }
+    if cfg!(windows) { "zip" } else { "tar.xz" }
 }
 
 fn version_tag(version: &str) -> String {
@@ -402,7 +402,7 @@ fn download_and_install(version: &str, vdir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// Extract the named binary from a release archive (zip or tar.gz) and write it to out_path.
+// Extract the named binary from a release archive (zip or tar.xz) and write it to out_path.
 fn extract_bin_from_archive(
     bytes: &[u8],
     bin_name: &str,

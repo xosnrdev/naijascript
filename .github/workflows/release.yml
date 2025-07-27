@@ -74,7 +74,7 @@ jobs:
           VERSION=${GITHUB_REF_NAME}
           NAME=${{ matrix.bin_target }}
           TARGET=${{ matrix.target }}
-          EXT=tar.gz
+          EXT=tar.xz
           if [ "${{ matrix.os }}" = "windows-latest" ]; then EXT=zip; fi
           ASSET_NAME="$NAME-$VERSION-$TARGET"
           echo "asset_name=$ASSET_NAME" >> $GITHUB_OUTPUT
@@ -91,7 +91,7 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           BIN_PATH=target/${{ matrix.target }}/release/${{ matrix.bin_target }}
-          tar -czf ${{ steps.assetinfo.outputs.asset_name }}.tar.gz -C $(dirname "$BIN_PATH") $(basename "$BIN_PATH")
+          tar -cJf ${{ steps.assetinfo.outputs.asset_name }}.tar.xz -C $(dirname "$BIN_PATH") $(basename "$BIN_PATH")
 
       - name: Generate checksum
         id: checksum
@@ -101,11 +101,11 @@ jobs:
             echo "artifacts=${{ steps.assetinfo.outputs.asset_name }}.zip ${{ steps.assetinfo.outputs.asset_name }}.sha256" >> $GITHUB_OUTPUT
           else
             if command -v sha256sum >/dev/null 2>&1; then
-              sha256sum ${{ steps.assetinfo.outputs.asset_name }}.tar.gz > ${{ steps.assetinfo.outputs.asset_name }}.sha256
+              sha256sum ${{ steps.assetinfo.outputs.asset_name }}.tar.xz > ${{ steps.assetinfo.outputs.asset_name }}.sha256
             else
-              shasum -a 256 ${{ steps.assetinfo.outputs.asset_name }}.tar.gz > ${{ steps.assetinfo.outputs.asset_name }}.sha256
+              shasum -a 256 ${{ steps.assetinfo.outputs.asset_name }}.tar.xz > ${{ steps.assetinfo.outputs.asset_name }}.sha256
             fi
-            echo "artifacts=${{ steps.assetinfo.outputs.asset_name }}.tar.gz ${{ steps.assetinfo.outputs.asset_name }}.sha256" >> $GITHUB_OUTPUT
+            echo "artifacts=${{ steps.assetinfo.outputs.asset_name }}.tar.xz ${{ steps.assetinfo.outputs.asset_name }}.sha256" >> $GITHUB_OUTPUT
           fi
 
       - name: Upload artifact

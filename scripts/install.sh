@@ -32,7 +32,7 @@ if [ -z "$LATEST_TAG" ]; then
   echo "Wahala! I no fit find latest version for GitHub. Check your network." >&2; exit 1
 fi
 
-ASSET_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/${BIN}-${LATEST_TAG}-$TARGET.tar.gz"
+ASSET_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/${BIN}-${LATEST_TAG}-$TARGET.tar.xz"
 SHA_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/${BIN}-${LATEST_TAG}-$TARGET.sha256"
 
 TMPDIR=$(mktemp -d)
@@ -51,14 +51,14 @@ echo "I dey check say archive correct..."
 if command -v sha256sum >/dev/null 2>&1; then
   sha256sum -c "${BIN}-${LATEST_TAG}-$TARGET.sha256" || { echo "Omo! Checksum no match. No try run am o." >&2; exit 1; }
 else
-  ACTUAL=$(shasum -a 256 "${BIN}-${LATEST_TAG}-$TARGET.tar.gz" | awk '{print $1}')
+  ACTUAL=$(shasum -a 256 "${BIN}-${LATEST_TAG}-$TARGET.tar.xz" | awk '{print $1}')
   EXPECTED=$(cut -d' ' -f1 "${BIN}-${LATEST_TAG}-$TARGET.sha256")
   [ "$ACTUAL" = "$EXPECTED" ] || { echo "Omo! Checksum no match. No try run am o." >&2; exit 1; }
 fi
 
 # --- Extract Archive ---
 echo "I dey extract $BIN..."
-tar -xzf "${BIN}-${LATEST_TAG}-$TARGET.tar.gz"
+tar -xzf "${BIN}-${LATEST_TAG}-$TARGET.tar.xz"
 chmod +x naijaup
 
 # --- Install ---
