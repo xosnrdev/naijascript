@@ -228,7 +228,7 @@ impl Diagnostics {
     // Build the caret `^^^` line that points to the error location.
     #[inline]
     fn render_caret_line(col: usize, len: usize, color: &str, plain_gutter: &str) -> String {
-        let mut caret_line = String::with_capacity(plain_gutter.len() + col + len + 8);
+        let mut caret_line = String::new();
         caret_line.push_str(plain_gutter);
         for _ in 0..(col - 1) {
             caret_line.push(' ');
@@ -251,8 +251,7 @@ impl Diagnostics {
         message: &str,
         plain_gutter: &str,
     ) -> String {
-        let mut label_line =
-            String::with_capacity(plain_gutter.len() + lbl_col + dash_count + message.len() + 16);
+        let mut label_line = String::new();
         label_line.push_str(plain_gutter);
         for _ in 0..(lbl_col - 1) {
             label_line.push(' ');
