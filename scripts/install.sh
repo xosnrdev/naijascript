@@ -41,7 +41,6 @@ cd "$TMPDIR"
 
 # --- Download Binary and Checksum ---
 echo "I dey download $BIN..."
-echo "ASSET_URL=$ASSET_URL"
 curl -fsSLO "$ASSET_URL"
 curl -fsSLO "$SHA_URL"
 
