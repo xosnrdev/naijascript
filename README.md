@@ -1,6 +1,8 @@
 # NaijaScript
 
-[![Web Playground](https://img.shields.io/badge/Web%20Playground-Run%20Online-brightgreen?logo=cloudflare&logoColor=white)](https://naijascript-playground.pages.dev)
+[![platform](https://img.shields.io/badge/platform-linux%20%7C%20macOS%20%7C%20windows-lightgrey)](#)
+[![Docs](https://img.shields.io/badge/docs-blue.svg?style=flat&logo=bookstack&logoColor=white)](https://xosnrdev.github.io/naijascript/)
+[![Playground](https://img.shields.io/badge/playground-online-brightgreen?logo=google-chrome&logoColor=white)](https://naijascript-playground.pages.dev)
 
 A scripting language interpreter inspired by the expressive linguistics of Naija (Nigerian Pidgin English).
 
