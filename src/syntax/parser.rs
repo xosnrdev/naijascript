@@ -135,8 +135,8 @@ impl AsStr for SyntaxError {
             SyntaxError::ExpectedNumberOrVariableOrLParen => {
                 "Missing number, variable, or left parenthesis"
             }
-            SyntaxError::TrailingTokensAfterProgramEnd => "Unexpected trailing tokens",
-            SyntaxError::ReservedKeyword => "Use of reserved keyword as identifier",
+            SyntaxError::TrailingTokensAfterProgramEnd => "Unexpected token",
+            SyntaxError::ReservedKeyword => "Use of reserved keyword",
         }
     }
 }
