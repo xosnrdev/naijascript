@@ -18,8 +18,7 @@ pub enum SemanticError {
     InvalidStringOperation,
     UndeclaredIdentifier,
     FunctionCallArity,
-    ReturnOutsideFunction,
-    DeadCodeAfterReturn,
+    UnreachableCode,
     ReservedKeywordAsIdentifier,
 }
 
@@ -32,8 +31,7 @@ impl AsStr for SemanticError {
             SemanticError::InvalidStringOperation => "Invalid string operation",
             SemanticError::UndeclaredIdentifier => "Undeclared identifier",
             SemanticError::FunctionCallArity => "Invalid parameter count",
-            SemanticError::ReturnOutsideFunction => "Return statement outside function",
-            SemanticError::DeadCodeAfterReturn => "Dead code after return statement",
+            SemanticError::UnreachableCode => "Unreachable code",
             SemanticError::ReservedKeywordAsIdentifier => "Use of reserved keyword as identifier",
         }
     }
@@ -154,10 +152,10 @@ impl<'src> SemAnalyzer<'src> {
                     span.clone(),
                     Severity::Warning,
                     "semantic",
-                    SemanticError::DeadCodeAfterReturn.as_str(),
+                    SemanticError::UnreachableCode.as_str(),
                     vec![Label {
                         span: span.clone(),
-                        message: Cow::Borrowed("Code after return statement dey unreachable"),
+                        message: Cow::Borrowed("Unreachable code after return statement"),
                     }],
                 );
             }
@@ -483,10 +481,10 @@ impl<'src> SemAnalyzer<'src> {
                 span.clone(),
                 Severity::Error,
                 "semantic",
-                SemanticError::ReturnOutsideFunction.as_str(),
+                SemanticError::UnreachableCode.as_str(),
                 vec![Label {
                     span: span.clone(),
-                    message: Cow::Borrowed("You fit only use `return` inside function"),
+                    message: Cow::Borrowed("You no fit use `return` outside function"),
                 }],
             );
         } else {
@@ -598,37 +596,6 @@ impl<'src> SemAnalyzer<'src> {
                 let r = self.infer_expr_type(*rhs);
                 match op {
                     BinOp::Add => match (l, r) {
-                        (Some(VarType::Number), Some(VarType::Number))
-                        | (Some(VarType::String), Some(VarType::String)) => {}
-                        (Some(VarType::Dynamic), Some(VarType::String))
-                        | (Some(VarType::String), Some(VarType::Dynamic))
-                        | (Some(VarType::Dynamic), Some(VarType::Number))
-                        | (Some(VarType::Number), Some(VarType::Dynamic)) => {
-                            self.errors.emit(
-                                span.clone(),
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
-                                vec![Label {
-                                    span: span.clone(),
-                                    message: Cow::Borrowed("You no fit add string and number"),
-                                }],
-                            );
-                        }
-                        (Some(VarType::Dynamic), Some(VarType::Dynamic)) => {}
-                        (Some(VarType::String), Some(VarType::Number))
-                        | (Some(VarType::Number), Some(VarType::String)) => {
-                            self.errors.emit(
-                                span.clone(),
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
-                                vec![Label {
-                                    span: span.clone(),
-                                    message: Cow::Borrowed("You no fit add string and number"),
-                                }],
-                            );
-                        }
                         (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
                             self.errors.emit(
                                 span.clone(),
@@ -641,6 +608,11 @@ impl<'src> SemAnalyzer<'src> {
                                 }],
                             );
                         }
+                        (Some(VarType::String), ..)
+                        | (.., Some(VarType::String))
+                        | (Some(VarType::Dynamic), ..)
+                        | (.., Some(VarType::Dynamic))
+                        | (Some(VarType::Number), Some(VarType::Number)) => {}
                         _ => {}
                     },
                     BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => match (l, r) {
@@ -854,14 +826,16 @@ impl<'src> SemAnalyzer<'src> {
                 let r = self.infer_expr_type(*rhs)?;
                 match op {
                     BinOp::Add => match (l, r) {
+                        (VarType::Bool, ..) | (.., VarType::Bool) => None,
+                        (VarType::String, ..) | (.., VarType::String) => Some(VarType::String),
+                        (VarType::Dynamic, ..) | (.., VarType::Dynamic) => {
+                            if l == VarType::Number || r == VarType::Number {
+                                Some(VarType::Number)
+                            } else {
+                                Some(VarType::String)
+                            }
+                        }
                         (VarType::Number, VarType::Number) => Some(VarType::Number),
-                        (VarType::String, VarType::String) => Some(VarType::String),
-                        (VarType::Dynamic, VarType::Dynamic)
-                        | (VarType::Dynamic, VarType::Number)
-                        | (VarType::Number, VarType::Dynamic) => Some(VarType::Number),
-                        (VarType::Dynamic, VarType::String)
-                        | (VarType::String, VarType::Dynamic) => Some(VarType::String),
-                        _ => None,
                     },
                     BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => match (l, r) {
                         (VarType::Number, VarType::Number) => Some(VarType::Number),

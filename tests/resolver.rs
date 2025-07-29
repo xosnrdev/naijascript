@@ -56,11 +56,6 @@ fn test_string_number_comparison() {
 }
 
 #[test]
-fn test_string_number_addition() {
-    assert_resolve!(r#"make x get "foo" add 1"#, SemanticError::TypeMismatch);
-}
-
-#[test]
 fn test_string_subtraction() {
     assert_resolve!(r#"make x get "foo" minus "bar""#, SemanticError::InvalidStringOperation);
 }
@@ -137,7 +132,7 @@ fn test_function_call_arity() {
 
 #[test]
 fn test_return_outside_function() {
-    assert_resolve!("return 42", SemanticError::ReturnOutsideFunction);
+    assert_resolve!("return 42", SemanticError::UnreachableCode);
 }
 
 #[test]
@@ -150,7 +145,7 @@ fn test_dead_code_after_return() {
             shout(x)
         end
         ",
-        SemanticError::DeadCodeAfterReturn
+        SemanticError::UnreachableCode
     );
 }
 
@@ -203,11 +198,6 @@ fn test_reserved_keyword_as_function_name() {
 #[test]
 fn test_reserved_keyword_as_parameter_name() {
     assert_resolve!("do foo(shout) start end", SemanticError::ReservedKeywordAsIdentifier);
-}
-
-#[test]
-fn test_function_return_type_add_mismatch() {
-    assert_resolve!(r#"do sum(a) start return a add "b" end"#, SemanticError::TypeMismatch);
 }
 
 #[test]

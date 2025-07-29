@@ -16,6 +16,19 @@ macro_rules! assert_runtime {
             "Expected no parse errors, got: {:?}",
             parse_errors.diagnostics
         );
+        let mut resolver = naijascript::resolver::SemAnalyzer::new(
+            &parser.stmt_arena,
+            &parser.expr_arena,
+            &parser.block_arena,
+            &parser.param_arena,
+            &parser.arg_arena,
+        );
+        resolver.analyze(root);
+        assert!(
+            !resolver.errors.has_errors(),
+            "Expected no semantic errors, got: {:?}",
+            resolver.errors.diagnostics
+        );
         let mut interp = Interpreter::new(
             &parser.stmt_arena,
             &parser.expr_arena,
@@ -320,5 +333,39 @@ fn control_flow_else_return_type() {
         shout(join("baz"))
         "#,
         output: vec![Value::Str(Cow::Owned("baz".to_string()))]
+    );
+}
+
+#[test]
+fn do_sum() {
+    assert_runtime!(
+        r#"
+        do sum(a) start
+            return a add 5
+        end
+        shout(sum(5))
+        "#,
+        output: vec![Value::Number(10.0)]
+    );
+}
+
+#[test]
+fn do_join() {
+    assert_runtime!(
+        r#"
+        do join(a) start
+            return a add "baz"
+        end
+        shout(join("foo"))
+        "#,
+        output: vec![Value::Str(Cow::Owned("foobaz".to_string()))]
+    );
+}
+
+#[test]
+fn do_dynamic_concatenation() {
+    assert_runtime!(
+        r#"shout("one" add 2)"#,
+        output: vec![Value::Str(Cow::Owned("one2".to_string()))]
     );
 }
