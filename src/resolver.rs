@@ -19,7 +19,7 @@ pub enum SemanticError {
     UndeclaredIdentifier,
     FunctionCallArity,
     UnreachableCode,
-    ReservedKeywordAsIdentifier,
+    ReservedKeyword,
 }
 
 impl AsStr for SemanticError {
@@ -32,7 +32,7 @@ impl AsStr for SemanticError {
             SemanticError::UndeclaredIdentifier => "Undeclared identifier",
             SemanticError::FunctionCallArity => "Invalid parameter count",
             SemanticError::UnreachableCode => "Unreachable code",
-            SemanticError::ReservedKeywordAsIdentifier => "Use of reserved keyword as identifier",
+            SemanticError::ReservedKeyword => "Use of reserved keyword",
         }
     }
 }
@@ -185,7 +185,7 @@ impl<'src> SemAnalyzer<'src> {
                         span.clone(),
                         Severity::Error,
                         "semantic",
-                        SemanticError::ReservedKeywordAsIdentifier.as_str(),
+                        SemanticError::ReservedKeyword.as_str(),
                         vec![Label {
                             span: span.clone(),
                             message: Cow::Owned(format!(
@@ -276,7 +276,7 @@ impl<'src> SemAnalyzer<'src> {
                         span.clone(),
                         Severity::Error,
                         "semantic",
-                        SemanticError::ReservedKeywordAsIdentifier.as_str(),
+                        SemanticError::ReservedKeyword.as_str(),
                         vec![Label {
                             span: span.clone(),
                             message: Cow::Owned(format!(
@@ -355,7 +355,7 @@ impl<'src> SemAnalyzer<'src> {
                     span.clone(),
                     Severity::Error,
                     "semantic",
-                    SemanticError::ReservedKeywordAsIdentifier.as_str(),
+                    SemanticError::ReservedKeyword.as_str(),
                     vec![Label {
                         span: span.clone(),
                         message: Cow::Owned(format!(

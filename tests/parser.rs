@@ -62,7 +62,7 @@ fn test_parse_loop_statement() {
 #[test]
 fn test_parse_missing_identifier_after_make() {
     let src = "make get 5";
-    assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
+    assert_parse!(src, SyntaxError::ReservedKeyword);
 }
 
 #[test]
@@ -140,7 +140,7 @@ fn test_parse_boolean_comparison() {
 #[test]
 fn test_reserved_keyword_as_identifier() {
     let src = "make make get 5";
-    assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
+    assert_parse!(src, SyntaxError::ReservedKeyword);
 }
 
 #[test]
@@ -182,13 +182,13 @@ fn test_parse_function_def_missing_end() {
 #[test]
 fn test_parse_function_def_keyword_as_param() {
     let src = "do foo(jasi) start end";
-    assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
+    assert_parse!(src, SyntaxError::ReservedKeyword);
 }
 
 #[test]
 fn test_parse_function_def_reserved_keyword_name() {
     let src = "do make() start end";
-    assert_parse!(src, SyntaxError::ReservedKeywordAsIdentifier);
+    assert_parse!(src, SyntaxError::ReservedKeyword);
 }
 
 #[test]

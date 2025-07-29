@@ -118,7 +118,7 @@ pub enum SyntaxError {
     ExpectedComparisonOperator,
     ExpectedNumberOrVariableOrLParen,
     TrailingTokensAfterProgramEnd,
-    ReservedKeywordAsIdentifier,
+    ReservedKeyword,
 }
 
 impl AsStr for SyntaxError {
@@ -136,7 +136,7 @@ impl AsStr for SyntaxError {
                 "Missing number, variable, or left parenthesis"
             }
             SyntaxError::TrailingTokensAfterProgramEnd => "Unexpected trailing tokens",
-            SyntaxError::ReservedKeywordAsIdentifier => "Use of reserved keyword as identifier",
+            SyntaxError::ReservedKeyword => "Use of reserved keyword as identifier",
         }
     }
 }
@@ -344,7 +344,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     self.cur.span.clone(),
                     Severity::Error,
                     "syntax",
-                    SyntaxError::ReservedKeywordAsIdentifier.as_str(),
+                    SyntaxError::ReservedKeyword.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
                         message: Cow::Owned(format!(
@@ -394,7 +394,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                             self.cur.span.clone(),
                             Severity::Error,
                             "syntax",
-                            SyntaxError::ReservedKeywordAsIdentifier.as_str(),
+                            SyntaxError::ReservedKeyword.as_str(),
                             vec![Label {
                                 span: self.cur.span.clone(),
                                 message: Cow::Owned(format!(
@@ -417,7 +417,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                         self.cur.span.clone(),
                         Severity::Error,
                         "syntax",
-                        SyntaxError::ReservedKeywordAsIdentifier.as_str(),
+                        SyntaxError::ReservedKeyword.as_str(),
                         vec![Label {
                             span: self.cur.span.clone(),
                             message: Cow::Owned(format!(
@@ -520,7 +520,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     self.cur.span.clone(),
                     Severity::Error,
                     "syntax",
-                    SyntaxError::ReservedKeywordAsIdentifier.as_str(),
+                    SyntaxError::ReservedKeyword.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
                         message: Cow::Owned(format!(
