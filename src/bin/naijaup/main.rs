@@ -420,7 +420,8 @@ fn extract_bin_from_archive(
         found = true;
     } else {
         let reader = Cursor::new(bytes);
-        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(reader));
+        let xz = xz2::read::XzDecoder::new(reader);
+        let mut archive = tar::Archive::new(xz);
         for entry in archive.entries().map_err(report_err!("I no fit read tar"))? {
             let mut entry = entry.map_err(report_err!("I no fit read tar entry"))?;
             let path = entry.path().map_err(report_err!("I no fit get tar path"))?;
