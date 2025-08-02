@@ -6,7 +6,7 @@ use crate::builtins::Builtin;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     Arena, ArgList, ArgListId, BinOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId, Stmt,
-    StmtId,
+    StmtId, UnaryOp,
 };
 
 /// Runtime errors that can occur during NaijaScript execution.
@@ -392,22 +392,21 @@ impl<'src> Runtime<'src> {
                     }
                 }
             }
-            Expr::Not { expr, .. } => {
+            Expr::Unary { op, expr, .. } => {
                 let v = self.eval_expr(*expr)?;
-                match v {
-                    Value::Bool(b) => Ok(Value::Bool(!b)),
-                    _ => unreachable!(
-                        "Semantic analysis should guarantee only valid boolean expressions"
-                    ),
-                }
-            }
-            Expr::UnaryMinus { expr, .. } => {
-                let v = self.eval_expr(*expr)?;
-                match v {
-                    Value::Number(n) => Ok(Value::Number(-n)),
-                    _ => unreachable!(
-                        "Semantic analysis should guarantee only valid numeric expressions"
-                    ),
+                match op {
+                    UnaryOp::Not => match v {
+                        Value::Bool(b) => Ok(Value::Bool(!b)),
+                        _ => unreachable!(
+                            "Semantic analysis should guarantee only valid boolean expressions"
+                        ),
+                    },
+                    UnaryOp::Minus => match v {
+                        Value::Number(n) => Ok(Value::Number(-n)),
+                        _ => unreachable!(
+                            "Semantic analysis should guarantee only valid numeric expressions"
+                        ),
+                    },
                 }
             }
             Expr::Call { callee, args, span } => {

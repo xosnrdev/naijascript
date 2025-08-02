@@ -6,7 +6,8 @@ use std::collections::HashSet;
 use crate::builtins::{Builtin, BuiltinReturnType};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
-    self, Arena, ArgList, BinOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId, Stmt, StmtId,
+    self, Arena, ArgList, BinOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId, Stmt,
+    StmtId, UnaryOp,
 };
 
 /// Represents the type of semantic errors that can occur
@@ -549,8 +550,7 @@ impl<'src> Resolver<'src> {
                 Expr::Bool(.., span) => span.clone(),
                 Expr::Var(.., span) => span.clone(),
                 Expr::Binary { span, .. } => span.clone(),
-                Expr::Not { span, .. } => span.clone(),
-                Expr::UnaryMinus { span, .. } => span.clone(),
+                Expr::Unary { span, .. } => span.clone(),
                 Expr::Call { span, .. } => span.clone(),
             };
             self.errors.emit(
@@ -721,38 +721,40 @@ impl<'src> Resolver<'src> {
                     },
                 }
             }
-            // Unary not requires a boolean operand or dynamic type
-            Expr::Not { expr, span } => {
+            Expr::Unary { op, expr, span } => {
                 self.check_expr(*expr);
                 let t = self.infer_expr_type(*expr);
-                if t != Some(VarType::Bool) && t != Some(VarType::Dynamic) {
-                    self.errors.emit(
-                        span.clone(),
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::TypeMismatch.as_str(),
-                        vec![Label {
-                            span: span.clone(),
-                            message: Cow::Borrowed("You fit only use `not` with boolean"),
-                        }],
-                    );
-                }
-            }
-            // Unary minus requires a numeric operand or dynamic type
-            Expr::UnaryMinus { expr, span } => {
-                self.check_expr(*expr);
-                let t = self.infer_expr_type(*expr);
-                if t != Some(VarType::Number) && t != Some(VarType::Dynamic) {
-                    self.errors.emit(
-                        span.clone(),
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::TypeMismatch.as_str(),
-                        vec![Label {
-                            span: span.clone(),
-                            message: Cow::Borrowed("You fit only use `minus` with number"),
-                        }],
-                    );
+                match op {
+                    // Unary not requires a boolean operand or dynamic type
+                    UnaryOp::Not => {
+                        if t != Some(VarType::Bool) && t != Some(VarType::Dynamic) {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed("You fit only use `not` with boolean"),
+                                }],
+                            );
+                        }
+                    }
+                    // Unary minus requires a numeric operand or dynamic type
+                    UnaryOp::Minus => {
+                        if t != Some(VarType::Number) && t != Some(VarType::Dynamic) {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed("You fit only use `minus` with number"),
+                                }],
+                            );
+                        }
+                    }
                 }
             }
             Expr::Call { callee, args, span } => {
@@ -874,13 +876,24 @@ impl<'src> Resolver<'src> {
                     },
                 }
             }
-            Expr::Not { expr, .. } => {
+            Expr::Unary { op, expr, .. } => {
                 let t = self.infer_expr_type(*expr)?;
-                if t == VarType::Bool { Some(VarType::Bool) } else { None }
-            }
-            Expr::UnaryMinus { expr, .. } => {
-                let t = self.infer_expr_type(*expr)?;
-                if t == VarType::Number { Some(VarType::Number) } else { None }
+                match op {
+                    UnaryOp::Not => {
+                        if t == VarType::Bool {
+                            Some(VarType::Bool)
+                        } else {
+                            None
+                        }
+                    }
+                    UnaryOp::Minus => {
+                        if t == VarType::Number {
+                            Some(VarType::Number)
+                        } else {
+                            None
+                        }
+                    }
+                }
             }
             Expr::Call { callee, .. } => match &self.exprs.nodes[callee.0] {
                 Expr::Var(func_name, ..) => {

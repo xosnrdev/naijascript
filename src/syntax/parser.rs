@@ -62,6 +62,13 @@ pub enum BinOp {
     Lt,     // "small pass" keyword (less than)
 }
 
+/// Unary operators for logical and arithmetic negation.
+#[derive(Debug)]
+pub enum UnaryOp {
+    Not,   // "not" keyword (logical negation)
+    Minus, // "-" for negation
+}
+
 /// Represents a statement in NaijaScript.
 #[derive(Debug)]
 pub enum Stmt<'src> {
@@ -92,10 +99,8 @@ pub enum Expr<'src> {
     Var(&'src str, Span),         // variable references
     // arithmetic/logical operations
     Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span },
-    // logical not
-    Not { expr: ExprId, span: Span },
-    // arithmetic negation
-    UnaryMinus { expr: ExprId, span: Span },
+    // logical negation
+    Unary { op: UnaryOp, expr: ExprId, span: Span },
     // Function call: <callee>(<args>?)
     Call { callee: ExprId, args: ArgListId, span: Span },
 }
@@ -801,12 +806,20 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             Token::Not => {
                 self.bump();
                 let expr = self.parse_expression(30); // Highest precedence for unary not
-                self.expr_arena.alloc(Expr::Not { expr, span: start..self.cur.span.end })
+                self.expr_arena.alloc(Expr::Unary {
+                    op: UnaryOp::Not,
+                    expr,
+                    span: start..self.cur.span.end,
+                })
             }
             Token::Minus => {
                 self.bump();
                 let expr = self.parse_expression(30); // Same high precedence as unary not
-                self.expr_arena.alloc(Expr::UnaryMinus { expr, span: start..self.cur.span.end })
+                self.expr_arena.alloc(Expr::Unary {
+                    op: UnaryOp::Minus,
+                    expr,
+                    span: start..self.cur.span.end,
+                })
             }
             Token::LParen => {
                 self.bump();
@@ -865,8 +878,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             Expr::Bool(.., span) => span.start,
             Expr::Var(.., span) => span.start,
             Expr::Binary { span, .. } => span.start,
-            Expr::Not { span, .. } => span.start,
-            Expr::UnaryMinus { span, .. } => span.start,
+            Expr::Unary { span, .. } => span.start,
             Expr::Call { span, .. } => span.start,
         };
 
