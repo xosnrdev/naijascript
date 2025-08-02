@@ -5,8 +5,8 @@ use std::borrow::Cow;
 use crate::builtins::Builtin;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
-    Arena, ArgList, ArgListId, BinOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId, Stmt,
-    StmtId, UnaryOp,
+    Arena, ArgList, ArgListId, BinaryOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId,
+    Stmt, StmtId, UnaryOp,
 };
 
 /// Runtime errors that can occur during NaijaScript execution.
@@ -284,7 +284,7 @@ impl<'src> Runtime<'src> {
             }
             Expr::Binary { op, lhs, rhs, span } => {
                 match op {
-                    BinOp::And => {
+                    BinaryOp::And => {
                         let l = self.eval_expr(*lhs)?;
                         if let Value::Bool(false) = l {
                             return Ok(Value::Bool(false)); // Short-circuit evaluation
@@ -297,7 +297,7 @@ impl<'src> Runtime<'src> {
                             ),
                         }
                     }
-                    BinOp::Or => {
+                    BinaryOp::Or => {
                         let l = self.eval_expr(*lhs)?;
                         if let Value::Bool(true) = l {
                             return Ok(Value::Bool(true)); // Short-circuit evaluation
@@ -315,10 +315,10 @@ impl<'src> Runtime<'src> {
                         let r = self.eval_expr(*rhs)?;
                         match (l, r) {
                             (Value::Number(lv), Value::Number(rv)) => match op {
-                                BinOp::Add => Ok(Value::Number(lv + rv)),
-                                BinOp::Minus => Ok(Value::Number(lv - rv)),
-                                BinOp::Times => Ok(Value::Number(lv * rv)),
-                                BinOp::Divide | BinOp::Mod => {
+                                BinaryOp::Add => Ok(Value::Number(lv + rv)),
+                                BinaryOp::Minus => Ok(Value::Number(lv - rv)),
+                                BinaryOp::Times => Ok(Value::Number(lv * rv)),
+                                BinaryOp::Divide | BinaryOp::Mod => {
                                     if rv == 0.0 {
                                         Err(RuntimeError {
                                             kind: RuntimeErrorKind::DivisionByZero,
@@ -326,35 +326,35 @@ impl<'src> Runtime<'src> {
                                         })
                                     } else {
                                         Ok(Value::Number(match op {
-                                            BinOp::Divide => lv / rv,
-                                            BinOp::Mod => lv % rv,
+                                            BinaryOp::Divide => lv / rv,
+                                            BinaryOp::Mod => lv % rv,
                                             _ => unreachable!(
                                                 "Unexpected binary operation for numbers"
                                             ),
                                         }))
                                     }
                                 }
-                                BinOp::Eq => Ok(Value::Bool(lv == rv)),
-                                BinOp::Gt => Ok(Value::Bool(lv > rv)),
-                                BinOp::Lt => Ok(Value::Bool(lv < rv)),
+                                BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
+                                BinaryOp::Gt => Ok(Value::Bool(lv > rv)),
+                                BinaryOp::Lt => Ok(Value::Bool(lv < rv)),
                                 _ => unreachable!("Unexpected op for numbers"),
                             },
                             (Value::Str(ls), Value::Str(rs)) => match op {
-                                BinOp::Add => {
+                                BinaryOp::Add => {
                                     let mut s = String::with_capacity(ls.len() + rs.len());
                                     s.push_str(&ls);
                                     s.push_str(&rs);
                                     Ok(Value::Str(Cow::Owned(s)))
                                 }
-                                BinOp::Eq => Ok(Value::Bool(ls == rs)),
-                                BinOp::Gt => Ok(Value::Bool(ls > rs)),
-                                BinOp::Lt => Ok(Value::Bool(ls < rs)),
+                                BinaryOp::Eq => Ok(Value::Bool(ls == rs)),
+                                BinaryOp::Gt => Ok(Value::Bool(ls > rs)),
+                                BinaryOp::Lt => Ok(Value::Bool(ls < rs)),
                                 _ => unreachable!(
                                     "Semantic analysis should guarantee only valid string operations"
                                 ),
                             },
                             (Value::Str(ls), Value::Number(n)) => match op {
-                                BinOp::Add => {
+                                BinaryOp::Add => {
                                     let num_str = n.to_string();
                                     let mut s = String::with_capacity(ls.len() + num_str.len());
                                     s.push_str(&ls);
@@ -366,7 +366,7 @@ impl<'src> Runtime<'src> {
                                 ),
                             },
                             (Value::Number(n), Value::Str(rs)) => match op {
-                                BinOp::Add => {
+                                BinaryOp::Add => {
                                     let num_str = n.to_string();
                                     let mut s = String::with_capacity(num_str.len() + rs.len());
                                     s.push_str(&num_str);
@@ -378,9 +378,9 @@ impl<'src> Runtime<'src> {
                                 ),
                             },
                             (Value::Bool(lv), Value::Bool(rv)) => match op {
-                                BinOp::Eq => Ok(Value::Bool(lv == rv)),
-                                BinOp::Gt => Ok(Value::Bool(lv & !rv)), // false < true
-                                BinOp::Lt => Ok(Value::Bool(!lv & rv)),
+                                BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
+                                BinaryOp::Gt => Ok(Value::Bool(lv & !rv)), // false < true
+                                BinaryOp::Lt => Ok(Value::Bool(!lv & rv)),
                                 _ => unreachable!(
                                     "Semantic analysis should guarantee only valid boolean operations"
                                 ),

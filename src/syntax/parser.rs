@@ -49,7 +49,7 @@ pub struct ArgList {
 
 /// Binary operators for arithmetic and logical expressions.
 #[derive(Debug)]
-pub enum BinOp {
+pub enum BinaryOp {
     Add,    // "add" keyword
     Minus,  // "minus" keyword
     Times,  // "times" keyword
@@ -98,7 +98,7 @@ pub enum Expr<'src> {
     Bool(bool, Span),             // "true", "false"
     Var(&'src str, Span),         // variable references
     // arithmetic/logical operations
-    Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span },
+    Binary { op: BinaryOp, lhs: ExprId, rhs: ExprId, span: Span },
     // logical negation
     Unary { op: UnaryOp, expr: ExprId, span: Span },
     // Function call: <callee>(<args>?)
@@ -926,16 +926,16 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 continue;
             }
             let (op, l_bp, r_bp) = match &self.cur.token {
-                Token::Times => (BinOp::Times, 20, 21),
-                Token::Divide => (BinOp::Divide, 20, 21),
-                Token::Mod => (BinOp::Mod, 20, 21),
-                Token::Add => (BinOp::Add, 10, 11),
-                Token::Minus => (BinOp::Minus, 10, 11),
-                Token::Na => (BinOp::Eq, 7, 8),
-                Token::Pass => (BinOp::Gt, 7, 8),
-                Token::SmallPass => (BinOp::Lt, 7, 8),
-                Token::And => (BinOp::And, 5, 6),
-                Token::Or => (BinOp::Or, 1, 2),
+                Token::Times => (BinaryOp::Times, 20, 21),
+                Token::Divide => (BinaryOp::Divide, 20, 21),
+                Token::Mod => (BinaryOp::Mod, 20, 21),
+                Token::Add => (BinaryOp::Add, 10, 11),
+                Token::Minus => (BinaryOp::Minus, 10, 11),
+                Token::Na => (BinaryOp::Eq, 7, 8),
+                Token::Pass => (BinaryOp::Gt, 7, 8),
+                Token::SmallPass => (BinaryOp::Lt, 7, 8),
+                Token::And => (BinaryOp::And, 5, 6),
+                Token::Or => (BinaryOp::Or, 1, 2),
                 _ => break, // No more operators
             };
 
