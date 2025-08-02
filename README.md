@@ -33,7 +33,7 @@ A scripting language interpreter inspired by the expressive linguistics of Naija
 
 3. **Explore Documentation**
    - [Toolchain Manager (`naijaup`)](./docs/NAIJAUP.md): Installation, version management, troubleshooting, advanced usage.
-   - [Interpreter (`naija`)](./docs/NAIJA.md): Running scripts, REPL, evaluating code, piping, CLI options, troubleshooting.
+   - [Interpreter (`naija`)](./docs/NAIJA.md): Running scripts, evaluating code, piping, CLI options, troubleshooting.
    - [Design Philosophy](./docs/DESIGN.md): Philosophy and architecture behind NaijaScript.
    - [Language Reference Manual](./docs/LRM.md): The official language specification.
 

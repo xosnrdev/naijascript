@@ -6,7 +6,7 @@ pub mod syntax;
 
 #[cfg(target_arch = "wasm32")]
 use {
-    crate::resolver::SemAnalyzer, crate::runtime::Interpreter, crate::syntax::parser::Parser,
+    crate::resolver::Resolver, crate::runtime::Runtime, crate::syntax::parser::Parser,
     crate::syntax::scanner::Lexer, crate::syntax::token::SpannedToken, wasm_bindgen::prelude::*,
 };
 
@@ -25,7 +25,7 @@ pub fn run_source(src: &str, filename: &str) -> String {
         return parse_errors.report_html(src, filename);
     }
 
-    let mut resolver = SemAnalyzer::new(
+    let mut resolver = Resolver::new(
         &parser.stmt_arena,
         &parser.expr_arena,
         &parser.block_arena,
@@ -41,7 +41,7 @@ pub fn run_source(src: &str, filename: &str) -> String {
         non_err.push_str(&resolver.errors.report_html(src, filename));
     }
 
-    let mut rt = Interpreter::new(
+    let mut rt = Runtime::new(
         &parser.stmt_arena,
         &parser.expr_arena,
         &parser.block_arena,

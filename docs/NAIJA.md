@@ -22,18 +22,7 @@ To run small code sharp sharp:
 naija --eval "make x get 5 shout(x add 2)"
 ```
 
-### 3. How to Enter REPL (The Play-Play Ground)
-
-To enter the interactive mode:
-
-```sh
-naija --interactive
-```
-
-- Just type your code, press Enter, and e go run.
-- Type `exit` or press Ctrl+D to comot.
-
-### 4. How to Send Code from Another Place
+### 3. How to Send Code from Another Place
 
 To run code wey you send from another command or file:
 
@@ -50,7 +39,6 @@ cat your_script.ns | naija -
 ## All the Command-Line Options
 
 - `--eval <code>`, `-e <code>`: E go run the code wey you give am inside the quote.
-- `--interactive`, `-i`: E go start the REPL for you.
 - `<script>`: The path to the script file wey you wan run.
 - `-h`, `--help`: E go show you help message.
 - `-V`, `--version`: E go show you the version of `naija` wey you get.
@@ -82,12 +70,6 @@ naija sum.ns
 naija --eval "make x get 2 shout(x times 3)"
 ```
 
-### Example: REPL
-
-```sh
-naija --interactive
-```
-
 ## If Wahala Happen (Troubleshooting)
 
 - **Script No Wan Run:**
@@ -95,7 +77,5 @@ naija --interactive
 - **Command No Dey:**
   - Make sure say the `naija` program dey your `PATH`. Check the [naijaup](./NAIJAUP.md) to learn how to set am up.
   - If the wahala still dey, abeg [open issue for us for GitHub](https://github.com/xosnrdev/naijascript/issues).
-- **REPL No Wan Start:**
-  - Use `naija --interactive`.
 - **Piping No Dey Work:**
   - Use `naija -` to read from standard input.

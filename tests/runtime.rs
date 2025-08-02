@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use naijascript::diagnostics::AsStr;
-use naijascript::runtime::{Interpreter, RuntimeErrorKind, Value};
+use naijascript::runtime::{Runtime, RuntimeErrorKind, Value};
 
 mod common;
 use crate::common::parse_from_source;
@@ -16,7 +16,7 @@ macro_rules! assert_runtime {
             "Expected no parse errors, got: {:?}",
             parse_errors.diagnostics
         );
-        let mut resolver = naijascript::resolver::SemAnalyzer::new(
+        let mut resolver = naijascript::resolver::Resolver::new(
             &parser.stmt_arena,
             &parser.expr_arena,
             &parser.block_arena,
@@ -29,7 +29,7 @@ macro_rules! assert_runtime {
             "Expected no semantic errors, got: {:?}",
             resolver.errors.diagnostics
         );
-        let mut interp = Interpreter::new(
+        let mut interp = Runtime::new(
             &parser.stmt_arena,
             &parser.expr_arena,
             &parser.block_arena,
@@ -47,7 +47,7 @@ macro_rules! assert_runtime {
             "Expected no parse errors, got: {:?}",
             parse_errors.diagnostics
         );
-        let mut interp = Interpreter::new(
+        let mut interp = Runtime::new(
             &parser.stmt_arena,
             &parser.expr_arena,
             &parser.block_arena,

@@ -67,7 +67,7 @@ struct FunctionSig<'src> {
 }
 
 /// The interface for the NaijaScript semantic analyzer.
-pub struct SemAnalyzer<'src> {
+pub struct Resolver<'src> {
     // These are borrowed references to the parser's AST arenas
     // We don't own this data, just analyze what the parser built
     stmts: &'src Arena<Stmt<'src>>,
@@ -89,7 +89,7 @@ pub struct SemAnalyzer<'src> {
     pub errors: Diagnostics,
 }
 
-impl<'src> SemAnalyzer<'src> {
+impl<'src> Resolver<'src> {
     /// Sets up a new analyzer with the AST arenas from parsing.
     /// We start with empty symbol table and error list - fresh slate for analysis.
     pub fn new(
@@ -99,7 +99,7 @@ impl<'src> SemAnalyzer<'src> {
         params: &'src Arena<ParamList<'src>>,
         args: &'src Arena<ArgList>,
     ) -> Self {
-        SemAnalyzer {
+        Resolver {
             stmts,
             exprs,
             blocks,
