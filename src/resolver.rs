@@ -550,6 +550,7 @@ impl<'src> Resolver<'src> {
                 Expr::Var(.., span) => span.clone(),
                 Expr::Binary { span, .. } => span.clone(),
                 Expr::Not { span, .. } => span.clone(),
+                Expr::UnaryMinus { span, .. } => span.clone(),
                 Expr::Call { span, .. } => span.clone(),
             };
             self.errors.emit(
@@ -737,6 +738,23 @@ impl<'src> Resolver<'src> {
                     );
                 }
             }
+            // Unary minus requires a numeric operand or dynamic type
+            Expr::UnaryMinus { expr, span } => {
+                self.check_expr(*expr);
+                let t = self.infer_expr_type(*expr);
+                if t != Some(VarType::Number) && t != Some(VarType::Dynamic) {
+                    self.errors.emit(
+                        span.clone(),
+                        Severity::Error,
+                        "semantic",
+                        SemanticError::TypeMismatch.as_str(),
+                        vec![Label {
+                            span: span.clone(),
+                            message: Cow::Borrowed("You fit only use `minus` with number"),
+                        }],
+                    );
+                }
+            }
             Expr::Call { callee, args, span } => {
                 // Access arguments through the arena
                 let arg_list = &self.args.nodes[args.0];
@@ -859,6 +877,10 @@ impl<'src> Resolver<'src> {
             Expr::Not { expr, .. } => {
                 let t = self.infer_expr_type(*expr)?;
                 if t == VarType::Bool { Some(VarType::Bool) } else { None }
+            }
+            Expr::UnaryMinus { expr, .. } => {
+                let t = self.infer_expr_type(*expr)?;
+                if t == VarType::Number { Some(VarType::Number) } else { None }
             }
             Expr::Call { callee, .. } => match &self.exprs.nodes[callee.0] {
                 Expr::Var(func_name, ..) => {

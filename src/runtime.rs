@@ -401,6 +401,15 @@ impl<'src> Runtime<'src> {
                     ),
                 }
             }
+            Expr::UnaryMinus { expr, .. } => {
+                let v = self.eval_expr(*expr)?;
+                match v {
+                    Value::Number(n) => Ok(Value::Number(-n)),
+                    _ => unreachable!(
+                        "Semantic analysis should guarantee only valid numeric expressions"
+                    ),
+                }
+            }
             Expr::Call { callee, args, span } => {
                 // Function calls, semantic analysis guarantees function exists
                 self.eval_function_call(*callee, *args, span)

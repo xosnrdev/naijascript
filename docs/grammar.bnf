@@ -87,6 +87,7 @@
 <arith_expr> ::= <term> (("add" | "minus") <term>)*
 <term> ::= <factor> (("times" | "divide" | "mod") <factor>)*
 <factor> ::= "not" <factor>
+           | "minus" <factor>
            | "(" <expression> ")"
            | <function_call>
            | <variable>

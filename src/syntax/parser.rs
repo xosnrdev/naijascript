@@ -94,6 +94,8 @@ pub enum Expr<'src> {
     Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span },
     // logical not
     Not { expr: ExprId, span: Span },
+    // arithmetic negation
+    UnaryMinus { expr: ExprId, span: Span },
     // Function call: <callee>(<args>?)
     Call { callee: ExprId, args: ArgListId, span: Span },
 }
@@ -801,6 +803,11 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 let expr = self.parse_expression(30); // Highest precedence for unary not
                 self.expr_arena.alloc(Expr::Not { expr, span: start..self.cur.span.end })
             }
+            Token::Minus => {
+                self.bump();
+                let expr = self.parse_expression(30); // Same high precedence as unary not
+                self.expr_arena.alloc(Expr::UnaryMinus { expr, span: start..self.cur.span.end })
+            }
             Token::LParen => {
                 self.bump();
                 let expr = self.parse_expression(0); // Reset precedence inside parentheses
@@ -853,12 +860,13 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
     #[inline]
     fn parse_expression_continuation(&mut self, mut lhs: ExprId, min_bp: u8) -> ExprId {
         let start = match &self.expr_arena.nodes[lhs.0] {
-            Expr::Number(_, span) => span.start,
-            Expr::String(_, span) => span.start,
-            Expr::Bool(_, span) => span.start,
-            Expr::Var(_, span) => span.start,
+            Expr::Number(.., span) => span.start,
+            Expr::String(.., span) => span.start,
+            Expr::Bool(.., span) => span.start,
+            Expr::Var(.., span) => span.start,
             Expr::Binary { span, .. } => span.start,
             Expr::Not { span, .. } => span.start,
+            Expr::UnaryMinus { span, .. } => span.start,
             Expr::Call { span, .. } => span.start,
         };
 

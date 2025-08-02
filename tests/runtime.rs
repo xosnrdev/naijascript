@@ -369,3 +369,47 @@ fn do_dynamic_concatenation() {
         output: vec![Value::Str(Cow::Owned("one2".to_string()))]
     );
 }
+
+#[test]
+fn unary_minus() {
+    assert_runtime!("shout(minus 5)", output: vec![Value::Number(-5.0)]);
+}
+
+#[test]
+fn unary_minus_in_parentheses() {
+    assert_runtime!("shout((minus 5))", output: vec![Value::Number(-5.0)]);
+}
+
+#[test]
+fn unary_minus_with_variable() {
+    assert_runtime!("make x get 3 shout(minus x)", output: vec![Value::Number(-3.0)]);
+}
+
+#[test]
+fn unary_minus_precedence() {
+    // Should parse as (-3) * 4 = -12
+    assert_runtime!("shout(minus 3 times 4)", output: vec![Value::Number(-12.0)]);
+}
+
+#[test]
+fn double_unary_minus() {
+    // Should parse as -(-5) = 5
+    assert_runtime!("shout(minus minus 5)", output: vec![Value::Number(5.0)]);
+}
+
+#[test]
+fn unary_minus_in_arithmetic() {
+    // Should parse as 3 + (-2) = 1
+    assert_runtime!("shout(3 add minus 2)", output: vec![Value::Number(1.0)]);
+}
+
+#[test]
+fn mixed_binary_and_unary_minus() {
+    // Should parse as 5 - (-3) = 8
+    assert_runtime!("shout(5 minus minus 3)", output: vec![Value::Number(8.0)]);
+}
+
+#[test]
+fn unary_minus_with_decimal() {
+    assert_runtime!("shout(minus 3.12)", output: vec![Value::Number(-3.12)]);
+}

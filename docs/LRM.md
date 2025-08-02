@@ -50,12 +50,13 @@ Literals na the fixed values wey you dey write directly for your code.
 - **Arithmetic**: `add` (+), `minus` (-), `times` (\*), `divide` (/), `mod` (%)
 - **Comparison**: `na` (==), `pass` (>), `small pass` (<)
 - **Logical**: `and` (logical AND), `or` (logical OR), `not` (logical NOT)
+- **Unary**: `not` (logical negation), `minus` (arithmetic negation)
 
 **Operator Precedence (from highest to lowest):**
 
-1. `not`
+1. `not`, `minus` (unary operators)
 2. `times`, `divide`, `mod`
-3. `add`, `minus`
+3. `add`, `minus` (binary operators)
 4. `na`, `pass`, `small pass`
 5. `and`
 6. `or`
