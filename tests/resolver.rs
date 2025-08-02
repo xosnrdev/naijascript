@@ -234,3 +234,18 @@ fn test_inconsistent_return_type() {
         SemanticError::TypeMismatch
     );
 }
+
+#[test]
+fn test_unary_minus_with_string() {
+    assert_resolve!(r#"make x get minus "hello""#, SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_unary_minus_with_boolean() {
+    assert_resolve!(r#"make x get minus true"#, SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_unary_minus_with_undeclared_variable() {
+    assert_resolve!(r#"make x get minus y"#, SemanticError::UndeclaredIdentifier);
+}

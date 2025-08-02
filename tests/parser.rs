@@ -256,3 +256,51 @@ fn test_parse_return_with_value() {
     let src = "return 42";
     assert_parse!(src);
 }
+
+#[test]
+fn test_parse_unary_minus() {
+    let src = "make x get minus 5";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_unary_minus_in_parentheses() {
+    let src = "make x get (minus 5)";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_unary_minus_mixed_expression() {
+    let src = "make x get 3 add minus 2";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_unary_minus_precedence() {
+    let src = "make x get minus 3 times 4"; // Should parse as (-3) * 4
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_double_unary_minus() {
+    let src = "make x get minus minus 5"; // Should parse as -(-5)
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_unary_minus_with_variable() {
+    let src = "make y get 3 make x get minus y";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_unary_minus_in_function_call() {
+    let src = "shout(minus 5)";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_mixed_binary_and_unary_minus() {
+    let src = "make x get 5 minus minus 3"; // Should parse as 5 - (-3)
+    assert_parse!(src);
+}

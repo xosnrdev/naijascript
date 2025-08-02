@@ -6,7 +6,8 @@ use std::collections::HashSet;
 use crate::builtins::{Builtin, BuiltinReturnType};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
-    self, Arena, ArgList, BinOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId, Stmt, StmtId,
+    self, Arena, ArgList, BinaryOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId, Stmt,
+    StmtId, UnaryOp,
 };
 
 /// Represents the type of semantic errors that can occur
@@ -549,7 +550,7 @@ impl<'src> Resolver<'src> {
                 Expr::Bool(.., span) => span.clone(),
                 Expr::Var(.., span) => span.clone(),
                 Expr::Binary { span, .. } => span.clone(),
-                Expr::Not { span, .. } => span.clone(),
+                Expr::Unary { span, .. } => span.clone(),
                 Expr::Call { span, .. } => span.clone(),
             };
             self.errors.emit(
@@ -595,7 +596,7 @@ impl<'src> Resolver<'src> {
                 let l = self.infer_expr_type(*lhs);
                 let r = self.infer_expr_type(*rhs);
                 match op {
-                    BinOp::Add => match (l, r) {
+                    BinaryOp::Add => match (l, r) {
                         (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
                             self.errors.emit(
                                 span.clone(),
@@ -615,72 +616,76 @@ impl<'src> Resolver<'src> {
                         | (Some(VarType::Number), Some(VarType::Number)) => {}
                         _ => {}
                     },
-                    BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => match (l, r) {
-                        (Some(VarType::Number), Some(VarType::Number)) => {}
-                        (Some(VarType::Dynamic), Some(VarType::Number))
-                        | (Some(VarType::Number), Some(VarType::Dynamic))
-                        | (Some(VarType::Dynamic), Some(VarType::Dynamic)) => {}
-                        (Some(VarType::Dynamic), Some(VarType::String))
-                        | (Some(VarType::String), Some(VarType::Dynamic))
-                        | (Some(VarType::Dynamic), Some(VarType::Bool))
-                        | (Some(VarType::Bool), Some(VarType::Dynamic)) => {
-                            self.errors.emit(
-                                span.clone(),
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
-                                vec![Label {
-                                    span: span.clone(),
-                                    message: Cow::Borrowed(
-                                        "You fit only use arithmetic operators with numbers",
-                                    ),
-                                }],
-                            );
+                    BinaryOp::Minus | BinaryOp::Times | BinaryOp::Divide | BinaryOp::Mod => {
+                        match (l, r) {
+                            (Some(VarType::Number), Some(VarType::Number)) => {}
+                            (Some(VarType::Dynamic), Some(VarType::Number))
+                            | (Some(VarType::Number), Some(VarType::Dynamic))
+                            | (Some(VarType::Dynamic), Some(VarType::Dynamic)) => {}
+                            (Some(VarType::Dynamic), Some(VarType::String))
+                            | (Some(VarType::String), Some(VarType::Dynamic))
+                            | (Some(VarType::Dynamic), Some(VarType::Bool))
+                            | (Some(VarType::Bool), Some(VarType::Dynamic)) => {
+                                self.errors.emit(
+                                    span.clone(),
+                                    Severity::Error,
+                                    "semantic",
+                                    SemanticError::TypeMismatch.as_str(),
+                                    vec![Label {
+                                        span: span.clone(),
+                                        message: Cow::Borrowed(
+                                            "You fit only use arithmetic operators with numbers",
+                                        ),
+                                    }],
+                                );
+                            }
+                            (Some(VarType::String), Some(VarType::String)) => {
+                                self.errors.emit(
+                                    span.clone(),
+                                    Severity::Error,
+                                    "semantic",
+                                    SemanticError::InvalidStringOperation.as_str(),
+                                    vec![Label {
+                                        span: span.clone(),
+                                        message: Cow::Borrowed(
+                                            "You no fit do arithmetic with strings",
+                                        ),
+                                    }],
+                                );
+                            }
+                            (Some(VarType::String), Some(VarType::Number))
+                            | (Some(VarType::Number), Some(VarType::String)) => {
+                                self.errors.emit(
+                                    span.clone(),
+                                    Severity::Error,
+                                    "semantic",
+                                    SemanticError::TypeMismatch.as_str(),
+                                    vec![Label {
+                                        span: span.clone(),
+                                        message: Cow::Borrowed(
+                                            "You no fit do arithmetic with string and number",
+                                        ),
+                                    }],
+                                );
+                            }
+                            (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
+                                self.errors.emit(
+                                    span.clone(),
+                                    Severity::Error,
+                                    "semantic",
+                                    SemanticError::TypeMismatch.as_str(),
+                                    vec![Label {
+                                        span: span.clone(),
+                                        message: Cow::Borrowed(
+                                            "You no fit do arithmetic with boolean values",
+                                        ),
+                                    }],
+                                );
+                            }
+                            _ => {}
                         }
-                        (Some(VarType::String), Some(VarType::String)) => {
-                            self.errors.emit(
-                                span.clone(),
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::InvalidStringOperation.as_str(),
-                                vec![Label {
-                                    span: span.clone(),
-                                    message: Cow::Borrowed("You no fit do arithmetic with strings"),
-                                }],
-                            );
-                        }
-                        (Some(VarType::String), Some(VarType::Number))
-                        | (Some(VarType::Number), Some(VarType::String)) => {
-                            self.errors.emit(
-                                span.clone(),
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
-                                vec![Label {
-                                    span: span.clone(),
-                                    message: Cow::Borrowed(
-                                        "You no fit do arithmetic with string and number",
-                                    ),
-                                }],
-                            );
-                        }
-                        (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
-                            self.errors.emit(
-                                span.clone(),
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
-                                vec![Label {
-                                    span: span.clone(),
-                                    message: Cow::Borrowed(
-                                        "You no fit do arithmetic with boolean values",
-                                    ),
-                                }],
-                            );
-                        }
-                        _ => {}
-                    },
-                    BinOp::Eq | BinOp::Gt | BinOp::Lt => match (l, r) {
+                    }
+                    BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => match (l, r) {
                         (Some(VarType::Number), Some(VarType::Number)) => {}
                         (Some(VarType::String), Some(VarType::String)) => {}
                         (Some(VarType::Bool), Some(VarType::Bool)) => {}
@@ -700,7 +705,7 @@ impl<'src> Resolver<'src> {
                             );
                         }
                     },
-                    BinOp::And | BinOp::Or => match (l, r) {
+                    BinaryOp::And | BinaryOp::Or => match (l, r) {
                         (Some(VarType::Bool), Some(VarType::Bool)) => {}
                         (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
                         _ => {
@@ -720,21 +725,40 @@ impl<'src> Resolver<'src> {
                     },
                 }
             }
-            // Unary not requires a boolean operand or dynamic type
-            Expr::Not { expr, span } => {
+            Expr::Unary { op, expr, span } => {
                 self.check_expr(*expr);
                 let t = self.infer_expr_type(*expr);
-                if t != Some(VarType::Bool) && t != Some(VarType::Dynamic) {
-                    self.errors.emit(
-                        span.clone(),
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::TypeMismatch.as_str(),
-                        vec![Label {
-                            span: span.clone(),
-                            message: Cow::Borrowed("You fit only use `not` with boolean"),
-                        }],
-                    );
+                match op {
+                    // Unary not requires a boolean operand or dynamic type
+                    UnaryOp::Not => {
+                        if t != Some(VarType::Bool) && t != Some(VarType::Dynamic) {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed("You fit only use `not` with boolean"),
+                                }],
+                            );
+                        }
+                    }
+                    // Unary minus requires a numeric operand or dynamic type
+                    UnaryOp::Minus => {
+                        if t != Some(VarType::Number) && t != Some(VarType::Dynamic) {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Borrowed("You fit only use `minus` with number"),
+                                }],
+                            );
+                        }
+                    }
                 }
             }
             Expr::Call { callee, args, span } => {
@@ -825,7 +849,7 @@ impl<'src> Resolver<'src> {
                 let l = self.infer_expr_type(*lhs)?;
                 let r = self.infer_expr_type(*rhs)?;
                 match op {
-                    BinOp::Add => match (l, r) {
+                    BinaryOp::Add => match (l, r) {
                         (VarType::Bool, ..) | (.., VarType::Bool) => None,
                         (VarType::String, ..) | (.., VarType::String) => Some(VarType::String),
                         (VarType::Dynamic, ..) | (.., VarType::Dynamic) => {
@@ -837,28 +861,47 @@ impl<'src> Resolver<'src> {
                         }
                         (VarType::Number, VarType::Number) => Some(VarType::Number),
                     },
-                    BinOp::Minus | BinOp::Times | BinOp::Divide | BinOp::Mod => match (l, r) {
-                        (VarType::Number, VarType::Number) => Some(VarType::Number),
-                        (VarType::Dynamic, ..) | (.., VarType::Dynamic) => Some(VarType::Number),
-                        _ => None,
-                    },
-                    BinOp::Eq | BinOp::Gt | BinOp::Lt => match (l, r) {
+                    BinaryOp::Minus | BinaryOp::Times | BinaryOp::Divide | BinaryOp::Mod => {
+                        match (l, r) {
+                            (VarType::Number, VarType::Number) => Some(VarType::Number),
+                            (VarType::Dynamic, ..) | (.., VarType::Dynamic) => {
+                                Some(VarType::Number)
+                            }
+                            _ => None,
+                        }
+                    }
+                    BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => match (l, r) {
                         (VarType::Number, VarType::Number) => Some(VarType::Bool),
                         (VarType::String, VarType::String) => Some(VarType::Bool),
                         (VarType::Bool, VarType::Bool) => Some(VarType::Bool),
                         (VarType::Dynamic, ..) | (.., VarType::Dynamic) => Some(VarType::Bool),
                         _ => None,
                     },
-                    BinOp::And | BinOp::Or => match (l, r) {
+                    BinaryOp::And | BinaryOp::Or => match (l, r) {
                         (VarType::Bool, VarType::Bool) => Some(VarType::Bool),
                         (VarType::Dynamic, ..) | (.., VarType::Dynamic) => Some(VarType::Bool),
                         _ => None,
                     },
                 }
             }
-            Expr::Not { expr, .. } => {
+            Expr::Unary { op, expr, .. } => {
                 let t = self.infer_expr_type(*expr)?;
-                if t == VarType::Bool { Some(VarType::Bool) } else { None }
+                match op {
+                    UnaryOp::Not => {
+                        if t == VarType::Bool {
+                            Some(VarType::Bool)
+                        } else {
+                            None
+                        }
+                    }
+                    UnaryOp::Minus => {
+                        if t == VarType::Number {
+                            Some(VarType::Number)
+                        } else {
+                            None
+                        }
+                    }
+                }
             }
             Expr::Call { callee, .. } => match &self.exprs.nodes[callee.0] {
                 Expr::Var(func_name, ..) => {

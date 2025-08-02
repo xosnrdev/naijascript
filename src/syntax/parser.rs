@@ -49,7 +49,7 @@ pub struct ArgList {
 
 /// Binary operators for arithmetic and logical expressions.
 #[derive(Debug)]
-pub enum BinOp {
+pub enum BinaryOp {
     Add,    // "add" keyword
     Minus,  // "minus" keyword
     Times,  // "times" keyword
@@ -60,6 +60,13 @@ pub enum BinOp {
     Eq,     // "na" keyword (equals)
     Gt,     // "pass" keyword (greater than)
     Lt,     // "small pass" keyword (less than)
+}
+
+/// Unary operators for logical and arithmetic negation.
+#[derive(Debug)]
+pub enum UnaryOp {
+    Not,   // "not" keyword (logical negation)
+    Minus, // "-" for negation
 }
 
 /// Represents a statement in NaijaScript.
@@ -91,9 +98,9 @@ pub enum Expr<'src> {
     Bool(bool, Span),             // "true", "false"
     Var(&'src str, Span),         // variable references
     // arithmetic/logical operations
-    Binary { op: BinOp, lhs: ExprId, rhs: ExprId, span: Span },
-    // logical not
-    Not { expr: ExprId, span: Span },
+    Binary { op: BinaryOp, lhs: ExprId, rhs: ExprId, span: Span },
+    // logical/arithmetic negation
+    Unary { op: UnaryOp, expr: ExprId, span: Span },
     // Function call: <callee>(<args>?)
     Call { callee: ExprId, args: ArgListId, span: Span },
 }
@@ -799,7 +806,20 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             Token::Not => {
                 self.bump();
                 let expr = self.parse_expression(30); // Highest precedence for unary not
-                self.expr_arena.alloc(Expr::Not { expr, span: start..self.cur.span.end })
+                self.expr_arena.alloc(Expr::Unary {
+                    op: UnaryOp::Not,
+                    expr,
+                    span: start..self.cur.span.end,
+                })
+            }
+            Token::Minus => {
+                self.bump();
+                let expr = self.parse_expression(30); // Same high precedence as unary not
+                self.expr_arena.alloc(Expr::Unary {
+                    op: UnaryOp::Minus,
+                    expr,
+                    span: start..self.cur.span.end,
+                })
             }
             Token::LParen => {
                 self.bump();
@@ -853,12 +873,12 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
     #[inline]
     fn parse_expression_continuation(&mut self, mut lhs: ExprId, min_bp: u8) -> ExprId {
         let start = match &self.expr_arena.nodes[lhs.0] {
-            Expr::Number(_, span) => span.start,
-            Expr::String(_, span) => span.start,
-            Expr::Bool(_, span) => span.start,
-            Expr::Var(_, span) => span.start,
+            Expr::Number(.., span) => span.start,
+            Expr::String(.., span) => span.start,
+            Expr::Bool(.., span) => span.start,
+            Expr::Var(.., span) => span.start,
             Expr::Binary { span, .. } => span.start,
-            Expr::Not { span, .. } => span.start,
+            Expr::Unary { span, .. } => span.start,
             Expr::Call { span, .. } => span.start,
         };
 
@@ -906,16 +926,16 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 continue;
             }
             let (op, l_bp, r_bp) = match &self.cur.token {
-                Token::Times => (BinOp::Times, 20, 21),
-                Token::Divide => (BinOp::Divide, 20, 21),
-                Token::Mod => (BinOp::Mod, 20, 21),
-                Token::Add => (BinOp::Add, 10, 11),
-                Token::Minus => (BinOp::Minus, 10, 11),
-                Token::Na => (BinOp::Eq, 7, 8),
-                Token::Pass => (BinOp::Gt, 7, 8),
-                Token::SmallPass => (BinOp::Lt, 7, 8),
-                Token::And => (BinOp::And, 5, 6),
-                Token::Or => (BinOp::Or, 1, 2),
+                Token::Times => (BinaryOp::Times, 20, 21),
+                Token::Divide => (BinaryOp::Divide, 20, 21),
+                Token::Mod => (BinaryOp::Mod, 20, 21),
+                Token::Add => (BinaryOp::Add, 10, 11),
+                Token::Minus => (BinaryOp::Minus, 10, 11),
+                Token::Na => (BinaryOp::Eq, 7, 8),
+                Token::Pass => (BinaryOp::Gt, 7, 8),
+                Token::SmallPass => (BinaryOp::Lt, 7, 8),
+                Token::And => (BinaryOp::And, 5, 6),
+                Token::Or => (BinaryOp::Or, 1, 2),
                 _ => break, // No more operators
             };
 
