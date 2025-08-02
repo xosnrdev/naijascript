@@ -1,5 +1,5 @@
 use naijascript::diagnostics::AsStr;
-use naijascript::resolver::{SemAnalyzer, SemanticError};
+use naijascript::resolver::{Resolver, SemanticError};
 
 mod common;
 use crate::common::parse_from_source;
@@ -13,7 +13,7 @@ macro_rules! assert_resolve {
             "Expected no parse errors, got: {:?}",
             parser_errors.diagnostics
         );
-        let mut analyzer = SemAnalyzer::new(
+        let mut analyzer = Resolver::new(
             &parser.stmt_arena,
             &parser.expr_arena,
             &parser.block_arena,

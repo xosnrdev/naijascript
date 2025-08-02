@@ -6,8 +6,8 @@ use std::process::ExitCode;
 
 use clap::Parser as ClapParser;
 use clap_cargo::style::CLAP_STYLING;
-use naijascript::resolver::SemAnalyzer;
-use naijascript::runtime::Interpreter;
+use naijascript::resolver::Resolver;
+use naijascript::runtime::Runtime;
 use naijascript::syntax::parser::Parser;
 use naijascript::syntax::scanner::Lexer;
 use naijascript::syntax::token::SpannedToken;
@@ -66,7 +66,7 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let mut resolver = SemAnalyzer::new(
+    let mut resolver = Resolver::new(
         &parser.stmt_arena,
         &parser.expr_arena,
         &parser.block_arena,
@@ -82,7 +82,7 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
         resolver.errors.report(src, filename);
     }
 
-    let mut rt = Interpreter::new(
+    let mut rt = Runtime::new(
         &parser.stmt_arena,
         &parser.expr_arena,
         &parser.block_arena,

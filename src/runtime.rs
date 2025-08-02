@@ -41,7 +41,7 @@ struct RuntimeError<'src> {
     span: &'src Span,
 }
 
-/// The value types our interpreter can work with at runtime.
+/// The value types our runtime can work with at runtime.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value<'src> {
     /// All numbers are f64 to keep arithmetic simple and avoid int/float distinction
@@ -82,8 +82,8 @@ impl std::fmt::Display for Value<'_> {
     }
 }
 
-/// The interface for the NaijaScript interpreter.
-pub struct Interpreter<'src> {
+/// The runtime interface for NaijaScript.
+pub struct Runtime<'src> {
     stmts: &'src Arena<Stmt<'src>>,
     exprs: &'src Arena<Expr<'src>>,
     blocks: &'src Arena<Block>,
@@ -109,8 +109,8 @@ pub struct Interpreter<'src> {
     pub output: Vec<Value<'src>>,
 }
 
-impl<'src> Interpreter<'src> {
-    /// Creates a new interpreter instance bound to the given AST arenas.
+impl<'src> Runtime<'src> {
+    /// Creates a new runtime instance bound to the given AST arenas.
     pub fn new(
         stmts: &'src Arena<Stmt<'src>>,
         exprs: &'src Arena<Expr<'src>>,
@@ -118,7 +118,7 @@ impl<'src> Interpreter<'src> {
         params: &'src Arena<ParamList<'src>>,
         args: &'src Arena<ArgList>,
     ) -> Self {
-        Interpreter {
+        Runtime {
             stmts,
             exprs,
             blocks,
@@ -507,7 +507,7 @@ impl<'src> Interpreter<'src> {
     // Variable assignment, adds or updates in current scope
     fn insert_or_update(&mut self, var: &'src str, val: Value<'src>) {
         if let Some(scope) = self.env.last_mut() {
-            if let Some((_, slot)) = scope.iter_mut().find(|(name, _)| *name == var) {
+            if let Some((.., slot)) = scope.iter_mut().find(|(name, ..)| *name == var) {
                 *slot = val;
             } else {
                 scope.push((var, val));
