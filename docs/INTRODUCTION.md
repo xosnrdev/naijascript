@@ -11,7 +11,7 @@ We don arrange this book so e go carry you from the idea to the action. Na so th
 - **[Introduction](INTRODUCTION.md)**: Na here you dey so! This place go give you the full gist about the book and help you get the tools wey you need.
 - **[Our Mind (Design Philosophy)](DESIGN.md)**: Learn the "why" behind NaijaScript. If you wan understand the vision, make you start from here.
 - **[Language Manual (LRM)](LRM.md)**: The official grammar book for NaijaScript. E go explain the syntax, data types, and how to control your code.
-- **[Interpreter (`naija`)](naija.md)**: The practical guide on how to use the `naija` command to run your scripts and use the REPL.
+- **[Interpreter (`naija`)](naija.md)**: The practical guide on how to use the `naija` command to run your scripts.
 - **[Toolchain Manager (`naijaup`)](naijaup.md)**: Learn how to manage your NaijaScript installation, change versions, and keep everything fresh.
 
 ## Oya, Make We Start

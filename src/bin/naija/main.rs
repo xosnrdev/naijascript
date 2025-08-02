@@ -1,7 +1,7 @@
 //! The command line interface for NaijaScript interpreter.
 
 use std::fs;
-use std::io::{self, IsTerminal, Read, Write, stdout};
+use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
 
 use clap::Parser as ClapParser;
@@ -26,14 +26,11 @@ struct Cli {
     /// Code wey you wan run sharp sharp, e.g. naija --eval "shout("hello world")"
     #[arg(short, long)]
     eval: Option<String>,
-    /// Enter REPL mode to dey run code one by one (naija --interactive)
-    #[arg(short, long)]
-    interactive: bool,
 }
 
 // Entry point for the NaijaScript CLI.
 //
-// Parses command line arguments and dispatches to the appropriate mode (eval, script, REPL, stdin).
+// Parses command line arguments and dispatches to the appropriate mode (eval, script, stdin).
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -41,8 +38,6 @@ fn main() -> ExitCode {
         run_source("<eval>", &code)
     } else if let Some(script) = cli.script {
         if script == "-" { run_stdin() } else { run_file(&script) }
-    } else if cli.interactive {
-        run_repl()
     } else if !io::stdin().is_terminal() {
         run_stdin()
     } else {
@@ -133,44 +128,6 @@ fn run_stdin() -> ExitCode {
         return ExitCode::FAILURE;
     }
     run_source("<stdin>", &buffer)
-}
-
-// Starts the interactive Read-Eval-Print Loop (REPL).
-fn run_repl() -> ExitCode {
-    use rustyline::DefaultEditor;
-    use rustyline::error::ReadlineError;
-
-    println!("NaijaScript REPL (type 'exit' or Ctrl+D to comot)");
-    let mut rl = DefaultEditor::new().unwrap();
-
-    loop {
-        match rl.readline(">> ") {
-            Ok(line) => {
-                let _ = rl.add_history_entry(line.as_str());
-                let line = line.trim();
-                if line.is_empty() {
-                    continue;
-                }
-
-                let lower = line.to_lowercase();
-                if lower == "exit" {
-                    println!("Oya, bye bye!");
-                    break;
-                }
-                if lower == "clear" || lower == "cls" {
-                    print!("\x1B[2J\x1B[H");
-                    stdout().flush().ok();
-                    continue;
-                }
-                run_source("<repl>", line);
-            }
-            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) | Err(_) => {
-                println!("Oya, bye bye!");
-                break;
-            }
-        }
-    }
-    ExitCode::SUCCESS
 }
 
 #[test]
