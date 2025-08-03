@@ -1,0 +1,31 @@
+# Fast Exponentiation using Divide and Conquer
+
+do power(base, exp) start
+    if to say (exp na 0) start
+        return 1
+    end
+    if not so start
+        if to say (exp mod 2 na 0) start
+            # Even exponent: base^n = (base^(n/2))^2
+            make half get power(base, exp divide 2)
+            return half times half
+        end
+        if not so start
+            # Odd exponent: base^n = base * base^(n-1)
+            return base times power(base, exp minus 1)
+        end
+    end
+end
+
+# Test cases
+shout("2^10 =")
+shout(power(2, 10))
+
+shout("3^5 =") 
+shout(power(3, 5))
+
+shout("5^0 =")
+shout(power(5, 0))
+
+shout("7^3 =")
+shout(power(7, 3))
