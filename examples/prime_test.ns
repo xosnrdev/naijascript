@@ -1,0 +1,52 @@
+# Primality Testing Algorithm
+# Demonstrates trial division with square root optimization
+
+do is_prime(n) start
+    if to say (n small pass 2) start
+        return false
+    end
+    if to say (n na 2) start
+        return true
+    end
+    if to say (n mod 2 na 0) start
+        return false
+    end
+    
+    # Check odd divisors up to sqrt(n)
+    make i get 3
+    jasi (i times i small pass n add 1) start
+        if to say (n mod i na 0) start
+            return false
+        end
+        i get i add 2
+    end
+    return true
+end
+
+# Test prime numbers
+make test_nums get 100
+make i get 1
+jasi (i small pass test_nums add 1) start
+    if to say (is_prime(i)) start
+        shout(i)
+        shout("is prime")
+    end
+    i get i add 1
+end
+
+# Test specific large numbers
+shout("Testing 97:")
+if to say (is_prime(97)) start
+    shout("97 is prime")
+end
+if not so start
+    shout("97 is not prime") 
+end
+
+shout("Testing 100:")
+if to say (is_prime(100)) start
+    shout("100 is prime")
+end
+if not so start
+    shout("100 is not prime")
+end

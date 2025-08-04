@@ -1,0 +1,26 @@
+# Euclidean Algorithm for Greatest Common Divisor
+
+do gcd(a, b) start
+    if to say (b na 0) start
+        return a
+    end
+    if not so start
+        return gcd(b, a mod b)
+    end
+end
+
+# Test cases
+make a get 48
+make b get 18
+shout("GCD of")
+shout(a)
+shout("and")
+shout(b)
+shout("is")
+shout(gcd(a, b))
+
+shout("GCD of 100 and 25 is")
+shout(gcd(100, 25))
+
+shout("GCD of 17 and 13 is") 
+shout(gcd(17, 13))

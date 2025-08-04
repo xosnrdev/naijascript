@@ -1,0 +1,40 @@
+# Newton's Method for Square Root
+# Numerical algorithm demonstrating iterative approximation
+
+do sqrt_newton(n) start
+    if to say (n small pass 0) start
+        return 0
+    end
+    
+    make x get n divide 2  # Initial guess
+    make precision get 0.000001
+    
+    jasi (true) start
+        make new_x get (x add (n divide x)) divide 2
+        
+        # Check for convergence using absolute difference
+        make diff get new_x minus x
+        if to say (diff small pass 0) start
+            diff get 0 minus diff  # Get absolute value
+        end
+        
+        if to say (diff small pass precision) start
+            return new_x
+        end
+        
+        x get new_x
+    end
+end
+
+# Test Newton's method
+shout("Square root of 25:")
+shout(sqrt_newton(25))
+
+shout("Square root of 2:")
+shout(sqrt_newton(2))
+
+shout("Square root of 10:")
+shout(sqrt_newton(10))
+
+shout("Square root of 100:")
+shout(sqrt_newton(100))

@@ -1,20 +1,26 @@
+# FizzBuzz: Print numbers 1 to 100
+# For multiples of 3: print "Fizz"
+# For multiples of 5: print "Buzz" 
+# For multiples of both 3 and 5: print "FizzBuzz"
+# For all other numbers: print the number
+
 make i get 1
 
 jasi (i small pass 101) start
-    if to say (i mod 3 na 0) start
-        if to say (i mod 5 na 0) start
-            shout("FizzBuzz")
-        end
-        if not so start
-            shout("Fizz")
-        end
+    if to say (i mod 15 na 0) start
+        shout("FizzBuzz")
     end
     if not so start
-        if to say (i mod 5 na 0) start
-            shout("Buzz")
+        if to say (i mod 3 na 0) start
+            shout("Fizz")
         end
         if not so start
-            shout(i)
+            if to say (i mod 5 na 0) start
+                shout("Buzz")
+            end
+            if not so start
+                shout(i)
+            end
         end
     end
     i get i add 1
