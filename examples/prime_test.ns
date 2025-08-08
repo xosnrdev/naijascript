@@ -23,18 +23,16 @@ do is_prime(n) start
     return true
 end
 
-# Test prime numbers
+# Test cases
 make test_nums get 100
 make i get 1
 jasi (i small pass test_nums add 1) start
     if to say (is_prime(i)) start
-        shout(i)
-        shout("is prime")
+        shout("{i} is prime")
     end
     i get i add 1
 end
 
-# Test specific large numbers
 shout("Testing 97:")
 if to say (is_prime(97)) start
     shout("97 is prime")

@@ -12,15 +12,11 @@ end
 # Test cases
 make a get 48
 make b get 18
-shout("GCD of")
-shout(a)
-shout("and")
-shout(b)
-shout("is")
-shout(gcd(a, b))
+make result get gcd(a, b)
+shout("GCD of {a} and {b} is {result}")
 
-shout("GCD of 100 and 25 is")
-shout(gcd(100, 25))
+result get gcd(100, 25)
+shout("GCD of 100 and 25 is {result}")
 
-shout("GCD of 17 and 13 is") 
-shout(gcd(17, 13))
+result get gcd(17, 13)
+shout("GCD of 17 and 13 is {result}") 

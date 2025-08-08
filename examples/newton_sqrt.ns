@@ -26,15 +26,15 @@ do sqrt_newton(n) start
     end
 end
 
-# Test Newton's method
-shout("Square root of 25:")
-shout(sqrt_newton(25))
+# Test cases
+make result get sqrt_newton(25)
+shout("Square root of 25: {result}")
 
-shout("Square root of 2:")
-shout(sqrt_newton(2))
+result get sqrt_newton(2)
+shout("Square root of 2: {result}")
 
-shout("Square root of 10:")
-shout(sqrt_newton(10))
+result get sqrt_newton(10)
+shout("Square root of 10: {result}")
 
-shout("Square root of 100:")
-shout(sqrt_newton(100))
+result get sqrt_newton(100)
+shout("Square root of 100: {result}")
