@@ -413,3 +413,91 @@ fn mixed_binary_and_unary_minus() {
 fn unary_minus_with_decimal() {
     assert_runtime!("shout(minus 3.12)", output: vec![Value::Number(-3.12)]);
 }
+
+#[test]
+fn string_interpolation() {
+    assert_runtime!(
+        r#"
+        make name get "World"
+        shout("Hello {name}")
+        "#,
+        output: vec![Value::Str(Cow::Owned("Hello World".to_string()))]
+    );
+}
+
+#[test]
+fn string_interpolation_multiple() {
+    assert_runtime!(
+        r#"
+        make name get "John"
+        make age get 25
+        shout("{name} get {age} years")
+        "#,
+        output: vec![Value::Str(Cow::Owned("John get 25 years".to_string()))]
+    );
+}
+
+#[test]
+fn string_interpolation_numbers() {
+    assert_runtime!(
+        r#"
+        make price get 99.99
+        shout("Price: ${price}")
+        "#,
+        output: vec![Value::Str(Cow::Owned("Price: $99.99".to_string()))]
+    );
+}
+
+#[test]
+fn string_interpolation_booleans() {
+    assert_runtime!(
+        r#"
+        make available get true
+        shout("Available: {available}")
+        "#,
+        output: vec![Value::Str(Cow::Owned("Available: true".to_string()))]
+    );
+}
+
+#[test]
+fn string_interpolation_literal_braces() {
+    assert_runtime!(
+        r#"shout("Use {{}} for literal braces")"#,
+        output: vec![Value::Str(Cow::Borrowed("Use {{}} for literal braces"))]
+    );
+}
+
+#[test]
+fn string_interpolation_single_brace() {
+    assert_runtime!(
+        r#"shout("{")"#,
+        output: vec![Value::Str(Cow::Borrowed("{"))]
+    );
+}
+
+#[test]
+fn string_interpolation_empty_placeholder() {
+    assert_runtime!(
+        r#"shout("{}")"#,
+        output: vec![Value::Str(Cow::Borrowed("{}"))]
+    );
+}
+
+#[test]
+fn string_interpolation_nested_braces() {
+    assert_runtime!(
+        r#"shout("{a{b}c}")"#,
+        output: vec![Value::Str(Cow::Borrowed("{a{b}c}"))]
+    );
+}
+
+#[test]
+fn string_interpolation_resolve_whitespace() {
+    assert_runtime!(
+        r#"
+        make name get "World"
+        shout("Hello { name }")
+        "#,
+        output: vec![Value::Str(Cow::Owned("Hello World".to_string()))]
+    );
+}

@@ -41,6 +41,8 @@ Literals na the fixed values wey you dey write directly for your code.
   - Example: `10`, `3.142`, `0.5`
 - **Strings**: Sequence of characters inside double quotes (`"..."`) or single quotes (`'...'`). Supported escapes: `\\`, `\"`, `\'`, `\n`, `\t`, `\r`.
   - Example: `"Hello, World!"`, `'Naija no dey carry last'`, `'foo\nbar'`
+- **String Interpolation**: Strings fit contain variables as placeholders using braces `"{variable}"` syntax.
+  - Example: `make name get "World" shout("Hello {name}")`
 - **Booleans**: Truth values wey be `true` and `false`.
   - `true` - mean say e correct or e happen.
   - `false` - mean say e no correct or e no happen.
