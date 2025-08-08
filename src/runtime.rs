@@ -1,12 +1,13 @@
 //! The runtime for NaijaScript.
 
 use std::borrow::Cow;
+use std::fmt::Write;
 
 use crate::builtins::Builtin;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     Arena, ArgList, ArgListId, BinaryOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId,
-    Stmt, StmtId, UnaryOp,
+    Stmt, StmtId, StringParts, StringSegment, UnaryOp,
 };
 
 /// Runtime errors that can occur during NaijaScript execution.
@@ -152,7 +153,7 @@ impl<'src> Runtime<'src> {
                     RuntimeErrorKind::InvalidNumber => {
                         vec![Label {
                             span: err.span.clone(),
-                            message: Cow::Borrowed("This number no correct"),
+                            message: Cow::Borrowed("Dis number no correct"),
                         }]
                     }
                     RuntimeErrorKind::StackOverflow => {
@@ -274,7 +275,7 @@ impl<'src> Runtime<'src> {
                 .parse::<f64>()
                 .map(Value::Number)
                 .map_err(|_| RuntimeError { kind: RuntimeErrorKind::InvalidNumber, span }),
-            Expr::String(s, ..) => Ok(Value::Str(s.clone())),
+            Expr::String { parts, .. } => self.eval_string_expr(parts),
             Expr::Bool(b, ..) => Ok(Value::Bool(*b)),
             Expr::Var(v, ..) => {
                 let val = self
@@ -292,9 +293,7 @@ impl<'src> Runtime<'src> {
                         let r = self.eval_expr(*rhs)?;
                         match r {
                             Value::Bool(b) => Ok(Value::Bool(b)),
-                            _ => unreachable!(
-                                "Semantic analysis should guarantee only valid boolean expressions"
-                            ),
+                            _ => unreachable!("Semantic analysis guarantees boolean expressions"),
                         }
                     }
                     BinaryOp::Or => {
@@ -305,9 +304,7 @@ impl<'src> Runtime<'src> {
                         let r = self.eval_expr(*rhs)?;
                         match r {
                             Value::Bool(b) => Ok(Value::Bool(b)),
-                            _ => unreachable!(
-                                "Semantic analysis should guarantee only valid boolean expressions"
-                            ),
+                            _ => unreachable!("Semantic analysis guarantees boolean expressions"),
                         }
                     }
                     _ => {
@@ -328,16 +325,14 @@ impl<'src> Runtime<'src> {
                                         Ok(Value::Number(match op {
                                             BinaryOp::Divide => lv / rv,
                                             BinaryOp::Mod => lv % rv,
-                                            _ => unreachable!(
-                                                "Unexpected binary operation for numbers"
-                                            ),
+                                            _ => unreachable!(),
                                         }))
                                     }
                                 }
                                 BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
                                 BinaryOp::Gt => Ok(Value::Bool(lv > rv)),
                                 BinaryOp::Lt => Ok(Value::Bool(lv < rv)),
-                                _ => unreachable!("Unexpected op for numbers"),
+                                _ => unreachable!(),
                             },
                             (Value::Str(ls), Value::Str(rs)) => match op {
                                 BinaryOp::Add => {
@@ -349,74 +344,50 @@ impl<'src> Runtime<'src> {
                                 BinaryOp::Eq => Ok(Value::Bool(ls == rs)),
                                 BinaryOp::Gt => Ok(Value::Bool(ls > rs)),
                                 BinaryOp::Lt => Ok(Value::Bool(ls < rs)),
-                                _ => unreachable!(
-                                    "Semantic analysis should guarantee only valid string operations"
-                                ),
+                                _ => unreachable!("Semantic analysis guarantees valid string ops"),
                             },
-                            (Value::Str(ls), Value::Number(n)) => match op {
-                                BinaryOp::Add => {
-                                    let num_str = n.to_string();
-                                    let mut s = String::with_capacity(ls.len() + num_str.len());
-                                    s.push_str(&ls);
-                                    s.push_str(&num_str);
-                                    Ok(Value::Str(Cow::Owned(s)))
-                                }
-                                _ => unreachable!(
-                                    "Semantic analysis should guarantee only valid string-number operations"
-                                ),
-                            },
-                            (Value::Number(n), Value::Str(rs)) => match op {
-                                BinaryOp::Add => {
-                                    let num_str = n.to_string();
-                                    let mut s = String::with_capacity(num_str.len() + rs.len());
-                                    s.push_str(&num_str);
-                                    s.push_str(&rs);
-                                    Ok(Value::Str(Cow::Owned(s)))
-                                }
-                                _ => unreachable!(
-                                    "Semantic analysis should guarantee only valid number-string operations"
-                                ),
-                            },
+                            (Value::Str(ls), Value::Number(n)) => {
+                                debug_assert!(matches!(op, BinaryOp::Add));
+                                let num_str = n.to_string();
+                                let mut s = String::with_capacity(ls.len() + num_str.len());
+                                s.push_str(&ls);
+                                s.push_str(&num_str);
+                                Ok(Value::Str(Cow::Owned(s)))
+                            }
+                            (Value::Number(n), Value::Str(rs)) => {
+                                debug_assert!(matches!(op, BinaryOp::Add));
+                                let num_str = n.to_string();
+                                let mut s = String::with_capacity(num_str.len() + rs.len());
+                                s.push_str(&num_str);
+                                s.push_str(&rs);
+                                Ok(Value::Str(Cow::Owned(s)))
+                            }
                             (Value::Bool(lv), Value::Bool(rv)) => match op {
                                 BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
                                 BinaryOp::Gt => Ok(Value::Bool(lv & !rv)), // false < true
                                 BinaryOp::Lt => Ok(Value::Bool(!lv & rv)),
-                                _ => unreachable!(
-                                    "Semantic analysis should guarantee only valid boolean operations"
-                                ),
+                                _ => unreachable!("Semantic analysis guarantees valid bool ops"),
                             },
-                            _ => unreachable!(
-                                "Semantic analysis should guarantee only valid expressions"
-                            ),
+                            _ => {
+                                unreachable!("Semantic analysis guarantees valid type combinations")
+                            }
                         }
                     }
                 }
             }
             Expr::Unary { op, expr, .. } => {
                 let v = self.eval_expr(*expr)?;
-                match op {
-                    UnaryOp::Not => match v {
-                        Value::Bool(b) => Ok(Value::Bool(!b)),
-                        _ => unreachable!(
-                            "Semantic analysis should guarantee only valid boolean expressions"
-                        ),
-                    },
-                    UnaryOp::Minus => match v {
-                        Value::Number(n) => Ok(Value::Number(-n)),
-                        _ => unreachable!(
-                            "Semantic analysis should guarantee only valid numeric expressions"
-                        ),
-                    },
+                match (op, v) {
+                    (UnaryOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
+                    (UnaryOp::Minus, Value::Number(n)) => Ok(Value::Number(-n)),
+                    _ => unreachable!("Semantic analysis guarantees valid unary expressions"),
                 }
             }
-            Expr::Call { callee, args, span } => {
-                // Function calls, semantic analysis guarantees function exists
-                self.eval_function_call(*callee, *args, span)
-            }
+            Expr::Call { callee, args, span } => self.eval_function_call(*callee, *args, span),
         }
     }
 
-    // Function call execution with proper call stack management
+    // Function call evaluation
     fn eval_function_call(
         &mut self,
         callee: ExprId,
@@ -425,88 +396,77 @@ impl<'src> Runtime<'src> {
     ) -> Result<Value<'src>, RuntimeError<'src>> {
         let func_name = match &self.exprs.nodes[callee.0] {
             Expr::Var(name, ..) => *name,
-            _ => unreachable!("Semantic analysis should guarantee callee is a variable"),
+            _ => unreachable!("Semantic analysis guarantees callee is a variable"),
         };
 
+        // We check for built-in functions first, as they are guaranteed to exist
         if let Some(builtin) = Builtin::from_name(func_name) {
             return self.eval_builtin_call(builtin, args);
         }
 
+        // We check for user-defined functions next
         let func_def = self
             .functions
             .iter()
             .find(|f| f.name == func_name)
-            .expect("Semantic analysis should guarantee function exists")
+            .expect("Semantic analysis guarantees function exists")
             .clone();
 
-        // Prevent stack overflow from infinite recursion
+        // We check for recursion depth
         if self.call_stack.len() >= self.max_call_depth {
             return Err(RuntimeError { kind: RuntimeErrorKind::StackOverflow, span });
         }
 
-        // Evaluate arguments in order
-        let arg_list = &self.args.nodes[args.0];
-        let mut arg_values = Vec::new();
-        for &arg_expr in &arg_list.args {
-            arg_values.push(self.eval_expr(arg_expr)?);
-        }
+        // We evaluate all arguments eagerly (left-to-right evaluation order)
+        let arg_values: Vec<_> = self.args.nodes[args.0]
+            .args
+            .iter()
+            .map(|&arg_expr| self.eval_expr(arg_expr))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        // Parameter count validated by semantic analysis
         let param_list = &self.params.nodes[func_def.params.0];
-        assert_eq!(
-            arg_values.len(),
-            param_list.params.len(),
-            "Semantic analysis should guarantee parameter count"
-        );
+        debug_assert_eq!(arg_values.len(), param_list.params.len());
 
-        // Bind arguments to parameters
-        let mut local_vars = Vec::new();
-        for (param_name, arg_value) in param_list.params.iter().zip(arg_values.iter()) {
-            local_vars.push((*param_name, arg_value.clone()));
-        }
+        // We create a new activation record for the function call
+        let local_vars = param_list
+            .params
+            .iter()
+            .zip(arg_values.iter())
+            .map(|(param, arg)| (*param, arg.clone()))
+            .collect();
 
-        let activation = ActivationRecord { local_vars };
+        self.call_stack.push(ActivationRecord { local_vars });
 
-        // Push activation record onto call stack
-        self.call_stack.push(activation);
-
-        // Execute function body
+        // We execute the function body with proper return value handling
         let result = match self.exec_block_with_flow(func_def.body)? {
-            ExecFlow::Continue => Value::Number(0.0), // No explicit return
+            ExecFlow::Continue => Value::Number(0.0), // Implicit return 0
             ExecFlow::Return(val) => val,             // Explicit return value
         };
 
-        // Pop activation record
+        // We remove the activation record from the call stack
         self.call_stack.pop();
-
         Ok(result)
     }
 
-    // Built-in function execution
+    // Built-in function evaluation
     fn eval_builtin_call(
         &mut self,
         builtin: Builtin,
         args: ArgListId,
     ) -> Result<Value<'src>, RuntimeError<'src>> {
-        // Evaluate arguments in order
-        let arg_list = &self.args.nodes[args.0];
-        let mut arg_values = Vec::new();
-        for &arg_expr in &arg_list.args {
-            arg_values.push(self.eval_expr(arg_expr)?);
-        }
+        // We evaluate all arguments eagerly (left-to-right evaluation order)
+        let arg_values: Vec<_> = self.args.nodes[args.0]
+            .args
+            .iter()
+            .map(|&arg_expr| self.eval_expr(arg_expr))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        let expected_arity = builtin.arity();
-        assert_eq!(
-            arg_values.len(),
-            expected_arity,
-            "Semantic analysis should guarantee builtin parameter count"
-        );
+        // This should not escape semantic analysis
+        debug_assert_eq!(arg_values.len(), builtin.arity());
 
-        // Execute the built-in function
         match builtin {
             Builtin::Shout => {
-                let value = &arg_values[0];
-                self.output.push(value.clone());
+                self.output.push(arg_values[0].clone());
                 Ok(Value::Number(0.0))
             }
         }
@@ -544,7 +504,7 @@ impl<'src> Runtime<'src> {
                 return;
             }
         }
-        unreachable!("Semantic analysis should guarantee variable exists");
+        unreachable!("Semantic analysis guarantees variable exists");
     }
 
     // Variable lookup, searches function locals first, then outer scopes
@@ -563,5 +523,30 @@ impl<'src> Runtime<'src> {
             }
         }
         None
+    }
+
+    // String expression evaluation
+    fn eval_string_expr(
+        &mut self,
+        parts: &StringParts<'src>,
+    ) -> Result<Value<'src>, RuntimeError<'src>> {
+        match parts {
+            StringParts::Static(content) => Ok(Value::Str(content.clone())),
+            StringParts::Interpolated(segments) => {
+                let mut result = String::new();
+                for segment in segments {
+                    match segment {
+                        StringSegment::Literal(s) => result.push_str(s),
+                        StringSegment::Variable(var) => {
+                            let value = self
+                                .lookup_var(var)
+                                .expect("Semantic analysis should guarantee variable exists");
+                            write!(result, "{value}").unwrap();
+                        }
+                    }
+                }
+                Ok(Value::Str(Cow::Owned(result)))
+            }
+        }
     }
 }

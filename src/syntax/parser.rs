@@ -90,13 +90,27 @@ pub enum Stmt<'src> {
     Expression { expr: ExprId, span: Span },
 }
 
+/// Represents the parts of a string literal.
+#[derive(Debug)]
+pub enum StringParts<'src> {
+    Static(Cow<'src, str>),
+    Interpolated(Vec<StringSegment<'src>>),
+}
+
+/// Represents a segment of a string literal.
+#[derive(Debug)]
+pub enum StringSegment<'src> {
+    Literal(&'src str),
+    Variable(&'src str),
+}
+
 /// Represents an expression in NaijaScript.
 #[derive(Debug)]
 pub enum Expr<'src> {
-    Number(&'src str, Span),      // 42, 3.14, etc.
-    String(Cow<'src, str>, Span), // "hello", etc.
-    Bool(bool, Span),             // "true", "false"
-    Var(&'src str, Span),         // variable references
+    Number(&'src str, Span),                         // 42, 3.14, etc.
+    String { parts: StringParts<'src>, span: Span }, // "hello" or "hello {name}"
+    Bool(bool, Span),                                // "true", "false"
+    Var(&'src str, Span),                            // variable references
     // arithmetic/logical operations
     Binary { op: BinaryOp, lhs: ExprId, rhs: ExprId, span: Span },
     // logical/arithmetic negation
@@ -786,9 +800,9 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             }
             Token::String(sval) => {
                 let s = self.cur.span.clone();
-                let id = self.expr_arena.alloc(Expr::String(sval.clone(), s));
+                let content = sval.clone();
                 self.bump();
-                id
+                self.parse_string_literal(content, s)
             }
             Token::True | Token::False => {
                 let s = self.cur.span.clone();
@@ -874,7 +888,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
     fn parse_expression_continuation(&mut self, mut lhs: ExprId, min_bp: u8) -> ExprId {
         let start = match &self.expr_arena.nodes[lhs.0] {
             Expr::Number(.., span) => span.start,
-            Expr::String(.., span) => span.start,
+            Expr::String { span, .. } => span.start,
             Expr::Bool(.., span) => span.start,
             Expr::Var(.., span) => span.start,
             Expr::Binary { span, .. } => span.start,
@@ -980,5 +994,98 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             }
         }
         self.block_arena.alloc(Block { stmts, span: start..self.cur.span.end })
+    }
+
+    // Parses a string literal with interpolation detection
+    fn parse_string_literal(&mut self, content: Cow<'src, str>, span: Span) -> ExprId {
+        // No braces = static string
+        if !content.contains('{') {
+            return self
+                .expr_arena
+                .alloc(Expr::String { parts: StringParts::Static(content), span });
+        }
+
+        let template_str: &'src str = match &content {
+            Cow::Borrowed(s) => s,
+            Cow::Owned(..) => {
+                return self
+                    .expr_arena
+                    .alloc(Expr::String { parts: StringParts::Static(content), span });
+            }
+        };
+
+        let segments = self.parse_template_segments(template_str);
+        if segments.is_empty() {
+            return self
+                .expr_arena
+                .alloc(Expr::String { parts: StringParts::Static(content), span });
+        }
+
+        self.expr_arena.alloc(Expr::String { parts: StringParts::Interpolated(segments), span })
+    }
+
+    // Parses a template string into segments
+    fn parse_template_segments(&self, template: &'src str) -> Vec<StringSegment<'src>> {
+        let mut segments = Vec::new();
+        let mut chars = template.char_indices();
+        let mut current_start = 0;
+
+        while let Some((i, ch)) = chars.next() {
+            if ch != '{' {
+                continue;
+            }
+
+            // We want to push literal before '{' if non-empty
+            if i > current_start {
+                segments.push(StringSegment::Literal(&template[current_start..i]));
+            }
+
+            // Try find matching closing brace
+            let mut var_start = None;
+            let mut var_end = None;
+
+            // We just saw one '{', so we need to find the matching '}'
+            let mut brace_count = 1;
+
+            for (j, next_ch) in chars.by_ref() {
+                match next_ch {
+                    '{' => brace_count += 1,
+                    '}' => {
+                        brace_count -= 1;
+                        if brace_count == 0 {
+                            var_end = Some(j);
+                            break;
+                        }
+                    }
+                    _ => {
+                        // The first non-whitespace character after '{' marks the start of the variable name
+                        if var_start.is_none() && !next_ch.is_whitespace() {
+                            var_start = Some(j);
+                        }
+                    }
+                }
+            }
+
+            // Validate and extract variable name
+            if let (Some(start), Some(end)) = (var_start, var_end) {
+                let raw = &template[start..end];
+                let name = raw.trim();
+                if !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                    segments.push(StringSegment::Variable(name));
+                    current_start = end + 1;
+                    continue;
+                }
+            }
+
+            // Treat invalid placeholder as literal
+            current_start = i;
+        }
+
+        // Append trailing literal if any
+        if current_start < template.len() {
+            segments.push(StringSegment::Literal(&template[current_start..]));
+        }
+
+        segments
     }
 }

@@ -249,3 +249,8 @@ fn test_unary_minus_with_boolean() {
 fn test_unary_minus_with_undeclared_variable() {
     assert_resolve!(r#"make x get minus y"#, SemanticError::UndeclaredIdentifier);
 }
+
+#[test]
+fn test_unresolved_template_variable() {
+    assert_resolve!(r#"shout("{foo}")"#, SemanticError::UndeclaredIdentifier);
+}

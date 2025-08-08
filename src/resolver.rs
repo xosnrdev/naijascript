@@ -7,7 +7,7 @@ use crate::builtins::{Builtin, BuiltinReturnType};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     self, Arena, ArgList, BinaryOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId, Stmt,
-    StmtId, UnaryOp,
+    StmtId, StringParts, StringSegment, UnaryOp,
 };
 
 /// Represents the type of semantic errors that can occur
@@ -546,7 +546,7 @@ impl<'src> Resolver<'src> {
         {
             let span = match &self.exprs.nodes[eid.0] {
                 Expr::Number(.., span) => span.clone(),
-                Expr::String(.., span) => span.clone(),
+                Expr::String { span, .. } => span.clone(),
                 Expr::Bool(.., span) => span.clone(),
                 Expr::Var(.., span) => span.clone(),
                 Expr::Binary { span, .. } => span.clone(),
@@ -573,7 +573,27 @@ impl<'src> Resolver<'src> {
     fn check_expr(&mut self, eid: ExprId) {
         match &self.exprs.nodes[eid.0] {
             // Literals are always valid since they represent concrete values
-            Expr::Number(..) | Expr::String(..) | Expr::Bool(..) => {}
+            Expr::Number(..) | Expr::Bool(..) => {}
+            Expr::String { parts, span } => {
+                if let StringParts::Interpolated(segments) = parts {
+                    for segment in segments {
+                        if let StringSegment::Variable(var) = segment
+                            && !self.lookup_var(var)
+                        {
+                            self.errors.emit(
+                                span.clone(),
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::UndeclaredIdentifier.as_str(),
+                                vec![Label {
+                                    span: span.clone(),
+                                    message: Cow::Owned(format!("Variable `{var}` no dey scope")),
+                                }],
+                            );
+                        }
+                    }
+                }
+            }
             // Variables need to exist in our symbol table before we can use them
             Expr::Var(v, span) => {
                 if !self.lookup_var(v) {
@@ -770,7 +790,7 @@ impl<'src> Resolver<'src> {
                     Expr::Var(func_name, ..) => {
                         // Check if this is a built-in function first
                         if let Some(builtin) = Builtin::from_name(func_name) {
-                            // Check parameter count for built-in
+                            // Validate arity for built-in functions
                             if arg_list.args.len() != builtin.arity() {
                                 self.errors.emit(
                                     span.clone(),
@@ -835,7 +855,7 @@ impl<'src> Resolver<'src> {
     fn infer_expr_type(&self, eid: ExprId) -> Option<VarType> {
         match &self.exprs.nodes[eid.0] {
             Expr::Number(..) => Some(VarType::Number),
-            Expr::String(..) => Some(VarType::String),
+            Expr::String { .. } => Some(VarType::String),
             Expr::Bool(..) => Some(VarType::Bool),
             Expr::Var(v, ..) => {
                 for scope in self.variable_scopes.iter().rev() {
