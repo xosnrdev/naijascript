@@ -29,20 +29,16 @@ do fib_iterative(n) start
     end
 end
 
-# Test both approaches
+# Test cases
 make n get 10
 
 shout("Fibonacci recursive:")
-shout("F(")
-shout(n)
-shout(") =")
-shout(fib_recursive(n))
+make result get fib_recursive(n)
+shout("F({n}) = {result}")
 
 shout("Fibonacci iterative:")
-shout("F(")
-shout(n)
-shout(") =")
-shout(fib_iterative(n))
+result get fib_iterative(n)
+shout("F({n}) = {result}")
 
 # Show first 10 Fibonacci numbers
 shout("First 10 Fibonacci numbers:")
