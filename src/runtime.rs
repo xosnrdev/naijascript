@@ -18,8 +18,6 @@ use crate::syntax::parser::{
 pub enum RuntimeErrorKind {
     /// Division by zero, which we can't catch until the divisor evaluates to zero
     DivisionByZero,
-    /// Number parsing failed when lexer accepts malformed numbers that f64::parse rejects
-    InvalidNumber,
     /// Call stack overflow to prevent infinite recursion from crashing the host
     StackOverflow,
 }
@@ -28,7 +26,6 @@ impl AsStr for RuntimeErrorKind {
     fn as_str(&self) -> &'static str {
         match self {
             RuntimeErrorKind::DivisionByZero => "Division by zero",
-            RuntimeErrorKind::InvalidNumber => "Invalid number",
             RuntimeErrorKind::StackOverflow => "Stack overflow",
         }
     }
@@ -41,6 +38,9 @@ struct RuntimeError<'src> {
     // Reference to the source span.
     span: &'src Span,
 }
+
+/// Maximum recursion depth to prevent stack overflow
+const MAX_CALL_DEPTH: usize = 1000;
 
 /// The value types our runtime can work with at runtime.
 #[derive(Debug, Clone, PartialEq)]
@@ -100,9 +100,6 @@ pub struct Runtime<'src> {
     // Call stack for function execution, prevents infinite recursion
     call_stack: Vec<ActivationRecord<'src>>,
 
-    // Stack depth limit, reasonable default to prevent host crashes
-    max_call_depth: usize,
-
     /// Collection of runtime errors encountered during execution
     pub errors: Diagnostics,
 
@@ -128,7 +125,6 @@ impl<'src> Runtime<'src> {
             env: Vec::new(),
             functions: Vec::new(),
             call_stack: Vec::new(),
-            max_call_depth: 1000,
             errors: Diagnostics::default(),
             output: Vec::new(),
         }
@@ -148,18 +144,12 @@ impl<'src> Runtime<'src> {
                 let labels = match err.kind {
                     RuntimeErrorKind::DivisionByZero => vec![Label {
                         span: err.span.clone(),
-                        message: Cow::Borrowed("You divide by zero for here"),
+                        message: Cow::Borrowed("No divide by zero"),
                     }],
-                    RuntimeErrorKind::InvalidNumber => {
-                        vec![Label {
-                            span: err.span.clone(),
-                            message: Cow::Borrowed("Dis number no correct"),
-                        }]
-                    }
                     RuntimeErrorKind::StackOverflow => {
                         vec![Label {
                             span: err.span.clone(),
-                            message: Cow::Borrowed("Function call too deep, stop the recursion"),
+                            message: Cow::Borrowed("Dis function call too deep"),
                         }]
                     }
                 };
@@ -197,7 +187,7 @@ impl<'src> Runtime<'src> {
                 let is_truthy = match condition_value {
                     Value::Bool(b) => b,
                     _ => unreachable!(
-                        "Semantic analysis should guarantee only boolean expressions in conditions"
+                        "Semantic analysis guarantees only boolean expressions in conditions"
                     ),
                 };
                 if is_truthy {
@@ -214,7 +204,7 @@ impl<'src> Runtime<'src> {
                     let should_continue = match condition_value {
                         Value::Bool(b) => b,
                         _ => unreachable!(
-                            "Semantic analysis should guarantee only boolean expressions in loop conditions"
+                            "Semantic analysis guarantees only boolean expressions in loop conditions"
                         ),
                     };
                     if !should_continue {
@@ -271,10 +261,9 @@ impl<'src> Runtime<'src> {
 
     fn eval_expr(&mut self, eid: ExprId) -> Result<Value<'src>, RuntimeError<'src>> {
         match &self.exprs.nodes[eid.0] {
-            Expr::Number(n, span) => n
-                .parse::<f64>()
-                .map(Value::Number)
-                .map_err(|_| RuntimeError { kind: RuntimeErrorKind::InvalidNumber, span }),
+            Expr::Number(n, ..) => Ok(Value::Number(
+                n.parse::<f64>().expect("Scanner should guarantee valid number format"),
+            )),
             Expr::String { parts, .. } => self.eval_string_expr(parts),
             Expr::Bool(b, ..) => Ok(Value::Bool(*b)),
             Expr::Var(v, ..) => {
@@ -413,7 +402,7 @@ impl<'src> Runtime<'src> {
             .clone();
 
         // We check for recursion depth
-        if self.call_stack.len() >= self.max_call_depth {
+        if self.call_stack.len() >= MAX_CALL_DEPTH {
             return Err(RuntimeError { kind: RuntimeErrorKind::StackOverflow, span });
         }
 
@@ -439,8 +428,8 @@ impl<'src> Runtime<'src> {
 
         // We execute the function body with proper return value handling
         let result = match self.exec_block_with_flow(func_def.body)? {
-            ExecFlow::Continue => Value::Number(0.0), // Implicit return 0
-            ExecFlow::Return(val) => val,             // Explicit return value
+            ExecFlow::Continue => Value::Number(0.0),
+            ExecFlow::Return(val) => val,
         };
 
         // We remove the activation record from the call stack

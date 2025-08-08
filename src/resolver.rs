@@ -245,7 +245,7 @@ impl<'src> Resolver<'src> {
                         SemanticError::AssignmentToUndeclared.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Borrowed("You never declare dis variable before"),
+                            message: Cow::Borrowed("Dis variable no dey scope"),
                         }],
                     );
                 }
@@ -604,7 +604,7 @@ impl<'src> Resolver<'src> {
                         SemanticError::UndeclaredIdentifier.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Borrowed("You never declare dis variable before"),
+                            message: Cow::Borrowed("Dis variable no dey scope"),
                         }],
                     );
                 }
