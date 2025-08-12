@@ -835,7 +835,7 @@ impl<'src> Resolver<'src> {
                                 SemanticError::UndeclaredIdentifier.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Borrowed("You never define dis function before"),
+                                    message: Cow::Borrowed("Dis function no dey scope"),
                                 }],
                             );
                         }
