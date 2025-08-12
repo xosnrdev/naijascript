@@ -132,7 +132,7 @@ impl Diagnostics {
         let src_line = &src[line_start..line_end];
         let gutter = Self::render_gutter(line, color, gutter_width);
         let plain_gutter = Self::render_plain_gutter(color, gutter_width);
-        let caret_count = (diag.span.end.saturating_sub(diag.span.start)).max(1);
+        let caret_count = src[diag.span.start..diag.span.end].chars().count().max(1);
         let caret_line = Self::render_caret_line(col, caret_count, color, &plain_gutter);
 
         // Partition labels based on whether they're on the same line as the main diagnostic.
@@ -149,7 +149,7 @@ impl Diagnostics {
         for label in same_line_labels {
             // Convert absolute span to column position relative to line start
             let lbl_col = label.span.start.saturating_sub(line_start) + 1;
-            let dash_count = (label.span.end.saturating_sub(label.span.start)).max(1);
+            let dash_count = src[label.span.start..label.span.end].chars().count().max(1);
             label_lines.push(Self::render_label_line(
                 lbl_col,
                 dash_count,
@@ -167,7 +167,7 @@ impl Diagnostics {
             let label_src_line = &src[label_line_start..label_line_end];
             let label_gutter = Self::render_gutter(label_line, color, gutter_width);
             let line_display = format!("{label_gutter}{label_src_line}");
-            let dash_count = (label.span.end.saturating_sub(label.span.start)).max(1);
+            let dash_count = src[label.span.start..label.span.end].chars().count().max(1);
             let label_underline = Self::render_label_line(
                 label_col,
                 dash_count,
@@ -286,7 +286,7 @@ impl Diagnostics {
         let line_start = before.rfind('\n').map_or(0, |i| i + 1);
         let line_end = src[line_start..].find('\n').map_or(src.len(), |i| line_start + i);
         let line = before.bytes().filter(|&b| b == b'\n').count() + 1;
-        let col = span_start - line_start + 1;
+        let col = src[line_start..span_start].chars().count() + 1;
         (line, col, line_start, line_end)
     }
 
@@ -313,4 +313,39 @@ impl Diagnostics {
 /// interpreter.
 pub trait AsStr: 'static {
     fn as_str(&self) -> &'static str;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_utf8_column_calculation() {
+        let src = "áé你😆"; // 2-byte, 2-byte, 3-byte, 4-byte characters
+
+        let (_, col, ..) = Diagnostics::line_col_from_span(src, 0);
+        assert_eq!(col, 1); // First character 'á'
+
+        let (_, col, ..) = Diagnostics::line_col_from_span(src, 2);
+        assert_eq!(col, 2); // Second character 'é' at byte 2
+
+        let (_, col, ..) = Diagnostics::line_col_from_span(src, 4);
+        assert_eq!(col, 3); // Third character '你' at byte 4
+
+        let (_, col, ..) = Diagnostics::line_col_from_span(src, 7);
+        assert_eq!(col, 4); // Fourth character '😆' at byte 7
+    }
+
+    #[test]
+    fn test_utf8_multiline_handling() {
+        let src = "foó\nbár";
+
+        let (line, col, ..) = Diagnostics::line_col_from_span(src, 2);
+        assert_eq!(line, 1);
+        assert_eq!(col, 3); // 'ó' in "foó" at character position 3
+
+        let (line, col, ..) = Diagnostics::line_col_from_span(src, 6);
+        assert_eq!(line, 2);
+        assert_eq!(col, 2); // 'á' in "bár" at character position 2
+    }
 }
