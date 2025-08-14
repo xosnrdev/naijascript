@@ -3,6 +3,7 @@ pub mod diagnostics;
 pub mod resolver;
 pub mod runtime;
 pub mod syntax;
+pub mod sys;
 
 #[cfg(target_arch = "wasm32")]
 use {

@@ -1,8 +1,5 @@
 //! The official Toolchain Manager for NaijaScript
 
-#[cfg(target_os = "windows")]
-mod windows;
-
 use std::borrow::Cow;
 use std::fs;
 use std::fs::File;
@@ -14,6 +11,9 @@ use std::sync::OnceLock;
 use clap::{Parser, Subcommand};
 use clap_cargo::style::CLAP_STYLING;
 use regex_lite::Regex;
+
+#[cfg(target_os = "windows")]
+use crate::sys;
 
 const REPO: &str = "xosnrdev/naijascript";
 
@@ -587,7 +587,7 @@ fn self_uninstall(yes: bool) -> Result<(), String> {
             let symlink_path = bin_dir.join("naija.exe");
             for (result, path) in [
                 (remove_if_exists(&symlink_path).map_err(std::io::Error::other), &symlink_path),
-                (windows::remove_from_path(&bin_dir).map_err(std::io::Error::other), &bin_dir),
+                (sys::remove_from_path(&bin_dir).map_err(std::io::Error::other), &bin_dir),
             ] {
                 print_removal_result(result, path);
             }
@@ -635,7 +635,7 @@ fn update_default_symlink(version: &str) -> Result<(), String> {
                     symlink_path.display(),
                     bin_path.display()
                 );
-                match windows::add_to_path(&bin_dir) {
+                match sys::add_to_path(&bin_dir) {
                     Ok(_) => print_info!(
                         "I don add {} to your PATH. Try restart your shell.",
                         bin_dir.display()
