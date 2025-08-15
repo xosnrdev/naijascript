@@ -13,7 +13,7 @@ use clap_cargo::style::CLAP_STYLING;
 use regex_lite::Regex;
 
 #[cfg(target_os = "windows")]
-use crate::sys;
+use naijascript::sys;
 
 const REPO: &str = "xosnrdev/naijascript";
 
