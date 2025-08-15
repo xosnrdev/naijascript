@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
+use crate::simd::memchr2;
 use crate::syntax::token::{SpannedToken, Token};
 
 /// Represents errors that can occur during lexical analysis.
@@ -104,7 +105,7 @@ impl<'input> Lexer<'input> {
                     continue;
                 } else {
                     // Invalid UTF-8 sequence detected, so we advance by one byte to prevent infinite loops
-                    self.pos += 1;
+                    self.bump();
                     continue;
                 }
             }
@@ -120,21 +121,22 @@ impl<'input> Lexer<'input> {
     }
 
     // Looks at the current byte without advancing position
-    //
-    // Returns 0 (NUL byte) if we're at the end of input - this is safer
-    // than panicking and lets us simplify our main tokenization loop
     #[inline(always)]
     fn peek(&self) -> u8 {
-        *self.src.as_bytes().get(self.pos).unwrap_or(&0)
+        let b = self.src.as_bytes();
+        if self.pos < b.len() {
+            // SAFETY: self.pos is guaranteed to be a valid index
+            // and the performance gain is significant in our benchmarks
+            unsafe { *b.get_unchecked(self.pos) }
+        } else {
+            0
+        }
     }
 
     // Moves the scanner position forward by one byte
-    //
-    // Uses saturating_add as a safety measure to prevent overflow,
-    // though this should never happen in practice
     #[inline(always)]
     const fn bump(&mut self) {
-        self.pos = self.pos.saturating_add(1);
+        self.pos += 1
     }
 
     // Skips all whitespace characters
@@ -150,10 +152,19 @@ impl<'input> Lexer<'input> {
 
     #[inline(always)]
     fn skip_comment(&mut self) {
-        // Let's keep moving forward until we find a newline, a carriage return, or reach the end of the input. This way, we skip the whole comment and get ready to scan the next real token.
-        while self.peek() != b'\n' && self.peek() != b'\r' && self.peek() != 0 {
-            self.bump();
-        }
+        let b = self.src.as_bytes();
+        let len = b.len();
+
+        // SAFETY: self.pos..len is guaranteed to be a valid slice
+        // and the performance gain is significant in our benchmarks
+        let idx = unsafe {
+            let hs = b.get_unchecked(self.pos..len);
+            memchr2(b'\n', b'\r', hs, 0)
+        };
+
+        // Advance position to the end of the comment
+        self.pos += idx;
+
         // After skipping to end of line, we might be sitting on the newline or carriage return character
         // We need to consume it too so the next token scan starts fresh on the following line
         if self.peek() == b'\n' || self.peek() == b'\r' {

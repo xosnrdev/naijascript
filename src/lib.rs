@@ -2,6 +2,7 @@ pub mod builtins;
 pub mod diagnostics;
 pub mod resolver;
 pub mod runtime;
+pub mod simd;
 pub mod syntax;
 pub mod sys;
 
