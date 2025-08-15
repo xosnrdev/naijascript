@@ -10,10 +10,9 @@ use std::sync::OnceLock;
 
 use clap::{Parser, Subcommand};
 use clap_cargo::style::CLAP_STYLING;
-use regex_lite::Regex;
-
 #[cfg(target_os = "windows")]
 use naijascript::sys;
+use regex_lite::Regex;
 
 const REPO: &str = "xosnrdev/naijascript";
 
