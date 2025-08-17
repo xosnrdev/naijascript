@@ -1,3 +1,8 @@
+#![cfg_attr(
+    target_arch = "loongarch64",
+    feature(stdarch_loongarch, stdarch_loongarch_feature_detection, loongarch_target_feature)
+)]
+
 pub mod builtins;
 pub mod diagnostics;
 pub mod resolver;

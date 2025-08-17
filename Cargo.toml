@@ -37,8 +37,12 @@ ansi-to-html = "0.2.2"
 html-escape = "0.2.13" 
 wasm-bindgen = "0.2.100"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.175"
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55.0"
+windows-sys = {version = "0.60.2", features = ["Win32_System_Memory"]}
 
 [dev-dependencies]
 criterion = { version = "0.6.0", features = ["html_reports"] }
