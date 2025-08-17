@@ -928,7 +928,6 @@ dependencies = [
  "tar",
  "wasm-bindgen",
  "windows-sys 0.60.2",
- "winreg",
  "xz2",
  "zip",
 ]
@@ -2015,16 +2014,6 @@ name = "windows_x86_64_msvc"
 version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
-
-[[package]]
-name = "winreg"
-version = "0.55.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb5a765337c50e9ec252c2069be9bf91c7df47afb103b642ba3a53bf8101be97"
-dependencies = [
- "cfg-if",
- "windows-sys 0.59.0",
-]
 
 [[package]]
 name = "wit-bindgen-rt"

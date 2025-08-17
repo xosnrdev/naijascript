@@ -41,8 +41,7 @@ wasm-bindgen = "0.2.100"
 libc = "0.2.175"
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.55.0"
-windows-sys = {version = "0.60.2", features = ["Win32_System_Memory"]}
+windows-sys = { version = "0.60.2", features = ["Win32_System_Memory", "Win32_System_Registry"] }
 
 [dev-dependencies]
 criterion = { version = "0.6.0", features = ["html_reports"] }
