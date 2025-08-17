@@ -2,6 +2,7 @@
 name = "naijascript"
 version = "0.11.0"
 edition = "2024"
+rust-version = "1.89.0"
 authors = ["Success Kingsley <xosnrdev@gmail.com>"]
 description = "A scripting language interpreter inspired by the expressive linguistics of Naija (Nigerian Pidgin English)"
 repository = "https://github.com/xosnrdev/naijascript"
@@ -36,7 +37,7 @@ ansi-to-html = "0.2.2"
 html-escape = "0.2.13" 
 wasm-bindgen = "0.2.100"
 
-[target.'cfg(target_os = "windows")'.dependencies]
+[target.'cfg(windows)'.dependencies]
 winreg = "0.55.0"
 
 [dev-dependencies]
