@@ -22,5 +22,21 @@ fn bench_skip_comment(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_skip_comment);
+fn bench_scan_string(c: &mut Criterion) {
+    let src = r#"
+        # String literal
+        "abcdefghijklmnopqrstuvwxyz"
+        # String escape sequence
+        "abcd\nefgh\tijkl\"mnop\\qrst"
+    "#;
+    c.bench_function("scan_string", |b| {
+        b.iter(|| {
+            let lexer = Lexer::new(src);
+            let token: Vec<_> = lexer.collect();
+            black_box(token);
+        })
+    });
+}
+
+criterion_group!(benches, bench_skip_comment, bench_scan_string);
 criterion_main!(benches);
