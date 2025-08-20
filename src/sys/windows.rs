@@ -11,6 +11,8 @@ use windows_sys::Win32::System::Registry::{
     RegQueryValueExW, RegSetValueExW,
 };
 
+use super::VirtualMemory;
+
 pub fn add_to_path(dir: &Path) -> io::Result<()> {
     let dir_str = dir.to_string_lossy();
     let current_path = get_current_path()?;
@@ -140,66 +142,49 @@ fn win32_error_to_io_error(error_code: u32) -> io::Error {
     io::Error::from_raw_os_error(error_code as i32)
 }
 
-/// Reserves a virtual memory region of the given size.
-/// To commit the memory, use [`virtual_commit`].
-/// To release the memory, use [`virtual_release`].
-///
-/// # Safety
-///
-/// This function is unsafe because it uses raw pointers.
-/// Don't forget to release the memory when you're done with it or you'll leak it.
-pub unsafe fn virtual_reserve(size: usize) -> Result<NonNull<u8>, u32> {
-    unsafe {
-        let mut _base = null_mut();
+pub struct WindowsVirtualMemory;
 
-        // In debug builds, we use fixed addresses to aid in debugging.
-        // Makes it possible to immediately tell which address space a pointer belongs to.
-        #[cfg(all(debug_assertions, not(target_pointer_width = "32")))]
-        {
-            static mut S_BASE_GEN: usize = 0x0000100000000000; // 16 TiB
-            S_BASE_GEN += 0x0000001000000000; // 64 GiB
-            _base = S_BASE_GEN as *mut _;
+impl VirtualMemory for WindowsVirtualMemory {
+    unsafe fn reserve(size: usize) -> Result<NonNull<u8>, u32> {
+        unsafe {
+            let mut _base = null_mut();
+
+            // In debug builds, we use fixed addresses to aid in debugging.
+            // Makes it possible to immediately tell which address space a pointer belongs to.
+            #[cfg(all(debug_assertions, not(target_pointer_width = "32")))]
+            {
+                static mut S_BASE_GEN: usize = 0x0000100000000000; // 16 TiB
+                S_BASE_GEN += 0x0000001000000000; // 64 GiB
+                _base = S_BASE_GEN as *mut _;
+            }
+
+            check_ptr_return(Memory::VirtualAlloc(
+                _base,
+                size,
+                Memory::MEM_RESERVE,
+                Memory::PAGE_READWRITE,
+            ) as *mut u8)
         }
-
-        check_ptr_return(Memory::VirtualAlloc(
-            _base,
-            size,
-            Memory::MEM_RESERVE,
-            Memory::PAGE_READWRITE,
-        ) as *mut u8)
     }
-}
 
-/// Releases a virtual memory region of the given size.
-///
-/// # Safety
-///
-/// This function is unsafe because it uses raw pointers.
-/// Make sure to only pass pointers acquired from [`virtual_reserve`].
-pub unsafe fn virtual_release(base: NonNull<u8>, _size: usize) {
-    unsafe {
-        // NOTE: `VirtualFree` fails if the pointer isn't
-        // a valid base address or if the size isn't zero.
-        Memory::VirtualFree(base.as_ptr() as *mut _, 0, Memory::MEM_RELEASE);
+    unsafe fn commit(base: NonNull<u8>, size: usize) -> Result<(), u32> {
+        unsafe {
+            check_ptr_return(Memory::VirtualAlloc(
+                base.as_ptr() as *mut _,
+                size,
+                Memory::MEM_COMMIT,
+                Memory::PAGE_READWRITE,
+            ))
+            .map(|_| ())
+        }
     }
-}
 
-/// Commits a virtual memory region of the given size.
-///
-/// # Safety
-///
-/// This function is unsafe because it uses raw pointers.
-/// Make sure to only pass pointers acquired from [`virtual_reserve`]
-/// and to pass a size less than or equal to the size passed to [`virtual_reserve`].
-pub unsafe fn virtual_commit(base: NonNull<u8>, size: usize) -> Result<(), u32> {
-    unsafe {
-        check_ptr_return(Memory::VirtualAlloc(
-            base.as_ptr() as *mut _,
-            size,
-            Memory::MEM_COMMIT,
-            Memory::PAGE_READWRITE,
-        ))
-        .map(|_| ())
+    unsafe fn release(base: NonNull<u8>, _size: usize) {
+        unsafe {
+            // NOTE: `VirtualFree` fails if the pointer isn't
+            // a valid base address or if the size isn't zero.
+            Memory::VirtualFree(base.as_ptr() as *mut _, 0, Memory::MEM_RELEASE);
+        }
     }
 }
 

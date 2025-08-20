@@ -1,5 +1,5 @@
+use std::mem;
 use std::ops::Deref;
-use std::{marker, mem};
 
 #[cfg(debug_assertions)]
 use super::debug;
@@ -62,7 +62,7 @@ pub fn scratch_arena(conflict: Option<&Arena>) -> ScratchArena<'static> {
 pub struct ScratchArena<'a> {
     arena: debug::Arena,
     offset: usize,
-    _phantom: marker::PhantomData<&'a ()>,
+    _phantom: std::marker::PhantomData<&'a ()>,
 }
 
 #[cfg(not(debug_assertions))]
@@ -75,7 +75,7 @@ pub struct ScratchArena<'a> {
 impl<'a> ScratchArena<'a> {
     fn new(arena: &'a bump::Arena) -> Self {
         let offset = arena.offset();
-        ScratchArena { arena: Arena::delegated(arena), _phantom: marker::PhantomData, offset }
+        ScratchArena { arena: Arena::delegated(arena), _phantom: std::marker::PhantomData, offset }
     }
 }
 
