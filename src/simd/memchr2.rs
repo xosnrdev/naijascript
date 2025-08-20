@@ -220,7 +220,10 @@ unsafe fn memchr2_neon(needle1: u8, needle2: u8, mut beg: *const u8, end: *const
 
 #[cfg(test)]
 mod tests {
+    use std::slice;
+
     use super::*;
+    use crate::sys;
 
     #[test]
     fn test_empty() {
@@ -249,5 +252,26 @@ mod tests {
         assert_eq!(memchr2(b'a', b'b', haystack, 9), 9);
         assert_eq!(memchr2(b'a', b'b', haystack, 16), 16);
         assert_eq!(memchr2(b'a', b'b', haystack, 41), 40);
+    }
+
+    // Test memory access safety at page boundaries.
+    // The test is a success if it doesn't segfault.
+    #[test]
+    fn test_page_boundary() {
+        let page = unsafe {
+            const PAGE_SIZE: usize = 64 * 1024; // 64 KiB to cover many architectures.
+
+            // 3 pages: uncommitted, committed, uncommitted
+            let ptr = sys::virtual_reserve(PAGE_SIZE * 3).unwrap();
+            sys::virtual_commit(ptr.add(PAGE_SIZE), PAGE_SIZE).unwrap();
+            slice::from_raw_parts_mut(ptr.add(PAGE_SIZE).as_ptr(), PAGE_SIZE)
+        };
+
+        page.fill(b'a');
+
+        // Test if it seeks beyond the page boundary.
+        assert_eq!(memchr2(b'\0', b'\0', &page[page.len() - 40..], 0), 40);
+        // Test if it seeks before the page boundary for the masked/partial load.
+        assert_eq!(memchr2(b'\0', b'\0', &page[..10], 0), 10);
     }
 }

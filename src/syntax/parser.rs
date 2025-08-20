@@ -1,54 +1,22 @@
 //! The syntax parser for NaijaScript.
 
 use std::borrow::Cow;
+use std::{mem, slice};
 
+use crate::arena::{Arena, ArenaString};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
+use crate::simd::memchr2;
 use crate::syntax::token::{SpannedToken, Token};
 
-/// A simple arena allocator for AST nodes.
-#[derive(Default)]
-pub struct Arena<T> {
-    pub nodes: Vec<T>,
-}
-
-impl<T> Arena<T> {
-    #[inline]
-    const fn new() -> Self {
-        Arena { nodes: Vec::new() }
-    }
-
-    #[inline]
-    fn alloc(&mut self, node: T) -> NodeId {
-        let id = NodeId(self.nodes.len());
-        self.nodes.push(node);
-        id
-    }
-}
-
-/// A unique identifier for AST nodes.
-#[derive(Copy, Clone, Debug)]
-pub struct NodeId(pub usize);
-
-pub type StmtId = NodeId;
-pub type ExprId = NodeId;
-pub type BlockId = NodeId;
-pub type ParamListId = NodeId;
-pub type ArgListId = NodeId;
-
-/// Represents a list of function parameters
-#[derive(Debug)]
-pub struct ParamList<'src> {
-    pub params: Vec<&'src str>,
-}
-
-/// Represents a list of function call arguments
-#[derive(Debug)]
-pub struct ArgList {
-    pub args: Vec<ExprId>,
-}
+// Direct references to AST nodes allocated in the arena.
+pub type StmtRef<'ast> = &'ast Stmt<'ast>;
+pub type ExprRef<'ast> = &'ast Expr<'ast>;
+pub type BlockRef<'ast> = &'ast Block<'ast>;
+pub type ParamListRef<'ast> = &'ast ParamList<'ast>;
+pub type ArgListRef<'ast> = &'ast ArgList<'ast>;
 
 /// Binary operators for arithmetic and logical expressions.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinaryOp {
     Add,    // "add" keyword
     Minus,  // "minus" keyword
@@ -63,66 +31,78 @@ pub enum BinaryOp {
 }
 
 /// Unary operators for logical and arithmetic negation.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnaryOp {
     Not,   // "not" keyword (logical negation)
     Minus, // "-" for negation
 }
 
-/// Represents a statement in NaijaScript.
+/// Represents a list of function parameters
 #[derive(Debug)]
-pub enum Stmt<'src> {
-    // "make x get 5"
-    Assign { var: &'src str, expr: ExprId, span: Span },
-    // "x get 5"
-    AssignExisting { var: &'src str, expr: ExprId, span: Span },
-    // "if to say(...) start...end"
-    If { cond: ExprId, then_b: BlockId, else_b: Option<BlockId>, span: Span },
-    // "jasi(...) start...end"
-    Loop { cond: ExprId, body: BlockId, span: Span },
-    // "start...end" - standalone or nested block
-    Block { block: BlockId, span: Span },
-    // Function definition: do <name>(<params>?) start ... end
-    FunctionDef { name: &'src str, params: ParamListId, body: BlockId, span: Span },
-    // Return statement: return <expr>?
-    Return { expr: Option<ExprId>, span: Span },
-    // Expression statement (e.g., function calls)
-    Expression { expr: ExprId, span: Span },
+pub struct ParamList<'ast> {
+    pub params: &'ast [&'ast str],
+}
+
+/// Represents a list of function call arguments
+#[derive(Debug)]
+pub struct ArgList<'ast> {
+    pub args: &'ast [ExprRef<'ast>],
 }
 
 /// Represents the parts of a string literal.
 #[derive(Debug)]
-pub enum StringParts<'src> {
-    Static(Cow<'src, str>),
-    Interpolated(Vec<StringSegment<'src>>),
+pub enum StringParts<'ast> {
+    Static(&'ast str),
+    Interpolated(&'ast [StringSegment<'ast>]),
 }
 
 /// Represents a segment of a string literal.
+#[derive(Debug, Clone, Copy)]
+pub enum StringSegment<'ast> {
+    Literal(&'ast str),
+    Variable(&'ast str),
+}
+
+/// Represents a statement in NaijaScript.
 #[derive(Debug)]
-pub enum StringSegment<'src> {
-    Literal(&'src str),
-    Variable(&'src str),
+pub enum Stmt<'ast> {
+    // "make x get 5"
+    Assign { var: &'ast str, expr: ExprRef<'ast>, span: Span },
+    // "x get 5"
+    AssignExisting { var: &'ast str, expr: ExprRef<'ast>, span: Span },
+    // "if to say(...) start...end"
+    If { cond: ExprRef<'ast>, then_b: BlockRef<'ast>, else_b: Option<BlockRef<'ast>>, span: Span },
+    // "jasi(...) start...end"
+    Loop { cond: ExprRef<'ast>, body: BlockRef<'ast>, span: Span },
+    // "start...end" - standalone or nested block
+    Block { block: BlockRef<'ast>, span: Span },
+    // Function definition: do <name>(<params>?) start ... end
+    FunctionDef { name: &'ast str, params: ParamListRef<'ast>, body: BlockRef<'ast>, span: Span },
+    // Return statement: return <expr>?
+    Return { expr: Option<ExprRef<'ast>>, span: Span },
+    // Expression statement (e.g., function calls)
+    Expression { expr: ExprRef<'ast>, span: Span },
 }
 
 /// Represents an expression in NaijaScript.
 #[derive(Debug)]
-pub enum Expr<'src> {
-    Number(&'src str, Span),                         // 42, 3.14, etc.
-    String { parts: StringParts<'src>, span: Span }, // "hello" or "hello {name}"
+pub enum Expr<'ast> {
+    Number(&'ast str, Span),                         // 42, 3.14, etc.
+    String { parts: StringParts<'ast>, span: Span }, // "hello" or "hello {name}"
     Bool(bool, Span),                                // "true", "false"
-    Var(&'src str, Span),                            // variable references
+    Var(&'ast str, Span),                            // variable references
     // arithmetic/logical operations
-    Binary { op: BinaryOp, lhs: ExprId, rhs: ExprId, span: Span },
+    Binary { op: BinaryOp, lhs: ExprRef<'ast>, rhs: ExprRef<'ast>, span: Span },
     // logical/arithmetic negation
-    Unary { op: UnaryOp, expr: ExprId, span: Span },
+    Unary { op: UnaryOp, expr: ExprRef<'ast>, span: Span },
     // Function call: <callee>(<args>?)
-    Call { callee: ExprId, args: ArgListId, span: Span },
+    Call { callee: ExprRef<'ast>, args: ArgListRef<'ast>, span: Span },
 }
 
 /// Represents a block of statements, which can be nested.
 #[derive(Debug)]
-pub struct Block {
-    pub stmts: Vec<StmtId>,
+pub struct Block<'ast> {
+    pub stmts: &'ast [StmtRef<'ast>],
     pub span: Span,
 }
 
@@ -162,37 +142,44 @@ impl AsStr for SyntaxError {
     }
 }
 
-/// The interface for the NaijaScript parser.
-pub struct Parser<'src, I: Iterator<Item = SpannedToken<'src>>> {
+/// An arena-backed recursive-descent parser.
+///
+/// Think of it like reading a book: you go sentence by sentence (recursive descent),
+/// but instead of throwing away each page after reading, you keep everything
+/// in one big notebook [`arena::Arena`].
+///
+/// We use a hybrid approach, combining recursive-descent with Pratt parsing for
+/// expressions. See [https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html]
+pub struct Parser<'src, 'ast, I: Iterator<Item = SpannedToken<'src>>>
+where
+    'src: 'ast,
+{
     tokens: I,
     cur: SpannedToken<'src>,
     errors: Diagnostics,
-
-    pub stmt_arena: Arena<Stmt<'src>>,
-    pub expr_arena: Arena<Expr<'src>>,
-    pub block_arena: Arena<Block>,
-    pub param_arena: Arena<ParamList<'src>>,
-    pub arg_arena: Arena<ArgList>,
+    arena: &'ast Arena,
 }
 
-impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
-    /// Create a new parser instance with the given token iterator.
+impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, 'ast, I> {
+    /// Creates a new [`Parser`] instance.
     #[inline]
-    pub fn new(mut tokens: I) -> Self {
-        let first = tokens.next().unwrap_or_default();
-        Parser {
-            tokens,
-            cur: first,
-            errors: Diagnostics::default(),
-            stmt_arena: Arena::new(),
-            expr_arena: Arena::new(),
-            block_arena: Arena::new(),
-            param_arena: Arena::new(),
-            arg_arena: Arena::new(),
-        }
+    pub fn new(mut tokens: I, arena: &'ast Arena) -> Self {
+        let cur = tokens.next().unwrap_or_default();
+        Parser { tokens, cur, errors: Diagnostics::default(), arena }
     }
 
-    // Move forward to the next token in our input stream.
+    #[inline]
+    fn alloc<T>(&self, value: T) -> &'ast T {
+        let uninit = self.arena.alloc_uninit::<T>();
+        uninit.write(value)
+    }
+
+    #[inline]
+    fn alloc_str(&self, s: &str) -> &'ast str {
+        let arena_string = ArenaString::from_str(self.arena, s);
+        unsafe { mem::transmute(arena_string.as_str()) }
+    }
+
     #[inline]
     fn bump(&mut self) {
         self.cur = self.tokens.next().unwrap_or(SpannedToken {
@@ -201,10 +188,10 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
         });
     }
 
-    /// The main entry point for parsing a complete NaijaScript program.
+    /// Returns the parsed program as a Block reference.
     #[inline]
-    pub fn parse_program(&mut self) -> (BlockId, Diagnostics) {
-        let block_id = self.parse_program_body();
+    pub fn parse_program(&mut self) -> (BlockRef<'ast>, Diagnostics) {
+        let block_ref = self.parse_program_body();
         if self.cur.token != Token::EOF {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -214,30 +201,52 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 Vec::new(),
             );
         }
-        (block_id, std::mem::take(&mut self.errors))
+        (block_ref, mem::take(&mut self.errors))
     }
 
-    // Parses a sequence of statements until we hit a block terminator.
-    // The grammar's <statement_list> is recursive, but we use a simple loop instead.
-    // When statement parsing fails, we call synchronize() to skip to the next likely
-    // statement start - this is crucial for good error recovery.
     #[inline]
-    fn parse_block_body(&mut self) -> BlockId {
+    fn parse_program_body(&mut self) -> BlockRef<'ast> {
         let start = self.cur.span.start;
-        let mut stmts = Vec::new();
-        while !matches!(self.cur.token, Token::EOF | Token::End) {
+        let mut stmts = Vec::new_in(self.arena);
+
+        while matches!(
+            &self.cur.token,
+            Token::Make
+                | Token::IfToSay
+                | Token::Jasi
+                | Token::Do
+                | Token::Return
+                | Token::Identifier(..)
+                | Token::Start
+        ) {
             match self.parse_statement() {
-                Some(sid) => stmts.push(sid),
-                None => self.synchronize(), // Skip to next statement on error
+                Some(stmt) => stmts.push(stmt),
+                None => self.synchronize(),
             }
         }
-        self.block_arena.alloc(Block { stmts, span: start..self.cur.span.end })
+
+        let end = self.cur.span.end;
+        let stmts = self.arena.vec_into_slice(stmts);
+        self.alloc(Block { stmts, span: start..end })
     }
 
-    // Error recovery mechanism - skips tokens until we find a likely statement start.
-    // This is essential for parsing multiple statements when earlier ones have errors.
-    // We look for statement keywords (make, if to say, jasi, do, return) or block boundaries.
-    // Without this, one syntax error would make the rest of the file unparseable.
+    #[inline]
+    fn parse_block_body(&mut self) -> BlockRef<'ast> {
+        let start = self.cur.span.start;
+        let mut stmts = Vec::new_in(self.arena);
+
+        while !matches!(self.cur.token, Token::EOF | Token::End) {
+            match self.parse_statement() {
+                Some(stmt) => stmts.push(stmt),
+                None => self.synchronize(),
+            }
+        }
+
+        let end = self.cur.span.end;
+        let stmts = self.arena.vec_into_slice(stmts);
+        self.alloc(Block { stmts, span: start..end })
+    }
+
     #[inline]
     fn synchronize(&mut self) {
         while !matches!(
@@ -254,11 +263,8 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
         }
     }
 
-    // Dispatches to the appropriate statement parser based on the current token.
-    // This directly implements: <statement> ::= <assignment> | <if_statement> | <loop_statement> | <function_def> | <return_statement> | <expression_statement> | <block>
-    // Returns None on error to trigger error recovery in the caller.
     #[inline]
-    fn parse_statement(&mut self) -> Option<StmtId> {
+    fn parse_statement(&mut self) -> Option<StmtRef<'ast>> {
         let start = self.cur.span.start;
         match &self.cur.token {
             Token::Do => self.parse_function_def(start),
@@ -266,12 +272,12 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             Token::Make => self.parse_assignment(start),
             Token::IfToSay => self.parse_if(start),
             Token::Jasi => self.parse_loop(start),
+            // Parse a standalone or nested block as a statement
             Token::Start => {
-                // Parse a standalone or nested block as a statement
-                self.bump(); // consume 'start'
-                let block_id = self.parse_block_body();
+                self.bump(); // consume `start` block
+                let block_ref = self.parse_block_body();
                 if let Token::End = self.cur.token {
-                    self.bump();
+                    self.bump(); // consume `end` block
                 } else {
                     self.errors.emit(
                         self.cur.span.clone(),
@@ -280,45 +286,32 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                         SyntaxError::UnterminatedBlock.as_str(),
                         vec![Label {
                             span: self.cur.span.clone(),
-                            message: Cow::Borrowed("I dey expect `end` to close block"),
+                            message: Cow::Borrowed("I dey expect `end` block"),
                         }],
                     );
                 }
-                let sid = self
-                    .stmt_arena
-                    .alloc(Stmt::Block { block: block_id, span: start..self.cur.span.end });
-                Some(sid)
+                let end = self.cur.span.end;
+                Some(self.alloc(Stmt::Block { block: block_ref, span: start..end }))
             }
             Token::Identifier(var) => {
-                let var_name = *var;
-                let var_span = self.cur.span.clone();
-                // Peek ahead for reassignment: <identifier> 'get' <expression>
-                self.bump();
+                let var = *var;
+                let span = self.cur.span.clone();
+                self.bump(); // consume `identifier`
                 if let Token::Get = self.cur.token {
                     self.bump();
                     let expr = self.parse_expression(0);
-                    let sid = self.stmt_arena.alloc(Stmt::AssignExisting {
-                        var: var_name,
-                        expr,
-                        span: start..self.cur.span.end,
-                    });
-                    Some(sid)
+                    let end = self.cur.span.end;
+                    Some(self.alloc(Stmt::AssignExisting { var, expr, span: start..end }))
                 } else {
-                    // Function calls need special handling because they look like variable references initially
-                    // We already consumed the identifier, so we peek ahead to see if parentheses follow
-                    // This disambiguates between "foo()" (valid expression statement) and "foo" (invalid bare reference)
+                    // Is it a function call?
                     if let Token::LParen = self.cur.token {
-                        // Build function call expression starting with the variable we already parsed
-                        // We reuse parse_expression_continuation to handle the call syntax and any chained operations
-                        let var_expr = self.expr_arena.alloc(Expr::Var(var_name, var_span.clone()));
+                        let var_expr = self.alloc(Expr::Var(var, span.clone()));
                         let expr = self.parse_expression_continuation(var_expr, 0);
-                        let sid = self
-                            .stmt_arena
-                            .alloc(Stmt::Expression { expr, span: start..self.cur.span.end });
-                        Some(sid)
+                        let end = self.cur.span.end;
+                        Some(self.alloc(Stmt::Expression { expr, span: start..end }))
                     } else {
                         let message: Cow<'static, str> =
-                            if let Some(suggestion) = Token::suggest_keyword(var_name) {
+                            if let Some(suggestion) = Token::suggest_keyword(var) {
                                 Cow::Owned(format!(
                                     "I dey expect statement. Na `{suggestion}` you mean?",
                                 ))
@@ -326,11 +319,11 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                                 Cow::Borrowed("I dey expect statement")
                             };
                         self.errors.emit(
-                            var_span.clone(),
+                            span.clone(),
                             Severity::Error,
                             "syntax",
                             SyntaxError::ExpectedStatement.as_str(),
-                            vec![Label { span: var_span, message }],
+                            vec![Label { span, message }],
                         );
                         None
                     }
@@ -352,11 +345,11 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
         }
     }
 
-    // Parses function definitions: do <name>(<params>?) start ... end
     #[inline]
-    fn parse_function_def(&mut self, start: usize) -> Option<StmtId> {
+    fn parse_function_def(&mut self, start: usize) -> Option<StmtRef<'ast>> {
         let do_span = self.cur.span.clone();
-        self.bump(); // consume 'do'
+        self.bump(); // consume `do`
+
         // Parse function name
         let name = match &self.cur.token {
             Token::Identifier(n) => *n,
@@ -368,9 +361,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::ReservedKeyword.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Owned(format!(
-                            "`{t}` dey reserved, you no fit use am as variable name"
-                        )),
+                        message: Cow::Owned(format!("`{t}` na reserved keyword")),
                     }],
                 );
                 return None;
@@ -390,9 +381,10 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             }
         };
         self.bump();
+
         // Parse parameter list
         if let Token::LParen = self.cur.token {
-            self.bump();
+            self.bump(); // consume `(`
         } else {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -406,7 +398,8 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             );
             return None;
         }
-        let mut params = Vec::new();
+
+        let mut params = Vec::new_in(self.arena);
         loop {
             match &self.cur.token {
                 Token::Identifier(p) => {
@@ -418,17 +411,15 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                             SyntaxError::ReservedKeyword.as_str(),
                             vec![Label {
                                 span: self.cur.span.clone(),
-                                message: Cow::Owned(format!(
-                                    "`{p}` dey reserved, you no fit use am as variable name"
-                                )),
+                                message: Cow::Owned(format!("`{p}` na reserved keyword")),
                             }],
                         );
                         return None;
                     }
                     params.push(*p);
-                    self.bump();
+                    self.bump(); // consume parameter name
                     if let Token::Comma = self.cur.token {
-                        self.bump();
+                        self.bump(); // consume `,`
                     } else {
                         break;
                     }
@@ -441,9 +432,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                         SyntaxError::ReservedKeyword.as_str(),
                         vec![Label {
                             span: self.cur.span.clone(),
-                            message: Cow::Owned(format!(
-                                "`{t}` dey reserved, you no fit use am as variable name"
-                            )),
+                            message: Cow::Owned(format!("`{t}` na reserved keyword")),
                         }],
                     );
                     return None;
@@ -451,8 +440,9 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 _ => break,
             }
         }
+
         if let Token::RParen = self.cur.token {
-            self.bump();
+            self.bump(); // consume `)`
         } else {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -461,13 +451,14 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedRParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `)` to close parameter list"),
+                    message: Cow::Borrowed("I dey expect `)` to close function parameters"),
                 }],
             );
             return None;
         }
+
         if let Token::Start = self.cur.token {
-            self.bump();
+            self.bump(); // consume `start` block
         } else {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -476,14 +467,16 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedStartBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `start` to begin function body"),
+                    message: Cow::Borrowed("I dey expect `start` to begin function block"),
                 }],
             );
             return None;
         }
+
         let body = self.parse_block_body();
+
         if let Token::End = self.cur.token {
-            self.bump();
+            self.bump(); // consume `end` block
         } else {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -492,50 +485,43 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::UnterminatedBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `end` to close block"),
+                    message: Cow::Borrowed("I dey expect `end` to close function block"),
                 }],
             );
         }
-        let params = self.param_arena.alloc(ParamList { params });
-        let sid = self.stmt_arena.alloc(Stmt::FunctionDef {
-            name,
-            params,
-            body,
-            span: start..self.cur.span.end,
-        });
-        Some(sid)
+
+        let params = self.arena.vec_into_slice(params);
+        let params = self.alloc(ParamList { params });
+        let end = self.cur.span.end;
+
+        Some(self.alloc(Stmt::FunctionDef { name, params, body, span: start..end }))
     }
 
-    // Parses return statements: return <expr>?
     #[inline]
-    fn parse_return(&mut self, start: usize) -> Option<StmtId> {
-        self.bump(); // consume 'return'
+    fn parse_return(&mut self, start: usize) -> Option<StmtRef<'ast>> {
+        self.bump(); // consume `return`
         let expr = match &self.cur.token {
-            Token::Number(_)
-            | Token::String(_)
+            Token::Number(..)
+            | Token::String(..)
             | Token::True
             | Token::False
-            | Token::Identifier(_)
+            | Token::Identifier(..)
             | Token::Not
             | Token::LParen => Some(self.parse_expression(0)),
             Token::End | Token::EOF => None,
             _ => Some(self.parse_expression(0)),
         };
-        let sid = self.stmt_arena.alloc(Stmt::Return { expr, span: start..self.cur.span.end });
-        Some(sid)
+        let end = self.cur.span.end;
+        Some(self.alloc(Stmt::Return { expr, span: start..end }))
     }
 
-    // Parses "make variable get expression" assignments.
-    // Grammar: <assignment> ::= "make" <variable> "get" <expression>
-    // This is the most common statement type, so we want it to be rock-solid.
-    // Note: we parse the expression even if the variable part failed - this helps
-    // with error recovery and might catch additional errors in the expression.
     #[inline]
-    fn parse_assignment(&mut self, start: usize) -> Option<StmtId> {
+    fn parse_assignment(&mut self, start: usize) -> Option<StmtRef<'ast>> {
         let make_span = self.cur.span.clone();
-        self.bump(); // consume 'make'
+        self.bump(); // consume `make`
+
         let (var, var_span) = match &self.cur.token {
-            Token::Identifier(name) => (*name, self.cur.span.clone()),
+            Token::Identifier(n) => (*n, self.cur.span.clone()),
             t if t.is_reserved_keyword() => {
                 self.errors.emit(
                     self.cur.span.clone(),
@@ -544,9 +530,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::ReservedKeyword.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Owned(format!(
-                            "`{t}` dey reserved, you no fit use am as variable name"
-                        )),
+                        message: Cow::Owned(format!("`{t}` na reserved keyword")),
                     }],
                 );
                 return None;
@@ -565,9 +549,11 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 return None;
             }
         };
-        self.bump();
+        self.bump(); // consume variable name
+
+        // TODO: This reminds me that the interpreter lacks support for uninitialized variables
         if let Token::Get = self.cur.token {
-            self.bump();
+            self.bump(); // consume `get`
         } else {
             self.errors.emit(
                 var_span.clone(),
@@ -581,21 +567,19 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             );
             return None;
         }
+
         let expr = self.parse_expression(0);
-        let sid = self.stmt_arena.alloc(Stmt::Assign { var, expr, span: start..self.cur.span.end });
-        Some(sid)
+        let end = self.cur.span.end;
+        Some(self.alloc(Stmt::Assign { var, expr, span: start..end }))
     }
 
-    // Parses if statements with optional else blocks.
-    // Grammar: <if_statement> ::= "if to say" "(" <condition> ")" <block> ("if not so" <block>)?
-    // This is the most complex statement type - lots of moving parts to coordinate.
-    // The error recovery here tries to parse as much as possible even if parts fail.
     #[inline]
-    fn parse_if(&mut self, start: usize) -> Option<StmtId> {
+    fn parse_if(&mut self, start: usize) -> Option<StmtRef<'ast>> {
         let if_span = self.cur.span.clone();
-        self.bump(); // consume 'if to say'
+        self.bump(); // consume `if to say`
+
         if let Token::LParen = self.cur.token {
-            self.bump();
+            self.bump(); // consume `(`
         } else {
             self.errors.emit(
                 if_span.clone(),
@@ -609,9 +593,11 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             );
             return None;
         }
+
         let cond = self.parse_expression(0);
+
         if let Token::RParen = self.cur.token {
-            self.bump();
+            self.bump(); // consume `)`
         } else {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -620,15 +606,15 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedRParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `)` to close condition"),
+                    message: Cow::Borrowed("I dey expect `)` to close `if to say` condition"),
                 }],
             );
             return None;
         }
 
-        // Parser the mandatory then-block
+        // Parse `if to say` block
         if let Token::Start = self.cur.token {
-            self.bump();
+            self.bump(); // consume `start` block
         } else {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -637,14 +623,17 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedStartBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `start` to begin then block"),
+                    message: Cow::Borrowed("I dey expect `start` to begin `if to say` block"),
                 }],
             );
             return None;
         }
+
         let then_b = self.parse_block_body();
+
+        // Parse `if to say` block
         if let Token::End = self.cur.token {
-            self.bump();
+            self.bump(); // consume `end` block
         } else {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -653,17 +642,17 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::UnterminatedBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `end` to close block"),
+                    message: Cow::Borrowed("I dey expect `end` to close `if to say` block"),
                 }],
             );
         }
 
-        // Parse optional else block - "if not so" is our else keyword
+        // Parse `if not so` block
         let else_b = if let Token::IfNotSo = self.cur.token {
             let else_span = self.cur.span.clone();
-            self.bump();
+            self.bump(); // consume `if not so`
             if let Token::Start = self.cur.token {
-                self.bump();
+                self.bump(); // consume `start` block
             } else {
                 self.errors.emit(
                     self.cur.span.clone(),
@@ -672,14 +661,14 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::ExpectedStartBlock.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Borrowed("I dey expect `start` to begin else block"),
+                        message: Cow::Borrowed("I dey expect `start` to begin `if not so` block"),
                     }],
                 );
                 return None;
             }
             let b = self.parse_block_body();
             if let Token::End = self.cur.token {
-                self.bump();
+                self.bump(); // consume `end` block
             } else {
                 self.errors.emit(
                     else_span.clone(),
@@ -688,7 +677,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::UnterminatedBlock.as_str(),
                     vec![Label {
                         span: else_span,
-                        message: Cow::Borrowed("I dey expect `end` to close block"),
+                        message: Cow::Borrowed("I dey expect `end` to close `if not so` block"),
                     }],
                 );
             }
@@ -696,27 +685,21 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
         } else {
             None
         };
-        let sid = self.stmt_arena.alloc(Stmt::If {
-            cond,
-            then_b,
-            else_b,
-            span: start..self.cur.span.end,
-        });
-        Some(sid)
+
+        let end = self.cur.span.end;
+        Some(self.alloc(Stmt::If { cond, then_b, else_b, span: start..end }))
     }
 
-    // Parses loop statements - simpler than if statements since there's no else clause.
-    // Grammar: <loop_statement> ::= "jasi" "(" <condition> ")" <block>
-    // "jasi" is the Nigerian Pidgin keyword for while loops.
     #[inline]
-    fn parse_loop(&mut self, start: usize) -> Option<StmtId> {
-        let loop_span = self.cur.span.clone();
-        self.bump(); // consume 'jasi'
+    fn parse_loop(&mut self, start: usize) -> Option<StmtRef<'ast>> {
+        let jasi_span = self.cur.span.clone();
+        self.bump(); // consume `jasi`
+
         if let Token::LParen = self.cur.token {
-            self.bump();
+            self.bump(); // consume `(`
         } else {
             self.errors.emit(
-                loop_span.clone(),
+                jasi_span.clone(),
                 Severity::Error,
                 "syntax",
                 SyntaxError::ExpectedLParen.as_str(),
@@ -727,9 +710,11 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             );
             return None;
         }
+
         let cond = self.parse_expression(0);
+
         if let Token::RParen = self.cur.token {
-            self.bump();
+            self.bump(); // consume `)`
         } else {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -738,13 +723,14 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedRParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `)` to close condition in loop"),
+                    message: Cow::Borrowed("I dey expect `)` to close loop condition"),
                 }],
             );
             return None;
         }
+
         if let Token::Start = self.cur.token {
-            self.bump();
+            self.bump(); // consume `start` block
         } else {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -753,14 +739,16 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::ExpectedStartBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `start` to begin loop body"),
+                    message: Cow::Borrowed("I dey expect `start` to begin loop block"),
                 }],
             );
             return None;
         }
+
         let body = self.parse_block_body();
+
         if let Token::End = self.cur.token {
-            self.bump();
+            self.bump(); // consume `end` block
         } else {
             self.errors.emit(
                 self.cur.span.clone(),
@@ -769,77 +757,63 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 SyntaxError::UnterminatedBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `end` to close block"),
+                    message: Cow::Borrowed("I dey expect `end` to close loop block"),
                 }],
             );
         }
-        let sid = self.stmt_arena.alloc(Stmt::Loop { cond, body, span: start..self.cur.span.end });
-        Some(sid)
+
+        let end = self.cur.span.end;
+        Some(self.alloc(Stmt::Loop { cond, body, span: start..end }))
     }
 
-    // Expression parsing using Pratt parsing technique for operator precedence.
-    // This elegantly handles the grammar rules:
-    // <expression> ::= <logic_term> | <expression> "or" <logic_term> | <expression> "add" <term> | <expression> "minus" <term>
-    // <logic_term> ::= <logic_factor> | <logic_term> "and" <logic_factor> | <term>
-    // <logic_factor> ::= "not" <factor> | <factor>
-    // <term> ::= <factor> | <term> "times" <factor> | <term> "divide" <factor> | <term> "mod" <factor>
-    //
-    // The min_bp parameter controls precedence - higher numbers bind tighter.
-    // This avoids the traditional approach of separate methods for each precedence level.
-    // Inspiration: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
     #[inline]
-    fn parse_expression(&mut self, min_bp: u8) -> ExprId {
+    fn parse_expression(&mut self, min_bp: u8) -> ExprRef<'ast> {
         let start = self.cur.span.start;
+
         // Parse the left-hand side (primary expression)
         let lhs = match &self.cur.token {
             Token::Number(n) => {
                 let s = self.cur.span.clone();
-                let id = self.expr_arena.alloc(Expr::Number(n, s));
-                self.bump();
-                id
+                let expr = self.alloc(Expr::Number(n, s));
+                self.bump(); // consume number
+                expr
             }
             Token::String(sval) => {
                 let s = self.cur.span.clone();
                 let content = sval.clone();
-                self.bump();
+                self.bump(); // consume string
                 self.parse_string_literal(content, s)
             }
             Token::True | Token::False => {
                 let s = self.cur.span.clone();
                 let value = matches!(&self.cur.token, Token::True);
-                let id = self.expr_arena.alloc(Expr::Bool(value, s));
-                self.bump();
-                id
+                let expr = self.alloc(Expr::Bool(value, s));
+                self.bump(); // consume boolean
+                expr
             }
             Token::Identifier(v) => {
                 let s = self.cur.span.clone();
-                let id = self.expr_arena.alloc(Expr::Var(v, s));
-                self.bump();
-                id
+                let expr = self.alloc(Expr::Var(v, s));
+                self.bump(); // consume identifier
+                expr
             }
             Token::Not => {
-                self.bump();
-                let expr = self.parse_expression(30); // Highest precedence for unary not
-                self.expr_arena.alloc(Expr::Unary {
-                    op: UnaryOp::Not,
-                    expr,
-                    span: start..self.cur.span.end,
-                })
+                self.bump(); // consume unary `not`
+                let expr = self.parse_expression(30);
+                let end = self.cur.span.end;
+                self.alloc(Expr::Unary { op: UnaryOp::Not, expr, span: start..end })
             }
             Token::Minus => {
-                self.bump();
-                let expr = self.parse_expression(30); // Same high precedence as unary not
-                self.expr_arena.alloc(Expr::Unary {
-                    op: UnaryOp::Minus,
-                    expr,
-                    span: start..self.cur.span.end,
-                })
+                self.bump(); // consume unary `minus`
+                let expr = self.parse_expression(30);
+                let end = self.cur.span.end;
+                self.alloc(Expr::Unary { op: UnaryOp::Minus, expr, span: start..end })
             }
             Token::LParen => {
-                self.bump();
-                let expr = self.parse_expression(0); // Reset precedence inside parentheses
+                self.bump(); // consume `(`
+                let expr = self.parse_expression(0);
                 if let Token::RParen = self.cur.token {
-                    self.bump();
+                    self.bump(); // consume `)`
                 } else {
                     self.errors.emit(
                         self.cur.span.clone(),
@@ -848,9 +822,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                         SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                         vec![Label {
                             span: self.cur.span.clone(),
-                            message: Cow::Borrowed(
-                                "I dey expect `)` to close expression in parentheses",
-                            ),
+                            message: Cow::Borrowed("I dey expect `)` to close expression"),
                         }],
                     );
                 }
@@ -864,29 +836,33 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Borrowed(
-                            "I dey expect number, variable, or `(` for expression",
-                        ),
+                        message: Cow::Borrowed("I dey expect expression"),
                     }],
                 );
                 let s = self.cur.span.clone();
-                let id = self.expr_arena.alloc(Expr::Number("0", s));
-                self.bump();
-                id
+                let expr = self.alloc(Expr::Number("0", s));
+                self.bump(); // consume unexpected token
+                expr
             }
         };
 
         self.parse_expression_continuation(lhs, min_bp)
     }
 
-    // Continue parsing when we already have a left expression, handling operator precedence and function calls
-    // The lhs parameter lets us resume parsing from any expression node, which is essential for handling
-    // cases like "foo()" where we first parse "foo" as a variable, then discover it's actually a function call
-    // This pattern also enables clean handling of operator chaining like "a + b * c" where Pratt parsing
-    // builds the tree with correct precedence in a single forward pass
+    // FWIW, unlike [`parse_expression`], this function does not perform
+    // full, precedence-aware parsing. It only parses a single primary
+    // expression (literal, identifier, grouped expression, or prefix form)
+    // and returns the raw AST node allocated in the parser's arena.
+    // The caller is responsible for folding that primary with any surrounding
+    // binary operators according to precedence/associativity and for handling
+    // trailing punctuators.
     #[inline]
-    fn parse_expression_continuation(&mut self, mut lhs: ExprId, min_bp: u8) -> ExprId {
-        let start = match &self.expr_arena.nodes[lhs.0] {
+    fn parse_expression_continuation(
+        &mut self,
+        mut lhs: ExprRef<'ast>,
+        min_bp: u8,
+    ) -> ExprRef<'ast> {
+        let start = match lhs {
             Expr::Number(.., span) => span.start,
             Expr::String { span, .. } => span.start,
             Expr::Bool(.., span) => span.start,
@@ -902,13 +878,13 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
             if let Token::LParen = self.cur.token {
                 let call_start = start;
                 self.bump(); // consume '('
-                let mut args = Vec::new();
+                let mut args = Vec::new_in(self.arena);
                 if !matches!(self.cur.token, Token::RParen) {
                     loop {
                         let arg = self.parse_expression(0);
                         args.push(arg);
                         if let Token::Comma = self.cur.token {
-                            self.bump();
+                            self.bump(); // consume ','
                             if matches!(self.cur.token, Token::RParen) {
                                 break;
                             }
@@ -918,7 +894,7 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                     }
                 }
                 if let Token::RParen = self.cur.token {
-                    self.bump();
+                    self.bump(); // consume ')'
                 } else {
                     self.errors.emit(
                         self.cur.span.clone(),
@@ -931,14 +907,13 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                         }],
                     );
                 }
-                let args = self.arg_arena.alloc(ArgList { args });
-                lhs = self.expr_arena.alloc(Expr::Call {
-                    callee: lhs,
-                    args,
-                    span: call_start..self.cur.span.end,
-                });
+                let args = self.arena.vec_into_slice(args);
+                let args = self.alloc(ArgList { args });
+                let end = self.cur.span.end;
+                lhs = self.alloc(Expr::Call { callee: lhs, args, span: call_start..end });
                 continue;
             }
+
             let (op, l_bp, r_bp) = match &self.cur.token {
                 Token::Times => (BinaryOp::Times, 20, 21),
                 Token::Divide => (BinaryOp::Divide, 20, 21),
@@ -950,142 +925,204 @@ impl<'src, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, I> {
                 Token::SmallPass => (BinaryOp::Lt, 7, 8),
                 Token::And => (BinaryOp::And, 5, 6),
                 Token::Or => (BinaryOp::Or, 1, 2),
-                _ => break, // No more operators
+                _ => break,
             };
 
-            // If current operator has lower precedence than minimum, we're done
+            // `l_bp` is not greater?
             if l_bp < min_bp {
                 break;
             }
             self.bump(); // consume the operator
-            let rhs = self.parse_expression(r_bp); // Parse right side with higher precedence
-            lhs = self.expr_arena.alloc(Expr::Binary {
-                op,
-                lhs,
-                rhs,
-                span: start..self.cur.span.end,
-            });
+            let rhs = self.parse_expression(r_bp);
+            let end = self.cur.span.end;
+            lhs = self.alloc(Expr::Binary { op, lhs, rhs, span: start..end });
         }
         lhs
     }
 
-    // Parses a program-level statement list that stops at invalid tokens.
-    // Unlike parse_block_body, this stops at any token that's not a valid statement starter.
-    // This implements: <program> ::= <statement_list> where statement_list ends at non-statements.
     #[inline]
-    fn parse_program_body(&mut self) -> BlockId {
-        let start = self.cur.span.start;
-        let mut stmts = Vec::new();
+    fn parse_string_literal(&mut self, content: Cow<'src, str>, span: Span) -> ExprRef<'ast> {
+        let bytes = content.as_bytes();
+        let len = bytes.len();
 
-        // Keep parsing statements until we hit EOF or an invalid statement token
-        while matches!(
-            &self.cur.token,
-            Token::Make
-                | Token::IfToSay
-                | Token::Jasi
-                | Token::Do
-                | Token::Return
-                | Token::Identifier(_)
-                | Token::Start
-        ) {
-            match self.parse_statement() {
-                Some(sid) => stmts.push(sid),
-                None => self.synchronize(), // Skip to next statement on error
-            }
-        }
-        self.block_arena.alloc(Block { stmts, span: start..self.cur.span.end })
-    }
-
-    // Parses a string literal with interpolation detection
-    fn parse_string_literal(&mut self, content: Cow<'src, str>, span: Span) -> ExprId {
         // No braces = static string
-        if !content.contains('{') {
-            return self
-                .expr_arena
-                .alloc(Expr::String { parts: StringParts::Static(content), span });
+        let pos = memchr2(b'{', 0, bytes, 0);
+        if pos == len {
+            let s = self.alloc_str(&content);
+            return self.alloc(Expr::String { parts: StringParts::Static(s), span });
         }
 
-        let template_str: &'src str = match &content {
+        let template: &'src str = match &content {
             Cow::Borrowed(s) => s,
             Cow::Owned(..) => {
-                return self
-                    .expr_arena
-                    .alloc(Expr::String { parts: StringParts::Static(content), span });
+                let s = self.alloc_str(&content);
+                return self.alloc(Expr::String { parts: StringParts::Static(s), span });
             }
         };
 
-        let segments = self.parse_template_segments(template_str);
+        let segments = self.parse_template_segments(template);
         if segments.is_empty() {
-            return self
-                .expr_arena
-                .alloc(Expr::String { parts: StringParts::Static(content), span });
+            let s = self.alloc_str(&content);
+            return self.alloc(Expr::String { parts: StringParts::Static(s), span });
         }
 
-        self.expr_arena.alloc(Expr::String { parts: StringParts::Interpolated(segments), span })
+        let s = self.arena.vec_into_slice(segments);
+        self.alloc(Expr::String { parts: StringParts::Interpolated(s), span })
     }
 
-    // Parses a template string into segments
-    fn parse_template_segments(&self, template: &'src str) -> Vec<StringSegment<'src>> {
-        let mut segments = Vec::new();
-        let mut chars = template.char_indices();
-        let mut current_start = 0;
+    #[inline]
+    fn parse_template_segments(
+        &self,
+        template: &'src str,
+    ) -> Vec<StringSegment<'ast>, &'ast Arena> {
+        let bytes = template.as_bytes();
+        let len = bytes.len();
+        let mut buffer = Vec::with_capacity_in(len, self.arena);
 
-        while let Some((i, ch)) = chars.next() {
-            if ch != '{' {
-                continue;
+        // SAFETY: ptr is valid for reads up to len bytes
+        let ptr = bytes.as_ptr();
+        let hay = unsafe { slice::from_raw_parts(ptr, len) };
+
+        let mut beg = 0;
+        let mut i = 0;
+
+        while i < len {
+            let pos = memchr2(b'{', b'}', hay, i);
+            if pos == len {
+                break;
             }
+            i = pos;
+            match unsafe { *ptr.add(i) } {
+                b'{' => {
+                    if i + 1 < len && unsafe { *ptr.add(i + 1) } == b'{' {
+                        if i > beg {
+                            // SAFETY: beg..i are valid UTF-8 boundaries within template
+                            let literal = unsafe {
+                                str::from_utf8_unchecked(slice::from_raw_parts(
+                                    ptr.add(beg),
+                                    i - beg,
+                                ))
+                            };
+                            buffer.push(StringSegment::Literal(literal));
+                        }
+                        buffer.push(StringSegment::Literal("{"));
+                        i += 2;
+                        beg = i;
+                        continue;
+                    }
 
-            // We want to push literal before '{' if non-empty
-            if i > current_start {
-                segments.push(StringSegment::Literal(&template[current_start..i]));
-            }
+                    let mut j = i + 1;
+                    while j < len && unsafe { (*ptr.add(j) as char).is_whitespace() } {
+                        j += 1;
+                    }
 
-            // Try find matching closing brace
-            let mut var_start = None;
-            let mut var_end = None;
+                    let name_start = j;
+                    if j < len
+                        && unsafe {
+                            let b = *ptr.add(j);
+                            b.is_ascii_alphabetic() || b == b'_'
+                        }
+                    {
+                        j += 1;
+                        while j < len
+                            && unsafe {
+                                let b = *ptr.add(j);
+                                b.is_ascii_alphanumeric() || b == b'_'
+                            }
+                        {
+                            j += 1;
+                        }
+                        let name_end = j;
 
-            // We just saw one '{', so we need to find the matching '}'
-            let mut brace_count = 1;
+                        while j < len && unsafe { (*ptr.add(j) as char).is_whitespace() } {
+                            j += 1;
+                        }
 
-            for (j, next_ch) in chars.by_ref() {
-                match next_ch {
-                    '{' => brace_count += 1,
-                    '}' => {
-                        brace_count -= 1;
-                        if brace_count == 0 {
-                            var_end = Some(j);
-                            break;
+                        if j < len && unsafe { *ptr.add(j) } == b'}' {
+                            if i > beg {
+                                // SAFETY: beg..i are valid UTF-8 boundaries
+                                let literal = unsafe {
+                                    str::from_utf8_unchecked(slice::from_raw_parts(
+                                        ptr.add(beg),
+                                        i - beg,
+                                    ))
+                                };
+                                buffer.push(StringSegment::Literal(literal));
+                            }
+                            // SAFETY: name_start..name_end are valid UTF-8 boundaries
+                            let variable = unsafe {
+                                str::from_utf8_unchecked(slice::from_raw_parts(
+                                    ptr.add(name_start),
+                                    name_end - name_start,
+                                ))
+                            };
+                            buffer.push(StringSegment::Variable(variable));
+                            i = j + 1;
+                            beg = i;
+                            continue;
                         }
                     }
-                    _ => {
-                        // The first non-whitespace character after '{' marks the start of the variable name
-                        if var_start.is_none() && !next_ch.is_whitespace() {
-                            var_start = Some(j);
-                        }
+
+                    // TODO: Recursively parse nested braces
+                    // for now, treat as literal until next '}'
+                    let mut end = i + 1;
+                    while end < len && unsafe { *ptr.add(end) } != b'}' {
+                        end += 1;
                     }
+                    if end < len {
+                        end += 1; // include '}'
+                    }
+
+                    if i > beg {
+                        // SAFETY: beg..i are valid UTF-8 boundaries
+                        let before = unsafe {
+                            str::from_utf8_unchecked(slice::from_raw_parts(ptr.add(beg), i - beg))
+                        };
+                        buffer.push(StringSegment::Literal(before));
+                    }
+                    // SAFETY: i..end are valid UTF-8 boundaries
+                    let literal = unsafe {
+                        str::from_utf8_unchecked(slice::from_raw_parts(ptr.add(i), end - i))
+                    };
+                    buffer.push(StringSegment::Literal(literal));
+                    i = end;
+                    beg = i
+                }
+
+                b'}' => {
+                    if i + 1 < len && unsafe { *ptr.add(i + 1) } == b'}' {
+                        if i > beg {
+                            // SAFETY: beg..i are valid UTF-8 boundaries
+                            let literal = unsafe {
+                                str::from_utf8_unchecked(slice::from_raw_parts(
+                                    ptr.add(beg),
+                                    i - beg,
+                                ))
+                            };
+                            buffer.push(StringSegment::Literal(literal));
+                        }
+                        buffer.push(StringSegment::Literal("}"));
+                        i += 2;
+                        beg = i;
+                        continue;
+                    }
+                    i += 1;
+                }
+
+                _ => {
+                    i += 1;
                 }
             }
-
-            // Validate and extract variable name
-            if let (Some(start), Some(end)) = (var_start, var_end) {
-                let raw = &template[start..end];
-                let name = raw.trim();
-                if !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                    segments.push(StringSegment::Variable(name));
-                    current_start = end + 1;
-                    continue;
-                }
-            }
-
-            // Treat invalid placeholder as literal
-            current_start = i;
         }
 
-        // Append trailing literal if any
-        if current_start < template.len() {
-            segments.push(StringSegment::Literal(&template[current_start..]));
+        if beg < len {
+            // SAFETY: beg..len are valid UTF-8 boundaries
+            let literal =
+                unsafe { str::from_utf8_unchecked(slice::from_raw_parts(ptr.add(beg), len - beg)) };
+            buffer.push(StringSegment::Literal(literal));
         }
 
-        segments
+        buffer.shrink_to_fit();
+        buffer
     }
 }

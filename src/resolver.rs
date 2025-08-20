@@ -1,16 +1,17 @@
-//! The semantic analyzer (or resolver) for NaijaScript.
+//! The resolver (semantic analyzer) for NaijaScript.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
 
+use crate::arena::Arena;
 use crate::builtins::{Builtin, BuiltinReturnType};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
-    self, Arena, ArgList, BinaryOp, Block, BlockId, Expr, ExprId, ParamList, ParamListId, Stmt,
-    StmtId, StringParts, StringSegment, UnaryOp,
+    BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts, StringSegment,
+    UnaryOp,
 };
 
-/// Represents the type of semantic errors that can occur
+/// Represents semantic errors that can occur during analysis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SemanticError {
     DuplicateIdentifier,
@@ -38,7 +39,7 @@ impl AsStr for SemanticError {
     }
 }
 
-/// Represents the type of a variable in NaijaScript
+// Represents the variable types in NaijaScript
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum VarType {
     Number,
@@ -57,96 +58,80 @@ impl From<BuiltinReturnType> for VarType {
     }
 }
 
-// Represents a function signature for semantic analysis
+// Represents the blueprint of a function signature in NaijaScript
 #[derive(Debug)]
-struct FunctionSig<'src> {
-    name: &'src str,
-    param_names: Vec<&'src str>,
-    span: &'src Span,
+struct FunctionSig<'ast> {
+    name: &'ast str,
+    param_names: &'ast [&'ast str],
+    span: &'ast Span,
     has_return: bool,
     return_type: Option<VarType>,
 }
 
-/// The interface for the NaijaScript semantic analyzer.
-pub struct Resolver<'src> {
-    // These are borrowed references to the parser's AST arenas
-    // We don't own this data, just analyze what the parser built
-    stmts: &'src Arena<Stmt<'src>>,
-    exprs: &'src Arena<Expr<'src>>,
-    blocks: &'src Arena<Block>,
-    params: &'src Arena<ParamList<'src>>,
-    args: &'src Arena<ArgList>,
-
+/// An arena-backed semantic analyzer.
+///
+/// FWIW, this is a work in progress and may change as the language evolves.
+pub struct Resolver<'ast> {
     // Stack of variable symbol tables for block-scoped variables
-    variable_scopes: Vec<Vec<(&'src str, VarType, &'src Span)>>,
+    variable_scopes: Vec<Vec<(&'ast str, VarType, &'ast Span), &'ast Arena>, &'ast Arena>,
 
     // Stack of function symbol tables for block-scoped functions
-    function_scopes: Vec<Vec<FunctionSig<'src>>>,
+    function_scopes: Vec<Vec<FunctionSig<'ast>, &'ast Arena>, &'ast Arena>,
 
     // Track current function context for return statement validation
-    current_function: Option<&'src str>,
+    current_function: Option<&'ast str>,
 
     /// Collection of semantic errors found during analysis
     pub errors: Diagnostics,
+
+    // Reference to the arena for allocating scope vectors
+    arena: &'ast Arena,
 }
 
-impl<'src> Resolver<'src> {
-    /// Sets up a new analyzer with the AST arenas from parsing.
-    /// We start with empty symbol table and error list - fresh slate for analysis.
-    pub fn new(
-        stmts: &'src Arena<Stmt<'src>>,
-        exprs: &'src Arena<Expr<'src>>,
-        blocks: &'src Arena<Block>,
-        params: &'src Arena<ParamList<'src>>,
-        args: &'src Arena<ArgList>,
-    ) -> Self {
+impl<'ast> Resolver<'ast> {
+    /// Creates a new [`Resolver`] instance.
+    #[inline]
+    pub fn new(arena: &'ast Arena) -> Self {
         Resolver {
-            stmts,
-            exprs,
-            blocks,
-            params,
-            args,
-            variable_scopes: Vec::new(),
-            function_scopes: Vec::new(),
+            variable_scopes: Vec::new_in(arena),
+            function_scopes: Vec::new_in(arena),
             current_function: None,
             errors: Diagnostics::default(),
+            arena,
         }
     }
 
-    /// Start semantic checking from the root block (the whole program).
-    /// Sets up the first scope, checks everything, and cleans up after.
-    pub fn analyze(&mut self, root: BlockId) {
+    /// Resolves the given AST root node.
+    #[inline]
+    pub fn resolve(&mut self, root: BlockRef<'ast>) {
         // Enter the first (global) scope
-        self.variable_scopes.push(Vec::new());
-        self.function_scopes.push(Vec::new());
+        self.variable_scopes.push(Vec::new_in(self.arena));
+        self.function_scopes.push(Vec::new_in(self.arena));
         self.check_block(root);
         // Leave the global scope
         self.variable_scopes.pop();
         self.function_scopes.pop();
     }
 
-    // Check every statement inside a block.
-    // Each "start ... end" creates a new scope for variables and functions.
-    fn check_block(&mut self, bid: BlockId) {
+    #[inline]
+    fn check_block(&mut self, block: BlockRef<'ast>) {
         // Enter new block scope
-        self.variable_scopes.push(Vec::new());
-        self.function_scopes.push(Vec::new());
-        let block = &self.blocks.nodes[bid.0];
+        self.variable_scopes.push(Vec::new_in(self.arena));
+        self.function_scopes.push(Vec::new_in(self.arena));
 
         let mut has_return = false;
-        for &sid in &block.stmts {
+        for &stmt in block.stmts {
             // Check for dead code after return statement
             if has_return {
-                let stmt = &self.stmts.nodes[sid.0];
                 let span = match stmt {
-                    parser::Stmt::Assign { span, .. } => span,
-                    parser::Stmt::AssignExisting { span, .. } => span,
-                    parser::Stmt::If { span, .. } => span,
-                    parser::Stmt::Loop { span, .. } => span,
-                    parser::Stmt::Block { span, .. } => span,
-                    parser::Stmt::FunctionDef { span, .. } => span,
-                    parser::Stmt::Return { span, .. } => span,
-                    parser::Stmt::Expression { span, .. } => span,
+                    Stmt::Assign { span, .. } => span,
+                    Stmt::AssignExisting { span, .. } => span,
+                    Stmt::If { span, .. } => span,
+                    Stmt::Loop { span, .. } => span,
+                    Stmt::Block { span, .. } => span,
+                    Stmt::FunctionDef { span, .. } => span,
+                    Stmt::Return { span, .. } => span,
+                    Stmt::Expression { span, .. } => span,
                 };
 
                 self.errors.emit(
@@ -161,24 +146,21 @@ impl<'src> Resolver<'src> {
                 );
             }
 
-            if matches!(&self.stmts.nodes[sid.0], parser::Stmt::Return { .. }) {
+            if matches!(stmt, Stmt::Return { .. }) {
                 has_return = true;
             }
 
-            self.check_stmt(sid);
+            self.check_stmt(stmt);
         }
+
         // Leave this block scope
         self.variable_scopes.pop();
         self.function_scopes.pop();
     }
 
-    // The main semantic validation logic - handles each type of statement.
-    // This is where we enforce the key rules of NaijaScript:
-    // 1. No redeclaring variables (each "make" creates a new variable)
-    // 2. Variables must be declared before use
-    // 3. All expressions and conditions must be semantically valid
-    fn check_stmt(&mut self, sid: StmtId) {
-        match &self.stmts.nodes[sid.0] {
+    #[inline]
+    fn check_stmt(&mut self, stmt: StmtRef<'ast>) {
+        match stmt {
             // Handle "make variable get expression" statements
             Stmt::Assign { var, expr, span } => {
                 if Builtin::from_name(var).is_some() {
@@ -189,9 +171,7 @@ impl<'src> Resolver<'src> {
                         SemanticError::ReservedKeyword.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Owned(format!(
-                                "`{var}` dey reserved, you no fit use am as variable name",
-                            )),
+                            message: Cow::Owned(format!("`{var}` na reserved keyword",)),
                         }],
                     );
                 }
@@ -225,15 +205,15 @@ impl<'src> Resolver<'src> {
                 } else {
                     // Let's figure out the type of this variable from the expression,
                     // then add it to our symbol table so future code knows it's declared.
-                    let typ = self.infer_expr_type(*expr).unwrap_or(VarType::Dynamic);
+                    let var_type = self.infer_expr_type(expr).unwrap_or(VarType::Dynamic);
                     self.variable_scopes
                         .last_mut()
                         .expect("scope stack should never be empty")
-                        .push((var, typ, span));
+                        .push((var, var_type, span));
                 }
                 // Always check the expression, even if variable was duplicate
                 // This catches more errors in one pass
-                self.check_expr(*expr);
+                self.check_expr(expr);
             }
             // Handle variable reassignment: <variable> get <expression>
             Stmt::AssignExisting { var, expr, span } => {
@@ -249,27 +229,27 @@ impl<'src> Resolver<'src> {
                         }],
                     );
                 }
-                self.check_expr(*expr);
+                self.check_expr(expr);
             }
             // Handle "if to say(condition) start...end" with optional "if not so"
             Stmt::If { cond, then_b, else_b, .. } => {
-                self.check_expr(*cond);
-                self.require_boolean_expr(*cond);
-                self.check_block(*then_b);
+                self.check_expr(cond);
+                self.check_boolean_expr(cond);
+                self.check_block(then_b);
                 // Else block is optional in the grammar
                 if let Some(eb) = else_b {
-                    self.check_block(*eb);
+                    self.check_block(eb);
                 }
             }
             // Handle "jasi(condition) start...end" loop statements
             Stmt::Loop { cond, body, .. } => {
-                self.check_expr(*cond);
-                self.require_boolean_expr(*cond);
-                self.check_block(*body);
+                self.check_expr(cond);
+                self.check_boolean_expr(cond);
+                self.check_block(body);
             }
             // Handle nested blocks
             Stmt::Block { block, .. } => {
-                self.check_block(*block);
+                self.check_block(block);
             }
             Stmt::FunctionDef { name, params, body, span } => {
                 if Builtin::from_name(name).is_some() {
@@ -286,42 +266,39 @@ impl<'src> Resolver<'src> {
                         }],
                     );
                 }
-                self.check_function_def(name, *params, *body, span);
+                self.check_function_def(name, params, body, span);
             }
             Stmt::Return { expr, span } => {
                 self.check_return_stmt(*expr, span);
             }
             Stmt::Expression { expr, .. } => {
-                self.check_expr(*expr);
+                self.check_expr(expr);
             }
         }
     }
 
-    // Check if a variable has already been declared in any scope,
-    // starting from the innermost and moving outward
     #[inline]
-    fn lookup_var(&self, var: &&'src str) -> bool {
-        self.variable_scopes.iter().rev().any(|scope| scope.iter().any(|(name, ..)| name == var))
+    fn lookup_var(&self, var: &str) -> bool {
+        self.variable_scopes.iter().rev().any(|scope| scope.iter().any(|(name, ..)| *name == var))
     }
 
-    // Find function signature by name
     #[inline]
-    fn find_function(&self, func_name: &str) -> Option<&FunctionSig<'src>> {
+    fn lookup_func(&self, func: &str) -> Option<&FunctionSig<'ast>> {
         for scope in self.function_scopes.iter().rev() {
-            if let Some(sig) = scope.iter().find(|sig| sig.name == func_name) {
+            if let Some(sig) = scope.iter().find(|sig| sig.name == func) {
                 return Some(sig);
             }
         }
         None
     }
 
-    // Validates function definition
+    #[inline]
     fn check_function_def(
         &mut self,
-        name: &'src str,
-        params: ParamListId,
-        body: BlockId,
-        span: &'src Span,
+        name: &'ast str,
+        params: ParamListRef<'ast>,
+        body: BlockRef<'ast>,
+        span: &'ast Span,
     ) {
         // Check for duplicate function declaration in current scope
         if let Some(current_scope) = self.function_scopes.last()
@@ -346,11 +323,9 @@ impl<'src> Resolver<'src> {
             return;
         }
 
-        let param_list = &self.params.nodes[params.0];
-
         // Check for duplicate parameter names
         let mut seen_params = HashSet::new();
-        for param_name in &param_list.params {
+        for param_name in params.params {
             if Builtin::from_name(param_name).is_some() {
                 self.errors.emit(
                     span.clone(),
@@ -381,30 +356,32 @@ impl<'src> Resolver<'src> {
             }
         }
 
-        // Store parameter names in function signature
-        let param_names = param_list.params.clone();
-
         // Add function to current function scope
-        self.function_scopes
-            .last_mut()
-            .expect("function scope stack should never be empty")
-            .push(FunctionSig { name, param_names, span, has_return: false, return_type: None });
+        self.function_scopes.last_mut().expect("function scope stack should never be empty").push(
+            FunctionSig {
+                name,
+                param_names: params.params,
+                span,
+                has_return: false,
+                return_type: None,
+            },
+        );
 
         // Set current function context for return validation
         let prev_function = self.current_function;
         self.current_function = Some(name);
 
         // Create new scope for function parameters
-        self.variable_scopes.push(Vec::new());
+        self.variable_scopes.push(Vec::new_in(self.arena));
 
         // Add parameters as variables with dynamic typing
         // Parameters can accept any type and their usage will be validated at runtime
-        for param_name in &param_list.params {
+        for param_name in params.params {
             self.variable_scopes.last_mut().unwrap().push((param_name, VarType::Dynamic, span));
         }
 
         // We collect return types from the function body, skipping nested functions.
-        let mut return_types = Vec::new();
+        let mut return_types = Vec::new_in(self.arena);
         self.collect_return_types(body, &mut return_types);
 
         let unique_types: HashSet<VarType> = return_types.iter().copied().collect();
@@ -443,39 +420,40 @@ impl<'src> Resolver<'src> {
         self.current_function = prev_function;
     }
 
-    // Recursively walk statements in a block and collect return types for the current function only.
-    fn collect_return_types(&self, block_id: BlockId, types: &mut Vec<VarType>) {
-        let block = &self.blocks.nodes[block_id.0];
-        for &sid in &block.stmts {
-            match &self.stmts.nodes[sid.0] {
-                parser::Stmt::Return { expr, .. } => {
-                    let typ = if let Some(eid) = expr {
-                        self.infer_expr_type(*eid).unwrap_or(VarType::Dynamic)
+    // FWIW, this function recursively collects return types from a block
+    // which [`check_return_stmt`] uses to validate return statements.
+    #[inline]
+    fn collect_return_types(&self, block: BlockRef<'ast>, types: &mut Vec<VarType, &'ast Arena>) {
+        for &stmt in block.stmts {
+            match stmt {
+                Stmt::Return { expr, .. } => {
+                    let var_type = if let Some(expr) = expr {
+                        self.infer_expr_type(expr).unwrap_or(VarType::Dynamic)
                     } else {
                         VarType::Dynamic
                     };
-                    types.push(typ);
+                    types.push(var_type);
                 }
-                parser::Stmt::If { then_b, else_b, .. } => {
-                    self.collect_return_types(*then_b, types);
-                    if let Some(eb) = else_b {
-                        self.collect_return_types(*eb, types);
+                Stmt::If { then_b, else_b, .. } => {
+                    self.collect_return_types(then_b, types);
+                    if let Some(else_b) = else_b {
+                        self.collect_return_types(else_b, types);
                     }
                 }
-                parser::Stmt::Loop { body, .. } => {
-                    self.collect_return_types(*body, types);
+                Stmt::Loop { body, .. } => {
+                    self.collect_return_types(body, types);
                 }
-                parser::Stmt::Block { block, .. } => {
-                    self.collect_return_types(*block, types);
+                Stmt::Block { block, .. } => {
+                    self.collect_return_types(block, types);
                 }
-                parser::Stmt::FunctionDef { .. } => {}
+                Stmt::FunctionDef { .. } => {}
                 _ => {}
             }
         }
     }
 
-    // Validates return statements
-    fn check_return_stmt(&mut self, expr: Option<ExprId>, span: &'src Span) {
+    #[inline]
+    fn check_return_stmt(&mut self, expr: Option<ExprRef<'ast>>, span: &'ast Span) {
         // Check if we're inside a function
         if self.current_function.is_none() {
             self.errors.emit(
@@ -538,13 +516,13 @@ impl<'src> Resolver<'src> {
         }
     }
 
-    // Checks that an expression used in a condition evaluates to a boolean type.
-    fn require_boolean_expr(&mut self, eid: ExprId) {
-        let expr_type = self.infer_expr_type(eid);
+    #[inline]
+    fn check_boolean_expr(&mut self, expr: ExprRef<'ast>) {
+        let expr_type = self.infer_expr_type(expr);
         if let Some(t) = expr_type
             && !matches!(t, VarType::Bool | VarType::Dynamic)
         {
-            let span = match &self.exprs.nodes[eid.0] {
+            let span = match expr {
                 Expr::Number(.., span) => span.clone(),
                 Expr::String { span, .. } => span.clone(),
                 Expr::Bool(.., span) => span.clone(),
@@ -566,17 +544,14 @@ impl<'src> Resolver<'src> {
         }
     }
 
-    // Recursively validates expressions - the core of our semantic checking.
-    // This is where we catch the most common programming error: using variables
-    // before declaring them. Numbers are always valid, but variables need to
-    // exist in our symbol table.
-    fn check_expr(&mut self, eid: ExprId) {
-        match &self.exprs.nodes[eid.0] {
+    #[inline]
+    fn check_expr(&mut self, expr: ExprRef<'ast>) {
+        match expr {
             // Literals are always valid since they represent concrete values
             Expr::Number(..) | Expr::Bool(..) => {}
             Expr::String { parts, span } => {
                 if let StringParts::Interpolated(segments) = parts {
-                    for segment in segments {
+                    for segment in *segments {
                         if let StringSegment::Variable(var) = segment
                             && !self.lookup_var(var)
                         {
@@ -611,10 +586,10 @@ impl<'src> Resolver<'src> {
             }
             // Binary operations need type compatibility between operands
             Expr::Binary { op, lhs, rhs, span } => {
-                self.check_expr(*lhs);
-                self.check_expr(*rhs);
-                let l = self.infer_expr_type(*lhs);
-                let r = self.infer_expr_type(*rhs);
+                self.check_expr(lhs);
+                self.check_expr(rhs);
+                let l = self.infer_expr_type(lhs);
+                let r = self.infer_expr_type(rhs);
                 match op {
                     BinaryOp::Add => match (l, r) {
                         (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
@@ -746,8 +721,8 @@ impl<'src> Resolver<'src> {
                 }
             }
             Expr::Unary { op, expr, span } => {
-                self.check_expr(*expr);
-                let t = self.infer_expr_type(*expr);
+                self.check_expr(expr);
+                let t = self.infer_expr_type(expr);
                 match op {
                     // Unary not requires a boolean operand or dynamic type
                     UnaryOp::Not => {
@@ -782,16 +757,13 @@ impl<'src> Resolver<'src> {
                 }
             }
             Expr::Call { callee, args, span } => {
-                // Access arguments through the arena
-                let arg_list = &self.args.nodes[args.0];
-
                 // Check the callee expression
-                match &self.exprs.nodes[callee.0] {
+                match callee {
                     Expr::Var(func_name, ..) => {
                         // Check if this is a built-in function first
                         if let Some(builtin) = Builtin::from_name(func_name) {
                             // Validate arity for built-in functions
-                            if arg_list.args.len() != builtin.arity() {
+                            if args.args.len() != builtin.arity() {
                                 self.errors.emit(
                                     span.clone(),
                                     Severity::Error,
@@ -803,14 +775,14 @@ impl<'src> Resolver<'src> {
                                             "Function `{}` expect {} arguments but you pass {}",
                                             func_name,
                                             builtin.arity(),
-                                            arg_list.args.len()
+                                            args.args.len()
                                         )),
                                     }],
                                 );
                             }
-                        } else if let Some(func_sig) = self.find_function(func_name) {
+                        } else if let Some(func_sig) = self.lookup_func(func_name) {
                             // Check parameter count for user-defined function
-                            if arg_list.args.len() != func_sig.param_names.len() {
+                            if args.args.len() != func_sig.param_names.len() {
                                 self.errors.emit(
                                     span.clone(),
                                     Severity::Error,
@@ -822,7 +794,7 @@ impl<'src> Resolver<'src> {
                                             "Function `{}` expect {} arguments but you pass {}",
                                             func_name,
                                             func_sig.param_names.len(),
-                                            arg_list.args.len()
+                                            args.args.len()
                                         )),
                                     }],
                                 );
@@ -840,34 +812,34 @@ impl<'src> Resolver<'src> {
                             );
                         }
                     }
-                    _ => self.check_expr(*callee),
+                    _ => self.check_expr(callee),
                 }
 
                 // Check all arguments
-                for &arg in &arg_list.args {
+                for &arg in args.args {
                     self.check_expr(arg);
                 }
             }
         }
     }
 
-    // Infers the type of an expression based on its structure and context.
-    fn infer_expr_type(&self, eid: ExprId) -> Option<VarType> {
-        match &self.exprs.nodes[eid.0] {
+    #[inline]
+    fn infer_expr_type(&self, expr: ExprRef<'ast>) -> Option<VarType> {
+        match expr {
             Expr::Number(..) => Some(VarType::Number),
             Expr::String { .. } => Some(VarType::String),
             Expr::Bool(..) => Some(VarType::Bool),
             Expr::Var(v, ..) => {
                 for scope in self.variable_scopes.iter().rev() {
-                    if let Some((_, t, ..)) = scope.iter().find(|(name, ..)| name == v) {
+                    if let Some((_, t, ..)) = scope.iter().find(|(name, ..)| *name == *v) {
                         return Some(*t);
                     }
                 }
                 None
             }
             Expr::Binary { op, lhs, rhs, .. } => {
-                let l = self.infer_expr_type(*lhs)?;
-                let r = self.infer_expr_type(*rhs)?;
+                let l = self.infer_expr_type(lhs)?;
+                let r = self.infer_expr_type(rhs)?;
                 match op {
                     BinaryOp::Add => match (l, r) {
                         (VarType::Bool, ..) | (.., VarType::Bool) => None,
@@ -905,7 +877,7 @@ impl<'src> Resolver<'src> {
                 }
             }
             Expr::Unary { op, expr, .. } => {
-                let t = self.infer_expr_type(*expr)?;
+                let t = self.infer_expr_type(expr)?;
                 match op {
                     UnaryOp::Not => {
                         if t == VarType::Bool {
@@ -923,11 +895,11 @@ impl<'src> Resolver<'src> {
                     }
                 }
             }
-            Expr::Call { callee, .. } => match &self.exprs.nodes[callee.0] {
+            Expr::Call { callee, .. } => match callee {
                 Expr::Var(func_name, ..) => {
                     if let Some(builtin) = Builtin::from_name(func_name) {
                         Some(VarType::from(builtin.return_type()))
-                    } else if let Some(func_sig) = self.find_function(func_name) {
+                    } else if let Some(func_sig) = self.lookup_func(func_name) {
                         func_sig.return_type.or(Some(VarType::Dynamic))
                     } else {
                         None

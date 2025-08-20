@@ -1,65 +1,39 @@
-use std::borrow::Cow;
-
+use naijascript::arena::{ArenaCow, ArenaString};
 use naijascript::diagnostics::AsStr;
 use naijascript::runtime::{Runtime, RuntimeErrorKind, Value};
 
 mod common;
-use crate::common::parse_from_source;
+use crate::common::_parse_from_src;
 
-#[macro_export]
 macro_rules! assert_runtime {
     ($src:expr, output: $expected:expr) => {{
-        let mut parser = parse_from_source($src);
-        let (root, parse_errors) = parser.parse_program();
-        assert!(
-            parse_errors.diagnostics.is_empty(),
-            "Expected no parse errors, got: {:?}",
-            parse_errors.diagnostics
-        );
-        let mut resolver = naijascript::resolver::Resolver::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.block_arena,
-            &parser.param_arena,
-            &parser.arg_arena,
-        );
-        resolver.analyze(root);
+        let arena = naijascript::arena::Arena::new(4 * 1024).unwrap();
+        let mut parser = _parse_from_src($src, &arena);
+        let (root, err) = parser.parse_program();
+        assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
+        let mut resolver = naijascript::resolver::Resolver::new(&arena);
+        resolver.resolve(root);
         assert!(
             !resolver.errors.has_errors(),
             "Expected no semantic errors, got: {:?}",
             resolver.errors.diagnostics
         );
-        let mut interp = Runtime::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.block_arena,
-            &parser.param_arena,
-            &parser.arg_arena,
-        );
-        interp.run(root);
-        assert_eq!(interp.output, $expected);
+        let mut runtime = Runtime::new(&arena);
+        runtime.run(root);
+        assert_eq!(runtime.output, $expected);
     }};
     ($src:expr, error: $err:expr) => {{
-        let mut parser = parse_from_source($src);
-        let (root, parse_errors) = parser.parse_program();
+        let arena = naijascript::arena::Arena::new(4 * 1024).unwrap();
+        let mut parser = _parse_from_src($src, &arena);
+        let (root, err) = parser.parse_program();
+        assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
+        let mut runtime = Runtime::new(&arena);
+        runtime.run(root);
         assert!(
-            parse_errors.diagnostics.is_empty(),
-            "Expected no parse errors, got: {:?}",
-            parse_errors.diagnostics
-        );
-        let mut interp = Runtime::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.block_arena,
-            &parser.param_arena,
-            &parser.arg_arena,
-        );
-        interp.run(root);
-        assert!(
-            interp.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
+            runtime.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
             "Expected error: {}, got: {:?}",
             $err.as_str(),
-            interp.errors.diagnostics
+            runtime.errors.diagnostics
         );
     }};
 }
@@ -126,7 +100,7 @@ fn string_equality() {
 
 #[test]
 fn string_concatenation() {
-    assert_runtime!(r#"shout("foo" add "bar")"#, output: vec![Value::Str(Cow::Owned("foobar".to_string()))]);
+    assert_runtime!(r#"shout("foo" add "bar")"#, output: vec![Value::Str(ArenaCow::Borrowed("foobar"))]);
 }
 
 #[test]
@@ -161,7 +135,7 @@ fn comparison_in_condition() {
 
 #[test]
 fn empty_string_concatenation() {
-    assert_runtime!(r#"shout("" add "test")"#, output: vec![Value::Str(Cow::Owned("test".to_string()))]);
+    assert_runtime!(r#"shout("" add "test")"#, output: vec![Value::Str(ArenaCow::Borrowed("test"))]);
 }
 
 #[test]
@@ -256,7 +230,7 @@ fn function_call_as_expression() {
 fn string_parameter_concatenation() {
     assert_runtime!(
         r#"do greet(name) start shout("Hello " add name) end greet("World")"#,
-        output: vec![Value::Str(Cow::Owned("Hello World".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("Hello World"))]
     );
 }
 
@@ -264,7 +238,7 @@ fn string_parameter_concatenation() {
 fn number_parameter_string_concatenation() {
     assert_runtime!(
         r#"do format(count) start shout("Items: " add count) end format(42)"#,
-        output: vec![Value::Str(Cow::Owned("Items: 42".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("Items: 42"))]
     );
 }
 
@@ -272,7 +246,7 @@ fn number_parameter_string_concatenation() {
 fn string_number_parameter_concatenation() {
     assert_runtime!(
         r#"do formatReverse(count, suffix) start shout(count add suffix) end formatReverse(42, " items")"#,
-        output: vec![Value::Str(Cow::Owned("42 items".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("42 items"))]
     );
 }
 
@@ -280,7 +254,7 @@ fn string_number_parameter_concatenation() {
 fn mixed_parameter_types_concatenation() {
     assert_runtime!(
         r#"do mixed(prefix, number, suffix) start shout(prefix add number add suffix) end mixed("Count: ", 42, " total")"#,
-        output: vec![Value::Str(Cow::Owned("Count: 42 total".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("Count: 42 total"))]
     );
 }
 
@@ -288,7 +262,7 @@ fn mixed_parameter_types_concatenation() {
 fn multiple_string_parameters() {
     assert_runtime!(
         r#"do join(first, second, third) start shout(first add " " add second add " " add third) end join("Hello", "beautiful", "world")"#,
-        output: vec![Value::Str(Cow::Owned("Hello beautiful world".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("Hello beautiful world"))]
     );
 }
 
@@ -296,7 +270,7 @@ fn multiple_string_parameters() {
 fn decimal_number_string_concatenation() {
     assert_runtime!(
         r#"do price(amount) start shout("$" add amount) end price(99.99)"#,
-        output: vec![Value::Str(Cow::Owned("$99.99".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("$99.99"))]
     );
 }
 
@@ -304,12 +278,13 @@ fn decimal_number_string_concatenation() {
 fn boolean_parameter_operations() {
     assert_runtime!(
         r#"do check(flag) start if to say (flag na true) start shout("YES") end end check(true)"#,
-        output: vec![Value::Str(Cow::Owned("YES".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("YES"))]
     );
 }
 
 #[test]
 fn control_flow_else_return_type() {
+    let arena = naijascript::arena::Arena::new(1024).unwrap();
     assert_runtime!(
         r#"
         do join(a) start
@@ -320,7 +295,7 @@ fn control_flow_else_return_type() {
         end
         shout(join("foo"))
         "#,
-        output: vec![Value::Str(Cow::Owned("foobaz".to_string()))]
+        output: vec![Value::Str(ArenaCow::Owned(ArenaString::from_str(&arena, "foobaz")))]
     );
     assert_runtime!(
         r#"
@@ -332,7 +307,7 @@ fn control_flow_else_return_type() {
         end
         shout(join("baz"))
         "#,
-        output: vec![Value::Str(Cow::Owned("baz".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("baz"))]
     );
 }
 
@@ -351,6 +326,7 @@ fn do_sum() {
 
 #[test]
 fn do_join() {
+    let arena = naijascript::arena::Arena::new(1024).unwrap();
     assert_runtime!(
         r#"
         do join(a) start
@@ -358,7 +334,7 @@ fn do_join() {
         end
         shout(join("foo"))
         "#,
-        output: vec![Value::Str(Cow::Owned("foobaz".to_string()))]
+        output: vec![Value::Str(ArenaCow::Owned(ArenaString::from_str(&arena, "foobaz")))]
     );
 }
 
@@ -366,7 +342,7 @@ fn do_join() {
 fn do_dynamic_concatenation() {
     assert_runtime!(
         r#"shout("one" add 2)"#,
-        output: vec![Value::Str(Cow::Owned("one2".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("one2"))]
     );
 }
 
@@ -421,7 +397,7 @@ fn string_interpolation() {
         make name get "World"
         shout("Hello {name}")
         "#,
-        output: vec![Value::Str(Cow::Owned("Hello World".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("Hello World"))]
     );
 }
 
@@ -433,7 +409,7 @@ fn string_interpolation_multiple() {
         make age get 25
         shout("{name} get {age} years")
         "#,
-        output: vec![Value::Str(Cow::Owned("John get 25 years".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("John get 25 years"))]
     );
 }
 
@@ -444,7 +420,7 @@ fn string_interpolation_numbers() {
         make price get 99.99
         shout("Price: ${price}")
         "#,
-        output: vec![Value::Str(Cow::Owned("Price: $99.99".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("Price: $99.99"))]
     );
 }
 
@@ -455,15 +431,15 @@ fn string_interpolation_booleans() {
         make available get true
         shout("Available: {available}")
         "#,
-        output: vec![Value::Str(Cow::Owned("Available: true".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("Available: true"))]
     );
 }
 
 #[test]
 fn string_interpolation_literal_braces() {
     assert_runtime!(
-        r#"shout("Use {{}} for literal braces")"#,
-        output: vec![Value::Str(Cow::Borrowed("Use {{}} for literal braces"))]
+        r#"shout("Use {{x}} for literal braces")"#,
+        output: vec![Value::Str(ArenaCow::Borrowed("Use {x} for literal braces"))]
     );
 }
 
@@ -471,7 +447,7 @@ fn string_interpolation_literal_braces() {
 fn string_interpolation_single_brace() {
     assert_runtime!(
         r#"shout("{")"#,
-        output: vec![Value::Str(Cow::Borrowed("{"))]
+        output: vec![Value::Str(ArenaCow::Borrowed("{"))]
     );
 }
 
@@ -479,7 +455,7 @@ fn string_interpolation_single_brace() {
 fn string_interpolation_empty_placeholder() {
     assert_runtime!(
         r#"shout("{}")"#,
-        output: vec![Value::Str(Cow::Borrowed("{}"))]
+        output: vec![Value::Str(ArenaCow::Borrowed("{}"))]
     );
 }
 
@@ -487,7 +463,7 @@ fn string_interpolation_empty_placeholder() {
 fn string_interpolation_nested_braces() {
     assert_runtime!(
         r#"shout("{a{b}c}")"#,
-        output: vec![Value::Str(Cow::Borrowed("{a{b}c}"))]
+        output: vec![Value::Str(ArenaCow::Borrowed("{a{b}c}"))]
     );
 }
 
@@ -498,6 +474,6 @@ fn string_interpolation_resolve_whitespace() {
         make name get "World"
         shout("Hello { name }")
         "#,
-        output: vec![Value::Str(Cow::Owned("Hello World".to_string()))]
+        output: vec![Value::Str(ArenaCow::Borrowed("Hello World"))]
     );
 }
