@@ -47,3 +47,5 @@ jobs:
         run: cargo test --all-features --all-targets
       - name: Run clippy
         run: cargo clippy --all-features --all-targets -- --no-deps --deny warnings
+      - name: Check wasm
+        run: cargo check --target wasm32-unknown-unknown --lib
