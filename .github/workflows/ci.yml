@@ -40,7 +40,9 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Install Rust
-        run: rustup toolchain install nightly --no-self-update --profile minimal --component rust-src,rustfmt,clippy
+        run: |
+          rustup toolchain install nightly --no-self-update --profile minimal --component rust-src,rustfmt,clippy
+          rustup target add wasm32-unknown-unknown
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run tests
