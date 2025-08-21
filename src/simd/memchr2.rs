@@ -262,8 +262,8 @@ mod tests {
             const PAGE_SIZE: usize = 64 * 1024; // 64 KiB to cover many architectures.
 
             // 3 pages: uncommitted, committed, uncommitted
-            let ptr = sys::VirtualMem::reserve(PAGE_SIZE * 3).unwrap();
-            sys::VirtualMem::commit(ptr.add(PAGE_SIZE), PAGE_SIZE).unwrap();
+            let ptr = sys::virtual_memory::reserve(PAGE_SIZE * 3).unwrap();
+            sys::virtual_memory::commit(ptr.add(PAGE_SIZE), PAGE_SIZE).unwrap();
             slice::from_raw_parts_mut(ptr.add(PAGE_SIZE).as_ptr(), PAGE_SIZE)
         };
 

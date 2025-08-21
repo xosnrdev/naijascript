@@ -1,5 +1,7 @@
 //! Platform abstractions.
 
+#![allow(non_camel_case_types)]
+
 #[cfg(windows)]
 mod windows;
 
@@ -19,11 +21,11 @@ use wasm::*;
 pub use windows::*;
 
 #[cfg(unix)]
-pub type VirtualMem = UnixVirtualMemory;
+pub type virtual_memory = UnixVirtualMemory;
 #[cfg(target_arch = "wasm32")]
-pub type VirtualMem = WasmVirtualMemory;
+pub type virtual_memory = WasmVirtualMemory;
 #[cfg(windows)]
-pub type VirtualMem = WindowsVirtualMemory;
+pub type virtual_memory = WindowsVirtualMemory;
 
 pub trait VirtualMemory {
     /// Reserves a virtual memory region of the given size.
