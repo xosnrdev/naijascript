@@ -2,8 +2,9 @@ use std::alloc::{Layout, alloc, alloc_zeroed, dealloc};
 use std::ptr::NonNull;
 
 use super::VirtualMemory;
+use crate::KIBI;
 
-const WASM_PAGE: usize = 64 * 1024;
+const WASM_PAGE: usize = 64 * KIBI;
 const ZERO_ON_RESERVE: bool = false;
 
 #[inline]

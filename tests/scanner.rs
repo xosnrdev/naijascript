@@ -1,3 +1,4 @@
+use naijascript::KIBI;
 use naijascript::arena::{Arena, ArenaCow, ArenaString};
 use naijascript::diagnostics::AsStr;
 use naijascript::syntax::scanner::{LexError, Lexer};
@@ -5,7 +6,7 @@ use naijascript::syntax::token::{SpannedToken, Token};
 
 macro_rules! assert_tokens {
     ($src:expr, $exp:expr $(,)?) => {{
-        let arena = Arena::new(1024).unwrap();
+        let arena = Arena::new(KIBI).unwrap();
         let lexer = Lexer::new($src, &arena);
         let spanned_tokens: Vec<SpannedToken> = lexer.collect();
         let tokens: Vec<Token> = spanned_tokens.into_iter().map(|st| st.token).collect();
@@ -81,7 +82,7 @@ fn test_scan_identifier() {
 #[test]
 fn test_scan_invalid_identifier() {
     let src = "1foo";
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     let mut lexer = Lexer::new(src, &arena);
     let _ = lexer.next();
     let errors = lexer.errors;
@@ -109,7 +110,7 @@ fn test_scan_number() {
 #[test]
 fn test_scan_invalid_number() {
     let src = "1..2";
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     let mut lexer = Lexer::new(src, &arena);
     let _ = lexer.next();
     let errors = lexer.errors;
@@ -121,7 +122,7 @@ fn test_scan_invalid_number() {
 #[test]
 fn test_scan_number_with_underscore_error() {
     let src = "123_foo";
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     let mut lexer = Lexer::new(src, &arena);
     let _ = lexer.next();
     let errors = lexer.errors;
@@ -148,7 +149,7 @@ fn test_scan_empty_string() {
 
 #[test]
 fn test_scan_string_with_newline_escape() {
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     let src = r#""foo\nbar""#;
     assert_tokens!(
         src,
@@ -159,7 +160,7 @@ fn test_scan_string_with_newline_escape() {
 #[test]
 fn test_scan_string_with_tab_escape() {
     let src = r#""foo\tbar""#;
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     assert_tokens!(
         src,
         &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "foo\tbar")))]
@@ -169,7 +170,7 @@ fn test_scan_string_with_tab_escape() {
 #[test]
 fn test_scan_string_with_escaped_quote() {
     let src = r#""foo\"bar""#;
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     assert_tokens!(
         src,
         &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "foo\"bar")))]
@@ -179,7 +180,7 @@ fn test_scan_string_with_escaped_quote() {
 #[test]
 fn test_scan_string_with_escaped_backslash() {
     let src = r#""foo\\bar""#;
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     assert_tokens!(
         src,
         &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "foo\\bar")))]
@@ -189,21 +190,21 @@ fn test_scan_string_with_escaped_backslash() {
 #[test]
 fn test_scan_string_with_only_quote() {
     let src = r#""\"""#;
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     assert_tokens!(src, &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "\"")))]);
 }
 
 #[test]
 fn test_scan_string_with_only_backslash() {
     let src = r#""\\""#;
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     assert_tokens!(src, &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "\\")))]);
 }
 
 #[test]
 fn test_scan_string_with_all_valid_escapes() {
     let src = r#""\n\t\"\\""#;
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     assert_tokens!(
         src,
         &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "\n\t\"\\")))]
@@ -213,7 +214,7 @@ fn test_scan_string_with_all_valid_escapes() {
 #[test]
 fn test_scan_string_with_invalid_escape() {
     let src = r#""foo\xbar""#;
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     let mut lexer = Lexer::new(src, &arena);
     let _ = lexer.next();
     let errors = lexer.errors;
@@ -225,7 +226,7 @@ fn test_scan_string_with_invalid_escape() {
 #[test]
 fn test_scan_string_with_mixed_valid_and_invalid_escapes() {
     let src = r#""foo\xbar\n""#;
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     let mut lexer = Lexer::new(src, &arena);
     let st = lexer.next().unwrap_or_default();
     assert_eq!(
@@ -241,7 +242,7 @@ fn test_scan_string_with_mixed_valid_and_invalid_escapes() {
 #[test]
 fn test_scan_unterminated_string() {
     let src = r#""foo bar"#;
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     let mut lexer = Lexer::new(src, &arena);
     let _ = lexer.next();
     let errors = lexer.errors;
@@ -259,7 +260,7 @@ fn test_scan_single_quoted_string() {
 #[test]
 fn test_scan_single_quoted_string_with_escape() {
     let src = r#"'foo\'bar'"#;
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     assert_tokens!(
         src,
         &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "foo'bar")))]
@@ -269,7 +270,7 @@ fn test_scan_single_quoted_string_with_escape() {
 #[test]
 fn test_scan_unterminated_single_quoted_string() {
     let src = "'foo bar";
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     let mut lexer = Lexer::new(src, &arena);
     let _ = lexer.next();
     let errors = lexer.errors;
@@ -301,7 +302,7 @@ fn test_scan_trailing_comment() {
 #[test]
 fn test_scan_unexpected_character() {
     let src = "@";
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     let mut lexer = Lexer::new(src, &arena);
     let _ = lexer.next();
     let errors = lexer.errors;
@@ -313,7 +314,7 @@ fn test_scan_unexpected_character() {
 #[test]
 fn test_scan_utf8_boundary_panic() {
     let src = "😆";
-    let arena = Arena::new(1024).unwrap();
+    let arena = Arena::new(KIBI).unwrap();
     let mut lexer = Lexer::new(src, &arena);
     let _ = lexer.next();
     let errors = lexer.errors;

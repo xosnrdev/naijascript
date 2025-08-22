@@ -6,6 +6,7 @@ use std::process::ExitCode;
 
 use clap::Parser as ClapParser;
 use clap_cargo::style::CLAP_STYLING;
+use naijascript::MEBI;
 use naijascript::arena::{self, Arena, scratch_arena};
 use naijascript::resolver::Resolver;
 use naijascript::runtime::Runtime;
@@ -30,9 +31,9 @@ struct Cli {
 }
 
 #[cfg(target_pointer_width = "32")]
-const SCRATCH_ARENA_CAPACITY: usize = 128 * 1024 * 1024;
+const SCRATCH_ARENA_CAPACITY: usize = 128 * MEBI;
 #[cfg(target_pointer_width = "64")]
-const SCRATCH_ARENA_CAPACITY: usize = 512 * 1024 * 1024;
+const SCRATCH_ARENA_CAPACITY: usize = 512 * MEBI;
 
 // Entry point for the NaijaScript CLI.
 //

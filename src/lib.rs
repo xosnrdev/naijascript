@@ -22,6 +22,10 @@ pub mod simd;
 pub mod syntax;
 pub mod sys;
 
+pub const KIBI: usize = 1024;
+pub const MEBI: usize = 1024 * 1024;
+pub const GIBI: usize = 1024 * 1024 * 1024;
+
 #[cfg(target_arch = "wasm32")]
 use {
     crate::arena::scratch_arena, crate::resolver::Resolver, crate::runtime::Runtime,
@@ -32,7 +36,7 @@ use {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn run_source(src: &str, filename: &str) -> String {
-    arena::init(128 * 1024 * 1024).unwrap();
+    arena::init(128 * MEBI).unwrap();
     let arena = scratch_arena(None);
 
     let mut lexer = Lexer::new(src, &arena);

@@ -5,9 +5,10 @@ use std::mem::MaybeUninit;
 use std::ptr::{self, NonNull};
 use std::{mem, slice};
 
+use crate::KIBI;
 use crate::sys::{self, VirtualMemory};
 
-const ALLOC_CHUNK_SIZE: usize = 64 * 1024;
+const ALLOC_CHUNK_SIZE: usize = 64 * KIBI;
 
 /// An arena allocator.
 ///
@@ -167,7 +168,7 @@ impl Arena {
         unsafe { slice::from_raw_parts_mut(ptr.cast().as_ptr(), count) }
     }
 
-    pub fn vec_into_slice<'a, T>(&'a self, mut vec: Vec<T, &'a Self>) -> &'a [T] {
+    pub fn vec_into_slice<'a, T: Copy>(&'a self, mut vec: Vec<T, &'a Self>) -> &'a [T] {
         if vec.is_empty() {
             return &[];
         }

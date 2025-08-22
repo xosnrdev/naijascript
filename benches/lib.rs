@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
+use naijascript::MEBI;
 use naijascript::arena::{self, scratch_arena};
 use naijascript::syntax::parser::Parser;
 use naijascript::syntax::scanner::Lexer;
@@ -216,7 +217,7 @@ fn bench_parse_nested_expr(c: &mut Criterion) {
 }
 
 fn bench(c: &mut Criterion) {
-    arena::init(128 * 1024 * 1024).unwrap();
+    arena::init(128 * MEBI).unwrap();
 
     bench_skip_comment(c);
     bench_scan_string(c);
