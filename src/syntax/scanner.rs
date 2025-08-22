@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 
+use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
 use crate::simd::memchr2;
 use crate::syntax::token::{SpannedToken, Token};
@@ -29,26 +30,27 @@ impl AsStr for LexError {
 }
 
 /// The interface for the NaijaScript lexer.
-pub struct Lexer<'input> {
-    /// The original source text as bytes
-    pub src: &'input [u8],
-    /// Current position in the source text
-    pub pos: usize,
+pub struct Lexer<'arena, 'input> {
+    // The original source text as bytes
+    src: &'input [u8],
+    // Current position in the source text
+    pos: usize,
     /// Collection of errors encountered during scanning
     pub errors: Diagnostics,
+    arena: &'arena Arena,
 }
 
-impl<'input> Lexer<'input> {
+impl<'arena, 'input> Lexer<'arena, 'input> {
     /// Creates a new lexer from source text
     #[inline(always)]
-    pub fn new(src: &'input str) -> Self {
-        Lexer { src: src.as_bytes(), pos: 0, errors: Diagnostics::default() }
+    pub fn new(src: &'input str, arena: &'arena Arena) -> Self {
+        Lexer { src: src.as_bytes(), pos: 0, errors: Diagnostics::default(), arena }
     }
 
     // Returns the next token and its span from the input.
     #[inline(always)]
-    fn next_token(&mut self) -> SpannedToken<'input> {
-        let src_len = self.src.len();
+    fn next_token(&mut self) -> SpannedToken<'arena, 'input> {
+        let len = self.src.len();
 
         loop {
             // Skip over any whitespace before the next token
@@ -58,11 +60,11 @@ impl<'input> Lexer<'input> {
             let start = self.pos;
 
             // Check for EOF first
-            if self.pos >= src_len {
+            if self.pos >= len {
                 return SpannedToken { token: Token::EOF, span: start..start };
             }
 
-            // SAFETY: We just checked that self.pos < src_len
+            // SAFETY: We just checked that self.pos < len
             let b = unsafe { *self.src.get_unchecked(self.pos) };
 
             // If we see a '#' character, that means the start of a comment.
@@ -91,22 +93,21 @@ impl<'input> Lexer<'input> {
             if !b.is_ascii() {
                 // We need the complete Unicode character to properly skip it and report accurate spans
                 // SAFETY: We know this is valid UTF-8 because the original string was valid UTF-8
-                let rest =
-                    unsafe { std::str::from_utf8_unchecked(self.src.get_unchecked(start..)) };
+                let rest = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(start..)) };
                 if let Some(c) = rest.chars().next() {
-                    let char_len = c.len_utf8();
+                    let len = c.len_utf8();
                     self.errors.emit(
-                        start..self.pos + char_len,
+                        start..self.pos + len,
                         Severity::Error,
                         "lexical",
                         LexError::UnexpectedChar.as_str(),
                         vec![Label {
-                            span: start..self.pos + char_len,
+                            span: start..self.pos + len,
                             message: Cow::Borrowed("I no sabi dis character"),
                         }],
                     );
                     // Skip the entire Unicode character to avoid splitting it across byte boundaries
-                    self.pos += char_len;
+                    self.pos += len;
                     continue;
                 } else {
                     // Invalid UTF-8 sequence detected, so we advance by one byte to prevent infinite loops
@@ -135,10 +136,8 @@ impl<'input> Lexer<'input> {
     // we can simply skip over all spaces, tabs, newlines, etc.
     #[inline(always)]
     fn skip_whitespace(&mut self) {
-        let src_len = self.src.len();
-        while self.pos < src_len
-            && unsafe { self.src.get_unchecked(self.pos) }.is_ascii_whitespace()
-        {
+        let len = self.src.len();
+        while self.pos < len && unsafe { self.src.get_unchecked(self.pos) }.is_ascii_whitespace() {
             self.pos += 1;
         }
     }
@@ -149,13 +148,13 @@ impl<'input> Lexer<'input> {
 
         // SAFETY: self.pos..len is guaranteed to be a valid slice
         // and the performance gain is significant in our benchmarks
-        let idx = unsafe {
+        let pos = unsafe {
             let hs = self.src.get_unchecked(self.pos..len);
             memchr2(b'\n', b'\r', hs, 0)
         };
 
         // Advance position to the end of the comment
-        self.pos += idx;
+        self.pos += pos;
 
         // After skipping to end of line, we might be sitting on the newline or carriage return character
         // We need to consume it too so the next token scan starts fresh on the following line
@@ -183,10 +182,10 @@ impl<'input> Lexer<'input> {
     // 3. The performance gain is significant in our benchmarks
     #[inline(always)]
     fn read_word(&mut self) -> &'input str {
-        let start = self.pos;
-        let src_len = self.src.len();
+        let beg = self.pos;
+        let len = self.src.len();
 
-        while self.pos < src_len {
+        while self.pos < len {
             let ch = unsafe { *self.src.get_unchecked(self.pos) };
             if !Self::is_alpha_or_underscore(ch) && !ch.is_ascii_digit() {
                 break;
@@ -194,7 +193,7 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
         }
 
-        unsafe { std::str::from_utf8_unchecked(self.src.get_unchecked(start..self.pos)) }
+        unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..self.pos)) }
     }
 
     // Try to consume a specific word at current position
@@ -206,21 +205,19 @@ impl<'input> Lexer<'input> {
     // 2. We have enough input left
     #[inline(always)]
     fn try_consume_word(&mut self, word: &str) -> bool {
-        // Skip any whitespace before the word
-        let mut p = self.pos;
-        let src_len = self.src.len();
+        let len = self.src.len();
+        let mut beg = self.pos;
 
-        // SAFETY: We check bounds before accessing
-        while p < src_len && unsafe { self.src.get_unchecked(p) }.is_ascii_whitespace() {
-            p += 1;
+        while beg < len && unsafe { *self.src.get_unchecked(beg) }.is_ascii_whitespace() {
+            beg += 1;
         }
 
-        let end = p + word.len();
-        if end <= src_len {
-            // SAFETY: We just verified that end <= src_len, so the slice is valid
-            let slice = unsafe { self.src.get_unchecked(p..end) };
+        let end = beg + word.len();
+        if end <= len {
+            // SAFETY: beg..end is valid
+            let slice = unsafe { self.src.get_unchecked(beg..end) };
             if slice == word.as_bytes()
-                && (end == src_len
+                && (end == len
                     || !Self::is_alpha_or_underscore(unsafe { *self.src.get_unchecked(end) }))
             {
                 self.pos = end;
@@ -231,64 +228,61 @@ impl<'input> Lexer<'input> {
     }
 
     #[inline(always)]
-    fn scan_string(&mut self, start: usize, quote: u8) -> Token<'input> {
+    fn scan_string(&mut self, start: usize, quote: u8) -> Token<'arena, 'input> {
         self.pos += 1; // Skip the opening quote
-        // Pointer to the beginning of the string content
         let beg = self.pos;
 
         let mut has_escape = false;
-        let mut buffer = String::new();
+        let mut buffer = ArenaString::new_in(self.arena);
 
         loop {
             // Find the next quote or escape sequence
             // SAFETY: self.pos is always <= self.src.len() due to lexer invariants
             let bytes = unsafe { self.src.get_unchecked(self.pos..) };
             let pos = memchr2(quote, b'\\', bytes, 0);
-
             // We don't have a closing quote or escape sequence
             if pos == bytes.len() {
                 break;
             }
 
-            let found_pos = self.pos + pos;
-            // SAFETY: found_pos is guaranteed to be valid since it comes from memchr2
-            let c = unsafe { *self.src.get_unchecked(found_pos) };
-
+            let pos = self.pos + pos;
+            // SAFETY: pos is guaranteed to be valid since it comes from memchr2
+            let c = unsafe { *self.src.get_unchecked(pos) };
             if c == quote {
                 // Closing quote
                 if has_escape {
                     // Copy any remaining content before the quote
-                    if self.pos < found_pos {
+                    if self.pos < pos {
                         // SAFETY: We know this is valid UTF-8 because we only process valid string content
-                        let str_slice = unsafe {
-                            std::str::from_utf8_unchecked(&self.src[self.pos..found_pos])
+                        let slice = unsafe {
+                            str::from_utf8_unchecked(self.src.get_unchecked(self.pos..pos))
                         };
-                        buffer.push_str(str_slice);
+                        buffer.push_str(slice);
                     }
-                    self.pos = found_pos + 1;
-                    return Token::String(Cow::Owned(buffer));
+                    self.pos = pos + 1;
+                    return Token::String(ArenaCow::Owned(buffer));
                 } else {
                     // SAFETY: We know this is valid UTF-8 because we only process valid string content
-                    let s = unsafe { std::str::from_utf8_unchecked(&self.src[beg..found_pos]) };
-                    self.pos = found_pos + 1;
-                    return Token::String(Cow::Borrowed(s));
+                    let s = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..pos)) };
+                    self.pos = pos + 1;
+                    return Token::String(ArenaCow::Borrowed(s));
                 }
             } else if c == b'\\' {
                 has_escape = true;
                 if buffer.is_empty() {
-                    buffer.reserve(bytes.len());
+                    buffer.reserve_exact(bytes.len());
                     // SAFETY: We know this is valid UTF-8 because we only process valid string content
-                    let str_slice =
-                        unsafe { std::str::from_utf8_unchecked(&self.src[beg..found_pos]) };
-                    buffer.push_str(str_slice);
-                } else if self.pos < found_pos {
+                    let slice =
+                        unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..pos)) };
+                    buffer.push_str(slice);
+                } else if self.pos < pos {
                     // SAFETY: We know this is valid UTF-8 because we only process valid string content
-                    let str_slice =
-                        unsafe { std::str::from_utf8_unchecked(&self.src[self.pos..found_pos]) };
-                    buffer.push_str(str_slice);
+                    let slice =
+                        unsafe { str::from_utf8_unchecked(self.src.get_unchecked(self.pos..pos)) };
+                    buffer.push_str(slice);
                 }
                 // We don't want an incomplete escape sequence
-                if found_pos + 1 >= self.src.len() {
+                if pos + 1 >= self.src.len() {
                     self.errors.emit(
                         start..self.src.len(),
                         Severity::Error,
@@ -303,11 +297,11 @@ impl<'input> Lexer<'input> {
                         }],
                     );
                     self.pos = self.src.len();
-                    return Token::String(Cow::Owned(buffer));
+                    return Token::String(ArenaCow::Owned(buffer));
                 }
 
-                // SAFETY: We just checked that found_pos + 1 < self.src.len()
-                let esc = unsafe { *self.src.get_unchecked(found_pos + 1) };
+                // SAFETY: We just checked that pos + 1 < self.src.len()
+                let esc = unsafe { *self.src.get_unchecked(pos + 1) };
                 match esc {
                     b'"' if quote == b'"' => buffer.push('"'),
                     b'\'' if quote == b'\'' => buffer.push('\''),
@@ -316,12 +310,12 @@ impl<'input> Lexer<'input> {
                     b't' => buffer.push('\t'),
                     _ => {
                         self.errors.emit(
-                            found_pos..found_pos + 2,
+                            pos..pos + 2,
                             Severity::Error,
                             "lexical",
                             LexError::InvalidStringEscape.as_str(),
                             vec![Label {
-                                span: found_pos..found_pos + 2,
+                                span: pos..pos + 2,
                                 message: Cow::Borrowed("Dis escape character no valid"),
                             }],
                         );
@@ -329,7 +323,7 @@ impl<'input> Lexer<'input> {
                         buffer.push(esc as char);
                     }
                 }
-                self.pos = found_pos + 2;
+                self.pos = pos + 2;
             }
         }
 
@@ -348,16 +342,17 @@ impl<'input> Lexer<'input> {
         );
         self.pos = self.src.len();
         if has_escape {
-            Token::String(Cow::Owned(buffer))
+            Token::String(ArenaCow::Owned(buffer))
         } else {
             // SAFETY: We know this is valid UTF-8 because we only process valid string content
-            let s = unsafe { std::str::from_utf8_unchecked(&self.src[beg..self.src.len()]) };
-            Token::String(Cow::Borrowed(s))
+            let s =
+                unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..self.src.len())) };
+            Token::String(ArenaCow::Borrowed(s))
         }
     }
 
     #[inline(always)]
-    fn scan_punctuation(&mut self, b: u8) -> Option<Token<'input>> {
+    fn scan_punctuation(&mut self, b: u8) -> Option<Token<'arena, 'input>> {
         match b {
             b'(' => {
                 self.pos += 1;
@@ -376,24 +371,24 @@ impl<'input> Lexer<'input> {
     }
 
     #[inline(always)]
-    fn scan_number(&mut self, start: usize) -> Token<'input> {
+    fn scan_number(&mut self, start: usize) -> Token<'arena, 'input> {
         let mut saw_dot = false;
-        let src_len = self.src.len();
+        let len = self.src.len();
 
         // Let's consume the integer part of the number first.
         // We'll keep bumping as long as we see digits.
-        while self.pos < src_len && unsafe { *self.src.get_unchecked(self.pos) }.is_ascii_digit() {
+        while self.pos < len && unsafe { *self.src.get_unchecked(self.pos) }.is_ascii_digit() {
             self.pos += 1;
         }
 
         // Consume decimal part if present
-        if self.pos < src_len && unsafe { *self.src.get_unchecked(self.pos) } == b'.' {
+        if self.pos < len && unsafe { *self.src.get_unchecked(self.pos) } == b'.' {
             saw_dot = true;
             let dot_pos = self.pos;
             self.pos += 1;
 
             let after_dot =
-                if self.pos < src_len { unsafe { *self.src.get_unchecked(self.pos) } } else { 0 };
+                if self.pos < len { unsafe { *self.src.get_unchecked(self.pos) } } else { 0 };
 
             if !after_dot.is_ascii_digit() {
                 // If there's no digit after the dot, that's not a valid number in NaijaScript.
@@ -412,16 +407,14 @@ impl<'input> Lexer<'input> {
                 self.pos += 1;
                 return self.next_token().token;
             }
-            while self.pos < src_len
-                && unsafe { *self.src.get_unchecked(self.pos) }.is_ascii_digit()
-            {
+            while self.pos < len && unsafe { *self.src.get_unchecked(self.pos) }.is_ascii_digit() {
                 self.pos += 1;
             }
         }
 
         // Let's check if there are multiple dots in the number, like "1.2.3".
         // That's not valid in NaijaScript, so we'll catch it here and report an error.
-        if saw_dot && self.pos < src_len && unsafe { *self.src.get_unchecked(self.pos) } == b'.' {
+        if saw_dot && self.pos < len && unsafe { *self.src.get_unchecked(self.pos) } == b'.' {
             let extra_dot = self.pos;
             self.pos += 1;
             self.errors.emit(
@@ -440,11 +433,11 @@ impl<'input> Lexer<'input> {
         // If the next character is a letter or underscore (like "1foo" or "1_bar"),
         // that's not a valid number or identifier in NaijaScript, so let's catch it here.
         let next_char =
-            if self.pos < src_len { unsafe { *self.src.get_unchecked(self.pos) } } else { 0 };
+            if self.pos < len { unsafe { *self.src.get_unchecked(self.pos) } } else { 0 };
 
         if Self::is_alpha_or_underscore(next_char) {
             let id_start = self.pos;
-            while self.pos < src_len {
+            while self.pos < len {
                 let ch = unsafe { *self.src.get_unchecked(self.pos) };
                 if !Self::is_alpha_or_underscore(ch) && !ch.is_ascii_digit() {
                     break;
@@ -462,21 +455,18 @@ impl<'input> Lexer<'input> {
                 }],
             );
             // SAFETY: We know this is valid UTF-8 because we only process ASCII digits
-            let num =
-                unsafe { std::str::from_utf8_unchecked(self.src.get_unchecked(start..id_start)) };
+            let num = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(start..id_start)) };
             return Token::Number(num);
         }
 
-        // Let's grab the whole number as a string slice.
-        // We'll actually parse it into a numeric value later, during evaluation.
-        // For now, we just want to capture exactly what the user typed, so we don't lose any information.
+        // Grab the whole number as a string slice.
         // SAFETY: We know this is valid UTF-8 because we only process ASCII digits and dots
-        let num = unsafe { std::str::from_utf8_unchecked(self.src.get_unchecked(start..self.pos)) };
+        let num = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(start..self.pos)) };
         Token::Number(num)
     }
 
     #[inline(always)]
-    fn scan_identifier_or_keyword(&mut self, start: usize) -> Token<'input> {
+    fn scan_identifier_or_keyword(&mut self, start: usize) -> Token<'arena, 'input> {
         let word = self.read_word();
         // Handle multi-word constructs
         // This is a bit tricky because we need to look ahead without committing
@@ -579,8 +569,8 @@ impl<'input> Lexer<'input> {
     }
 }
 
-impl<'input> Iterator for Lexer<'input> {
-    type Item = SpannedToken<'input>;
+impl<'arena, 'input> Iterator for Lexer<'arena, 'input> {
+    type Item = SpannedToken<'arena, 'input>;
     fn next(&mut self) -> Option<Self::Item> {
         let st = self.next_token();
         // We want to yield exactly one EOF token at the end of the input.

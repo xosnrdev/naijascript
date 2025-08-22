@@ -24,7 +24,7 @@ pub mod sys;
 
 #[cfg(target_arch = "wasm32")]
 use {
-    crate::arena::Arena, crate::resolver::Resolver, crate::runtime::Runtime,
+    crate::arena::scratch_arena, crate::resolver::Resolver, crate::runtime::Runtime,
     crate::syntax::parser::Parser, crate::syntax::scanner::Lexer,
     crate::syntax::token::SpannedToken, wasm_bindgen::prelude::*,
 };
@@ -32,8 +32,10 @@ use {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn run_source(src: &str, filename: &str) -> String {
-    let arena = Arena::new(4 * 1024).unwrap();
-    let mut lexer = Lexer::new(src);
+    arena::init(128 * 1024 * 1024).unwrap();
+    let arena = scratch_arena(None);
+
+    let mut lexer = Lexer::new(src, &arena);
     let tokens: Vec<SpannedToken> = (&mut lexer).collect();
     if !lexer.errors.diagnostics.is_empty() {
         return lexer.errors.report_html(src, filename);
@@ -67,6 +69,7 @@ pub fn run_source(src: &str, filename: &str) -> String {
     let res = runtime.output.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n");
     if !non_err.is_empty() {
         non_err.push_str(&res);
+        non_err.shrink_to_fit();
         return non_err;
     }
     res

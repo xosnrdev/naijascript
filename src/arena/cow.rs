@@ -71,7 +71,7 @@ impl<'arena, 'src> ArenaCow<'arena, 'src> {
         self.as_ref().len()
     }
 
-    /// Returns [`true`] if the string is empty.
+    /// Returns `true` if the string is empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.as_ref().is_empty()

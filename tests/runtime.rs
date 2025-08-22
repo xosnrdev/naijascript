@@ -1,4 +1,4 @@
-use naijascript::arena::{ArenaCow, ArenaString};
+use naijascript::arena::{Arena, ArenaCow, ArenaString};
 use naijascript::diagnostics::AsStr;
 use naijascript::runtime::{Runtime, RuntimeErrorKind, Value};
 
@@ -7,7 +7,7 @@ use crate::common::_parse_from_src;
 
 macro_rules! assert_runtime {
     ($src:expr, output: $expected:expr) => {{
-        let arena = naijascript::arena::Arena::new(4 * 1024).unwrap();
+        let arena = Arena::new(1024).unwrap();
         let mut parser = _parse_from_src($src, &arena);
         let (root, err) = parser.parse_program();
         assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
@@ -284,7 +284,7 @@ fn boolean_parameter_operations() {
 
 #[test]
 fn control_flow_else_return_type() {
-    let arena = naijascript::arena::Arena::new(1024).unwrap();
+    let arena = Arena::new(1024).unwrap();
     assert_runtime!(
         r#"
         do join(a) start
@@ -326,7 +326,7 @@ fn do_sum() {
 
 #[test]
 fn do_join() {
-    let arena = naijascript::arena::Arena::new(1024).unwrap();
+    let arena = Arena::new(1024).unwrap();
     assert_runtime!(
         r#"
         do join(a) start

@@ -6,7 +6,7 @@ use crate::common::_parse_from_src;
 
 macro_rules! assert_resolve {
     ($src:expr, $err:expr) => {{
-        let arena = naijascript::arena::Arena::new(4 * 1024).unwrap();
+        let arena = naijascript::arena::Arena::new(1024).unwrap();
         let mut parser = _parse_from_src($src, &arena);
         let (root, err) = parser.parse_program();
         assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);

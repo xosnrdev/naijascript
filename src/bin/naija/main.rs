@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use clap::Parser as ClapParser;
 use clap_cargo::style::CLAP_STYLING;
-use naijascript::arena::Arena;
+use naijascript::arena::{self, Arena, scratch_arena};
 use naijascript::resolver::Resolver;
 use naijascript::runtime::Runtime;
 use naijascript::syntax::parser::Parser;
@@ -29,13 +29,19 @@ struct Cli {
     eval: Option<String>,
 }
 
+#[cfg(target_pointer_width = "32")]
+const SCRATCH_ARENA_CAPACITY: usize = 128 * 1024 * 1024;
+#[cfg(target_pointer_width = "64")]
+const SCRATCH_ARENA_CAPACITY: usize = 512 * 1024 * 1024;
+
 // Entry point for the NaijaScript CLI.
 //
 // Parses command line arguments and dispatches to the appropriate mode (eval, script, stdin).
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
-    let arena = Arena::new(4 * 1024).unwrap();
+    arena::init(SCRATCH_ARENA_CAPACITY).unwrap();
+    let arena = scratch_arena(None);
 
     if let Some(code) = cli.eval {
         run_source("<eval>", &code, &arena)
@@ -50,7 +56,7 @@ fn main() -> ExitCode {
 
 // Run source code from a &str, with full diagnostics and semantic analysis.
 fn run_source(filename: &str, src: &str, arena: &Arena) -> ExitCode {
-    let mut lexer = Lexer::new(src);
+    let mut lexer = Lexer::new(src, arena);
     let tokens: Vec<SpannedToken> = (&mut lexer).collect();
     if !lexer.errors.diagnostics.is_empty() {
         lexer.errors.report(src, filename);

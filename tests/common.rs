@@ -5,7 +5,7 @@ use naijascript::syntax::scanner::Lexer;
 pub fn _parse_from_src<'src, 'ast>(
     src: &'src str,
     arena: &'ast Arena,
-) -> Parser<'src, 'ast, Lexer<'src>> {
-    let lexer = Lexer::new(src);
+) -> Parser<'src, 'ast, Lexer<'ast, 'src>> {
+    let lexer = Lexer::new(src, arena);
     Parser::new(lexer, arena)
 }

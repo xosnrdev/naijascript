@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::{mem, slice};
 
-use crate::arena::{Arena, ArenaString};
+use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::simd::memchr2;
 use crate::syntax::token::{SpannedToken, Token};
@@ -150,17 +150,17 @@ impl AsStr for SyntaxError {
 ///
 /// We use a hybrid approach, combining recursive-descent with Pratt parsing for
 /// expressions. See [https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html]
-pub struct Parser<'src, 'ast, I: Iterator<Item = SpannedToken<'src>>>
+pub struct Parser<'src, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>>
 where
     'src: 'ast,
 {
     tokens: I,
-    cur: SpannedToken<'src>,
+    cur: SpannedToken<'ast, 'src>,
     errors: Diagnostics,
     arena: &'ast Arena,
 }
 
-impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, 'ast, I> {
+impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src, 'ast, I> {
     /// Creates a new [`Parser`] instance.
     #[inline]
     pub fn new(mut tokens: I, arena: &'ast Arena) -> Self {
@@ -941,7 +941,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, 'ast
     }
 
     #[inline]
-    fn parse_string_literal(&mut self, content: Cow<'src, str>, span: Span) -> ExprRef<'ast> {
+    fn parse_string_literal(&mut self, content: ArenaCow<'ast, 'src>, span: Span) -> ExprRef<'ast> {
         let bytes = content.as_bytes();
         let len = bytes.len();
 
@@ -953,8 +953,8 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'src>>> Parser<'src, 'ast
         }
 
         let template: &'src str = match &content {
-            Cow::Borrowed(s) => s,
-            Cow::Owned(..) => {
+            ArenaCow::Borrowed(s) => s,
+            ArenaCow::Owned(..) => {
                 let s = self.alloc_str(&content);
                 return self.alloc(Expr::String { parts: StringParts::Static(s), span });
             }

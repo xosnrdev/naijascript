@@ -115,6 +115,7 @@ impl Diagnostics {
         for diag in &self.diagnostics {
             Self::render_diagnostic(diag, src, filename, gutter_width, Some(&mut buf));
         }
+        buf.shrink_to_fit();
         buf
     }
 
@@ -145,7 +146,7 @@ impl Diagnostics {
             });
 
         // Render same-line labels as underlines with dashes
-        let mut label_lines = Vec::new();
+        let mut label_lines = Vec::with_capacity(same_line_labels.len());
         for label in same_line_labels {
             // Convert absolute span to column position relative to line start
             let lbl_col = label.span.start.saturating_sub(line_start) + 1;
@@ -160,7 +161,7 @@ impl Diagnostics {
         }
 
         // Handle cross-line labels by showing their complete source context
-        let mut cross_line_displays = Vec::new();
+        let mut cross_line_displays = Vec::with_capacity(cross_line_labels.len());
         for label in cross_line_labels {
             let (label_line, label_col, label_line_start, label_line_end) =
                 Self::line_col_from_span(src, label.span.start);
@@ -231,7 +232,7 @@ impl Diagnostics {
     // Build the caret `^^^` line that points to the error location.
     #[inline]
     fn render_caret_line(col: usize, len: usize, color: &str, plain_gutter: &str) -> String {
-        let mut caret_line = String::new();
+        let mut caret_line = String::with_capacity(plain_gutter.len() + col + 4 + len);
         caret_line.push_str(plain_gutter);
         for _ in 0..(col - 1) {
             caret_line.push(' ');
@@ -246,6 +247,7 @@ impl Diagnostics {
             caret_line.push_str("...");
         }
         caret_line.push_str(RESET);
+        caret_line.shrink_to_fit();
         caret_line
     }
 
@@ -258,7 +260,7 @@ impl Diagnostics {
         message: &str,
         plain_gutter: &str,
     ) -> String {
-        let mut label_line = String::new();
+        let mut label_line = String::with_capacity(plain_gutter.len() + lbl_col + 4 + dash_count);
         label_line.push_str(plain_gutter);
         for _ in 0..(lbl_col - 1) {
             label_line.push(' ');
@@ -281,12 +283,52 @@ impl Diagnostics {
     }
 
     #[inline]
-    fn line_col_from_span(src: &str, span_start: usize) -> (usize, usize, usize, usize) {
-        let before = &src[..span_start];
-        let line_start = before.rfind('\n').map_or(0, |i| i + 1);
-        let line_end = src[line_start..].find('\n').map_or(src.len(), |i| line_start + i);
-        let line = before.bytes().filter(|&b| b == b'\n').count() + 1;
-        let col = src[line_start..span_start].chars().count() + 1;
+    fn line_col_from_span(src: &str, start: usize) -> (usize, usize, usize, usize) {
+        assert!(start <= src.len(), "Start span out of bounds");
+
+        let bytes = src.as_bytes();
+        let mut line_start = 0;
+        let mut line = 1;
+
+        // Find last '\n' before start (for line_start)
+        let mut i = 0;
+        while i < start {
+            if unsafe { *bytes.get_unchecked(i) } == b'\n' {
+                line_start = i + 1;
+                line += 1;
+            }
+            i += 1;
+        }
+
+        // Find next '\n' after line_start (for line_end)
+        let mut line_end = src.len();
+        i = line_start;
+        while i < src.len() {
+            if unsafe { *bytes.get_unchecked(i) } == b'\n' {
+                line_end = i;
+                break;
+            }
+            i += 1;
+        }
+
+        // Count UTF-8 chars from line_start to start (for col)
+        let mut col = 1;
+        let mut j = line_start;
+        while j < start {
+            let c = unsafe { *bytes.get_unchecked(j) };
+            let step = if c < 0x80 {
+                1
+            } else if c < 0xE0 {
+                2
+            } else if c < 0xF0 {
+                3
+            } else {
+                4
+            };
+            col += 1;
+            j += step;
+        }
+
         (line, col, line_start, line_end)
     }
 
