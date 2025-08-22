@@ -1,6 +1,5 @@
 //! The runtime for NaijaScript.
 
-use std::borrow::Cow;
 use std::fmt::Write;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
@@ -96,7 +95,7 @@ pub struct Runtime<'arena, 'src> {
     call_stack: Vec<ActivationRecord<'arena, 'src>, &'arena Arena>,
 
     /// Collection of runtime errors encountered during execution
-    pub errors: Diagnostics,
+    pub errors: Diagnostics<'arena>,
 
     /// Output from `shout()` function calls, public for caller access
     pub output: Vec<Value<'arena, 'src>, &'arena Arena>,
@@ -112,14 +111,14 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             env: Vec::new_in(arena),
             functions: Vec::new_in(arena),
             call_stack: Vec::new_in(arena),
-            errors: Diagnostics::default(),
+            errors: Diagnostics::new(arena),
             output: Vec::new_in(arena),
             arena,
         }
     }
 
     /// Executes a NaijaScript program starting from the root block.
-    pub fn run(&mut self, root: BlockRef<'src>) -> &Diagnostics {
+    pub fn run(&mut self, root: BlockRef<'src>) -> &Diagnostics<'arena> {
         self.env.push(Vec::new_in(self.arena)); // enter global scope
 
         // Execute the program and handle both regular flow and early returns
@@ -129,12 +128,12 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let labels = match err.kind {
                     RuntimeErrorKind::DivisionByZero => vec![Label {
                         span: err.span.clone(),
-                        message: Cow::Borrowed("No divide by zero"),
+                        message: ArenaCow::Borrowed("No divide by zero"),
                     }],
                     RuntimeErrorKind::StackOverflow => {
                         vec![Label {
                             span: err.span.clone(),
-                            message: Cow::Borrowed("Dis function call too deep"),
+                            message: ArenaCow::Borrowed("Dis function call too deep"),
                         }]
                     }
                 };

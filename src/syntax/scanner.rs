@@ -1,8 +1,7 @@
 //! The lexer (or scanner) for NaijaScript.
 
-use std::borrow::Cow;
-
 use crate::arena::{Arena, ArenaCow, ArenaString};
+use crate::arena_format;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
 use crate::simd::memchr2;
 use crate::syntax::token::{SpannedToken, Token};
@@ -36,7 +35,7 @@ pub struct Lexer<'arena, 'input> {
     // Current position in the source text
     pos: usize,
     /// Collection of errors encountered during scanning
-    pub errors: Diagnostics,
+    pub errors: Diagnostics<'arena>,
     arena: &'arena Arena,
 }
 
@@ -44,7 +43,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
     /// Creates a new lexer from source text
     #[inline(always)]
     pub fn new(src: &'input str, arena: &'arena Arena) -> Self {
-        Lexer { src: src.as_bytes(), pos: 0, errors: Diagnostics::default(), arena }
+        Lexer { src: src.as_bytes(), pos: 0, errors: Diagnostics::new(arena), arena }
     }
 
     // Returns the next token and its span from the input.
@@ -103,7 +102,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                         LexError::UnexpectedChar.as_str(),
                         vec![Label {
                             span: start..self.pos + len,
-                            message: Cow::Borrowed("I no sabi dis character"),
+                            message: ArenaCow::Borrowed("I no sabi dis character"),
                         }],
                     );
                     // Skip the entire Unicode character to avoid splitting it across byte boundaries
@@ -123,7 +122,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 LexError::UnexpectedChar.as_str(),
                 vec![Label {
                     span: start..self.pos,
-                    message: Cow::Borrowed("I no sabi dis character"),
+                    message: ArenaCow::Borrowed("I no sabi dis character"),
                 }],
             );
             self.pos += 1;
@@ -290,7 +289,8 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                         LexError::UnterminatedString.as_str(),
                         vec![Label {
                             span: start..self.src.len(),
-                            message: Cow::Owned(format!(
+                            message: ArenaCow::Owned(arena_format!(
+                                &self.arena,
                                 "Dis string no get ending quote `{}`",
                                 quote as char
                             )),
@@ -316,7 +316,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                             LexError::InvalidStringEscape.as_str(),
                             vec![Label {
                                 span: pos..pos + 2,
-                                message: Cow::Borrowed("Dis escape character no valid"),
+                                message: ArenaCow::Borrowed("Dis escape character no valid"),
                             }],
                         );
                         // Append the invalid escape character
@@ -328,7 +328,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         }
 
         // We don't want an unterminated string
-        let message = Cow::Borrowed(if quote == b'"' {
+        let message = ArenaCow::Borrowed(if quote == b'"' {
             r#"Dis string no get ending quote `"`"#
         } else {
             r#"Dis string no get ending quote `'`"#
@@ -401,7 +401,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                     LexError::InvalidNumber.as_str(),
                     vec![Label {
                         span: dot_pos..self.pos,
-                        message: Cow::Borrowed("Dis number no get digit after `.`"),
+                        message: ArenaCow::Borrowed("Dis number no get digit after `.`"),
                     }],
                 );
                 self.pos += 1;
@@ -424,7 +424,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 LexError::InvalidNumber.as_str(),
                 vec![Label {
                     span: extra_dot..self.pos,
-                    message: Cow::Borrowed("Dis number get extra `.`"),
+                    message: ArenaCow::Borrowed("Dis number get extra `.`"),
                 }],
             );
             return self.next_token().token;
@@ -451,7 +451,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 LexError::InvalidIdentifier.as_str(),
                 vec![Label {
                     span: start..id_start,
-                    message: Cow::Borrowed("Identifier must start with letter or underscore"),
+                    message: ArenaCow::Borrowed("Identifier must start with letter or underscore"),
                 }],
             );
             // SAFETY: We know this is valid UTF-8 because we only process ASCII digits
@@ -532,7 +532,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                             LexError::InvalidIdentifier.as_str(),
                             vec![Label {
                                 span: start..start + 1,
-                                message: Cow::Borrowed(
+                                message: ArenaCow::Borrowed(
                                     "Identifier must start with letter or underscore",
                                 ),
                             }],
@@ -552,7 +552,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                                     LexError::InvalidIdentifier.as_str(),
                                     vec![Label {
                                         span: bad_pos..bad_pos + 1,
-                                        message: Cow::Borrowed(
+                                        message: ArenaCow::Borrowed(
                                             "Dis identifier get invalid character",
                                         ),
                                     }],

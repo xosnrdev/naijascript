@@ -35,6 +35,7 @@ const ALLOC_CHUNK_SIZE: usize = 64 * KIBI;
 /// Destructors are not executed. Use a pool allocator for that.
 ///
 /// </div>
+#[derive(Debug)]
 pub struct Arena {
     base: NonNull<u8>,
     capacity: usize,

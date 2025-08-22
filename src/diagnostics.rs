@@ -1,7 +1,9 @@
 //! The diagnostics system for NaijaScript.
 
-use std::borrow::Cow;
 use std::ops::Range;
+
+use crate::arena::{Arena, ArenaCow, ArenaString};
+use crate::arena_format;
 
 /// Byte-range span within source text.
 pub type Span = Range<usize>;
@@ -40,7 +42,7 @@ impl Severity {
 
     #[inline]
     // Writes a diagnostic line to the appropriate output stream or buffer.
-    fn write_to_stream_or_buf(&self, s: &str, buf: Option<&mut String>) {
+    fn write_to_stream_or_buf(&self, s: &str, buf: Option<&mut ArenaString<'_>>) {
         if let Some(buf) = buf {
             buf.push_str(s);
             buf.push('\n');
@@ -55,27 +57,33 @@ impl Severity {
 
 /// Secondary annotation attached to a diagnostic.
 #[derive(Debug)]
-pub struct Label {
+pub struct Label<'arena> {
     pub span: Span,
-    pub message: Cow<'static, str>,
+    pub message: ArenaCow<'arena, 'static>,
 }
 
 #[derive(Debug)]
-pub struct Diagnostic {
+pub struct Diagnostic<'arena> {
     pub span: Span,
     pub severity: Severity,
     pub code: &'static str,
     pub message: &'static str,
-    pub labels: Vec<Label>,
+    pub labels: Vec<Label<'arena>>,
 }
 
 /// Collection of diagnostics with batch reporting capabilities.
-#[derive(Debug, Default)]
-pub struct Diagnostics {
-    pub diagnostics: Vec<Diagnostic>,
+#[derive(Debug)]
+pub struct Diagnostics<'arena> {
+    pub diagnostics: Vec<Diagnostic<'arena>>,
+    arena: &'arena Arena,
 }
 
-impl Diagnostics {
+impl<'arena> Diagnostics<'arena> {
+    /// Creates a new [`Diagnostics`] instance.
+    pub fn new(arena: &'arena Arena) -> Diagnostics<'arena> {
+        Diagnostics { diagnostics: Vec::new(), arena }
+    }
+
     /// Add a new diagnostic to the collection.
     #[inline]
     pub fn emit(
@@ -84,7 +92,7 @@ impl Diagnostics {
         severity: Severity,
         code: &'static str,
         message: &'static str,
-        labels: Vec<Label>,
+        labels: Vec<Label<'arena>>,
     ) {
         self.diagnostics.push(Diagnostic { span, severity, code, message, labels });
     }
@@ -109,32 +117,33 @@ impl Diagnostics {
     }
 
     // Render all diagnostics as a single ANSI string
-    fn render_ansi(&self, src: &str, filename: &str) -> String {
-        let mut buf = String::new();
+    fn render_ansi(&self, src: &str, filename: &str) -> ArenaString<'arena> {
+        let mut buf = ArenaString::new_in(self.arena);
         let gutter_width = Self::compute_gutter_width(&self.diagnostics, src);
         for diag in &self.diagnostics {
-            Self::render_diagnostic(diag, src, filename, gutter_width, Some(&mut buf));
+            self.render_diagnostic(diag, src, filename, gutter_width, Some(&mut buf));
         }
         buf.shrink_to_fit();
         buf
     }
 
     fn render_diagnostic(
+        &self,
         diag: &Diagnostic,
         src: &str,
         filename: &str,
         gutter_width: usize,
-        mut buf: Option<&mut String>,
+        mut buf: Option<&mut ArenaString<'arena>>,
     ) {
         let color = diag.severity.color_code();
         let (line, col, line_start, line_end) = Self::line_col_from_span(src, diag.span.start);
-        let header = Self::render_header(diag.severity, diag.code, diag.message);
-        let location = Self::render_location(filename, line, col, color);
+        let header = self.render_header(diag.severity, diag.code, diag.message);
+        let location = self.render_location(filename, line, col, color);
         let src_line = &src[line_start..line_end];
-        let gutter = Self::render_gutter(line, color, gutter_width);
-        let plain_gutter = Self::render_plain_gutter(color, gutter_width);
+        let gutter = self.render_gutter(line, color, gutter_width);
+        let plain_gutter = self.render_plain_gutter(color, gutter_width);
         let caret_count = src[diag.span.start..diag.span.end].chars().count().max(1);
-        let caret_line = Self::render_caret_line(col, caret_count, color, &plain_gutter);
+        let caret_line = self.render_caret_line(col, caret_count, color, &plain_gutter);
 
         // Partition labels based on whether they're on the same line as the main diagnostic.
         // This affects how we render them - same-line labels appear as underlines below
@@ -146,12 +155,12 @@ impl Diagnostics {
             });
 
         // Render same-line labels as underlines with dashes
-        let mut label_lines = Vec::with_capacity(same_line_labels.len());
+        let mut label_lines = Vec::with_capacity_in(same_line_labels.len(), &self.arena);
         for label in same_line_labels {
             // Convert absolute span to column position relative to line start
             let lbl_col = label.span.start.saturating_sub(line_start) + 1;
             let dash_count = src[label.span.start..label.span.end].chars().count().max(1);
-            label_lines.push(Self::render_label_line(
+            label_lines.push(self.render_label_line(
                 lbl_col,
                 dash_count,
                 color,
@@ -161,23 +170,19 @@ impl Diagnostics {
         }
 
         // Handle cross-line labels by showing their complete source context
-        let mut cross_line_displays = Vec::with_capacity(cross_line_labels.len());
+        let mut cross_line_displays = Vec::with_capacity_in(cross_line_labels.len(), &self.arena);
         for label in cross_line_labels {
             let (label_line, label_col, label_line_start, label_line_end) =
                 Self::line_col_from_span(src, label.span.start);
             let label_src_line = &src[label_line_start..label_line_end];
-            let label_gutter = Self::render_gutter(label_line, color, gutter_width);
+            let label_gutter = self.render_gutter(label_line, color, gutter_width);
             let line_display = format!("{label_gutter}{label_src_line}");
             let dash_count = src[label.span.start..label.span.end].chars().count().max(1);
-            let label_underline = Self::render_label_line(
-                label_col,
-                dash_count,
-                color,
-                &label.message,
-                &plain_gutter,
-            );
+            let label_underline =
+                self.render_label_line(label_col, dash_count, color, &label.message, &plain_gutter);
             cross_line_displays.push((line_display, label_underline));
         }
+        cross_line_displays.shrink_to_fit();
 
         // Output diagnostic components in specific order to match rustc/clang format:
         // This ordering helps developers pattern match against familiar error displays
@@ -209,30 +214,47 @@ impl Diagnostics {
     }
 
     #[inline]
-    fn render_header(severity: Severity, code: &str, message: &str) -> String {
+    fn render_header(&self, severity: Severity, code: &str, message: &str) -> ArenaString<'arena> {
         let color = severity.color_code();
-        format!("{BOLD}{color}{}[{code}]{RESET}: {BOLD}{message}{RESET}", severity.label())
+        arena_format!(
+            &self.arena,
+            "{BOLD}{color}{}[{code}]{RESET}: {BOLD}{message}{RESET}",
+            severity.label()
+        )
     }
 
     #[inline]
-    fn render_location(filename: &str, line: usize, col: usize, color: &str) -> String {
-        format!(" {BOLD}{color}-->{RESET} {filename}:{line}:{col}")
+    fn render_location(
+        &self,
+        filename: &str,
+        line: usize,
+        col: usize,
+        color: &str,
+    ) -> ArenaString<'arena> {
+        arena_format!(&self.arena, " {BOLD}{color}-->{RESET} {filename}:{line}:{col}")
     }
 
     #[inline]
-    fn render_gutter(line: usize, color: &str, width: usize) -> String {
-        format!("{BOLD}{color}{line:>width$} |{RESET} ")
+    fn render_gutter(&self, line: usize, color: &str, width: usize) -> ArenaString<'arena> {
+        arena_format!(&self.arena, "{BOLD}{color}{line:>width$} |{RESET} ")
     }
 
     #[inline]
-    fn render_plain_gutter(color: &str, width: usize) -> String {
-        format!("{BOLD}{color}{:>width$} |{RESET} ", "")
+    fn render_plain_gutter(&self, color: &str, width: usize) -> ArenaString<'arena> {
+        arena_format!(&self.arena, "{BOLD}{color}{:>width$} |{RESET} ", "")
     }
 
     // Build the caret `^^^` line that points to the error location.
     #[inline]
-    fn render_caret_line(col: usize, len: usize, color: &str, plain_gutter: &str) -> String {
-        let mut caret_line = String::with_capacity(plain_gutter.len() + col + 4 + len);
+    fn render_caret_line(
+        &self,
+        col: usize,
+        len: usize,
+        color: &str,
+        plain_gutter: &str,
+    ) -> ArenaString<'arena> {
+        let mut caret_line =
+            ArenaString::with_capacity_in(plain_gutter.len() + col + 4 + len, self.arena);
         caret_line.push_str(plain_gutter);
         for _ in 0..(col - 1) {
             caret_line.push(' ');
@@ -254,13 +276,17 @@ impl Diagnostics {
     // Build the label underline with dashes and explanatory text.
     #[inline]
     fn render_label_line(
+        &self,
         lbl_col: usize,
         dash_count: usize,
         color: &str,
         message: &str,
         plain_gutter: &str,
-    ) -> String {
-        let mut label_line = String::with_capacity(plain_gutter.len() + lbl_col + 4 + dash_count);
+    ) -> ArenaString<'arena> {
+        let mut label_line = ArenaString::with_capacity_in(
+            plain_gutter.len() + lbl_col + 4 + dash_count,
+            self.arena,
+        );
         label_line.push_str(plain_gutter);
         for _ in 0..(lbl_col - 1) {
             label_line.push(' ');
@@ -279,6 +305,7 @@ impl Diagnostics {
         label_line.push_str(BOLD);
         label_line.push_str(message);
         label_line.push_str(RESET);
+        label_line.shrink_to_fit();
         label_line
     }
 

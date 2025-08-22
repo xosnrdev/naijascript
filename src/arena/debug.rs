@@ -29,6 +29,7 @@ use super::bump;
 /// To avoid this, this wraps the real [`bump::Arena`] in a "debug" one, which pretends as if every
 /// instance of itself is a distinct [`bump::Arena`] instance. Then we use this "debug" [`bump::Arena`]
 /// for [`super::ScratchArena`] which allows us to track which borrow is the most recent one.
+#[derive(Debug)]
 pub enum Arena {
     // Delegate is 'static, because bump::Arena requires no lifetime
     // annotations, and so this mere debug helper cannot use them either.

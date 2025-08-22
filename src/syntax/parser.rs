@@ -1,9 +1,9 @@
 //! The syntax parser for NaijaScript.
 
-use std::borrow::Cow;
 use std::{mem, slice};
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
+use crate::arena_format;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::simd::memchr2;
 use crate::syntax::token::{SpannedToken, Token};
@@ -156,7 +156,7 @@ where
 {
     tokens: I,
     cur: SpannedToken<'ast, 'src>,
-    errors: Diagnostics,
+    errors: Diagnostics<'ast>,
     arena: &'ast Arena,
 }
 
@@ -165,7 +165,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
     #[inline]
     pub fn new(mut tokens: I, arena: &'ast Arena) -> Self {
         let cur = tokens.next().unwrap_or_default();
-        Parser { tokens, cur, errors: Diagnostics::default(), arena }
+        Parser { tokens, cur, errors: Diagnostics::new(arena), arena }
     }
 
     #[inline]
@@ -190,7 +190,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
 
     /// Returns the parsed program as a Block reference.
     #[inline]
-    pub fn parse_program(&mut self) -> (BlockRef<'ast>, Diagnostics) {
+    pub fn parse_program(&mut self) -> (BlockRef<'ast>, &Diagnostics<'ast>) {
         let block_ref = self.parse_program_body();
         if self.cur.token != Token::EOF {
             self.errors.emit(
@@ -201,7 +201,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 Vec::new(),
             );
         }
-        (block_ref, mem::take(&mut self.errors))
+        (block_ref, &self.errors)
     }
 
     #[inline]
@@ -286,7 +286,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         SyntaxError::UnterminatedBlock.as_str(),
                         vec![Label {
                             span: self.cur.span.clone(),
-                            message: Cow::Borrowed("I dey expect `end` block"),
+                            message: ArenaCow::Borrowed("I dey expect `end` block"),
                         }],
                     );
                 }
@@ -310,13 +310,14 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         let end = self.cur.span.end;
                         Some(self.alloc(Stmt::Expression { expr, span: start..end }))
                     } else {
-                        let message: Cow<'static, str> =
+                        let message: ArenaCow<'ast, 'static> =
                             if let Some(suggestion) = Token::suggest_keyword(var) {
-                                Cow::Owned(format!(
+                                ArenaCow::Owned(arena_format!(
+                                    &self.arena,
                                     "I dey expect statement. Na `{suggestion}` you mean?",
                                 ))
                             } else {
-                                Cow::Borrowed("I dey expect statement")
+                                ArenaCow::Borrowed("I dey expect statement")
                             };
                         self.errors.emit(
                             span.clone(),
@@ -337,7 +338,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     SyntaxError::ExpectedStatement.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Borrowed("I dey expect statement"),
+                        message: ArenaCow::Borrowed("I dey expect statement"),
                     }],
                 );
                 None
@@ -361,7 +362,10 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     SyntaxError::ReservedKeyword.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Owned(format!("`{t}` na reserved keyword")),
+                        message: ArenaCow::Owned(arena_format!(
+                            &self.arena,
+                            "`{t}` na reserved keyword"
+                        )),
                     }],
                 );
                 return None;
@@ -374,7 +378,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     SyntaxError::ExpectedIdentifier.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Borrowed("I dey expect function name after `do`"),
+                        message: ArenaCow::Borrowed("I dey expect function name after `do`"),
                     }],
                 );
                 return None;
@@ -393,7 +397,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::ExpectedLParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `(` after function name"),
+                    message: ArenaCow::Borrowed("I dey expect `(` after function name"),
                 }],
             );
             return None;
@@ -411,7 +415,10 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                             SyntaxError::ReservedKeyword.as_str(),
                             vec![Label {
                                 span: self.cur.span.clone(),
-                                message: Cow::Owned(format!("`{p}` na reserved keyword")),
+                                message: ArenaCow::Owned(arena_format!(
+                                    &self.arena,
+                                    "`{p}` na reserved keyword"
+                                )),
                             }],
                         );
                         return None;
@@ -432,7 +439,10 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         SyntaxError::ReservedKeyword.as_str(),
                         vec![Label {
                             span: self.cur.span.clone(),
-                            message: Cow::Owned(format!("`{t}` na reserved keyword")),
+                            message: ArenaCow::Owned(arena_format!(
+                                &self.arena,
+                                "`{t}` na reserved keyword"
+                            )),
                         }],
                     );
                     return None;
@@ -451,7 +461,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::ExpectedRParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `)` to close function parameters"),
+                    message: ArenaCow::Borrowed("I dey expect `)` to close function parameters"),
                 }],
             );
             return None;
@@ -467,7 +477,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::ExpectedStartBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `start` to begin function block"),
+                    message: ArenaCow::Borrowed("I dey expect `start` to begin function block"),
                 }],
             );
             return None;
@@ -485,7 +495,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::UnterminatedBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `end` to close function block"),
+                    message: ArenaCow::Borrowed("I dey expect `end` to close function block"),
                 }],
             );
         }
@@ -530,7 +540,10 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     SyntaxError::ReservedKeyword.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Owned(format!("`{t}` na reserved keyword")),
+                        message: ArenaCow::Owned(arena_format!(
+                            &self.arena,
+                            "`{t}` na reserved keyword"
+                        )),
                     }],
                 );
                 return None;
@@ -543,7 +556,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     SyntaxError::ExpectedIdentifier.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Borrowed("I dey expect variable name after `make`"),
+                        message: ArenaCow::Borrowed("I dey expect variable name after `make`"),
                     }],
                 );
                 return None;
@@ -562,7 +575,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::ExpectedGetAfterIdentifier.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `get` after variable name"),
+                    message: ArenaCow::Borrowed("I dey expect `get` after variable name"),
                 }],
             );
             return None;
@@ -588,7 +601,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::ExpectedLParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `(` after `if to say`"),
+                    message: ArenaCow::Borrowed("I dey expect `(` after `if to say`"),
                 }],
             );
             return None;
@@ -606,7 +619,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::ExpectedRParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `)` to close `if to say` condition"),
+                    message: ArenaCow::Borrowed("I dey expect `)` to close `if to say` condition"),
                 }],
             );
             return None;
@@ -623,7 +636,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::ExpectedStartBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `start` to begin `if to say` block"),
+                    message: ArenaCow::Borrowed("I dey expect `start` to begin `if to say` block"),
                 }],
             );
             return None;
@@ -642,7 +655,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::UnterminatedBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `end` to close `if to say` block"),
+                    message: ArenaCow::Borrowed("I dey expect `end` to close `if to say` block"),
                 }],
             );
         }
@@ -661,7 +674,9 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     SyntaxError::ExpectedStartBlock.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Borrowed("I dey expect `start` to begin `if not so` block"),
+                        message: ArenaCow::Borrowed(
+                            "I dey expect `start` to begin `if not so` block",
+                        ),
                     }],
                 );
                 return None;
@@ -677,7 +692,9 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     SyntaxError::UnterminatedBlock.as_str(),
                     vec![Label {
                         span: else_span,
-                        message: Cow::Borrowed("I dey expect `end` to close `if not so` block"),
+                        message: ArenaCow::Borrowed(
+                            "I dey expect `end` to close `if not so` block",
+                        ),
                     }],
                 );
             }
@@ -705,7 +722,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::ExpectedLParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `(` after `jasi`"),
+                    message: ArenaCow::Borrowed("I dey expect `(` after `jasi`"),
                 }],
             );
             return None;
@@ -723,7 +740,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::ExpectedRParen.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `)` to close loop condition"),
+                    message: ArenaCow::Borrowed("I dey expect `)` to close loop condition"),
                 }],
             );
             return None;
@@ -739,7 +756,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::ExpectedStartBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `start` to begin loop block"),
+                    message: ArenaCow::Borrowed("I dey expect `start` to begin loop block"),
                 }],
             );
             return None;
@@ -757,7 +774,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 SyntaxError::UnterminatedBlock.as_str(),
                 vec![Label {
                     span: self.cur.span.clone(),
-                    message: Cow::Borrowed("I dey expect `end` to close loop block"),
+                    message: ArenaCow::Borrowed("I dey expect `end` to close loop block"),
                 }],
             );
         }
@@ -822,7 +839,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                         vec![Label {
                             span: self.cur.span.clone(),
-                            message: Cow::Borrowed("I dey expect `)` to close expression"),
+                            message: ArenaCow::Borrowed("I dey expect `)` to close expression"),
                         }],
                     );
                 }
@@ -836,7 +853,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
                     vec![Label {
                         span: self.cur.span.clone(),
-                        message: Cow::Borrowed("I dey expect expression"),
+                        message: ArenaCow::Borrowed("I dey expect expression"),
                     }],
                 );
                 let s = self.cur.span.clone();
@@ -903,7 +920,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         SyntaxError::ExpectedRParen.as_str(),
                         vec![Label {
                             span: self.cur.span.clone(),
-                            message: Cow::Borrowed("I dey expect `)` to close function call"),
+                            message: ArenaCow::Borrowed("I dey expect `)` to close function call"),
                         }],
                     );
                 }

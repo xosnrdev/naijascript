@@ -28,9 +28,13 @@ pub const GIBI: usize = 1024 * 1024 * 1024;
 
 #[cfg(target_arch = "wasm32")]
 use {
-    crate::arena::scratch_arena, crate::resolver::Resolver, crate::runtime::Runtime,
-    crate::syntax::parser::Parser, crate::syntax::scanner::Lexer,
-    crate::syntax::token::SpannedToken, wasm_bindgen::prelude::*,
+    crate::{
+        arena::scratch_arena,
+        resolver::Resolver,
+        runtime::Runtime,
+        syntax::{parser::Parser, scanner::Lexer, token::SpannedToken},
+    },
+    wasm_bindgen::prelude::*,
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -56,7 +60,7 @@ pub fn run_source(src: &str, filename: &str) -> String {
     if resolver.errors.has_errors() {
         return resolver.errors.report_html(src, filename);
     }
-    let mut non_err = String::new();
+    let mut non_err = String::with_capacity(src.len() / 2);
     if !resolver.errors.diagnostics.is_empty() {
         non_err.push_str(&resolver.errors.report_html(src, filename));
     }

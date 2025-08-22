@@ -1,9 +1,9 @@
 //! The resolver (semantic analyzer) for NaijaScript.
 
-use std::borrow::Cow;
 use std::collections::HashSet;
 
-use crate::arena::Arena;
+use crate::arena::{Arena, ArenaCow};
+use crate::arena_format;
 use crate::builtins::{Builtin, BuiltinReturnType};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
@@ -82,7 +82,7 @@ pub struct Resolver<'ast> {
     current_function: Option<&'ast str>,
 
     /// Collection of semantic errors found during analysis
-    pub errors: Diagnostics,
+    pub errors: Diagnostics<'ast>,
 
     // Reference to the arena for allocating scope vectors
     arena: &'ast Arena,
@@ -96,7 +96,7 @@ impl<'ast> Resolver<'ast> {
             variable_scopes: Vec::new_in(arena),
             function_scopes: Vec::new_in(arena),
             current_function: None,
-            errors: Diagnostics::default(),
+            errors: Diagnostics::new(arena),
             arena,
         }
     }
@@ -141,7 +141,7 @@ impl<'ast> Resolver<'ast> {
                     SemanticError::UnreachableCode.as_str(),
                     vec![Label {
                         span: span.clone(),
-                        message: Cow::Borrowed("Unreachable code after return statement"),
+                        message: ArenaCow::Borrowed("Unreachable code after return statement"),
                     }],
                 );
             }
@@ -171,7 +171,10 @@ impl<'ast> Resolver<'ast> {
                         SemanticError::ReservedKeyword.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Owned(format!("`{var}` na reserved keyword",)),
+                            message: ArenaCow::Owned(arena_format!(
+                                &self.arena,
+                                "`{var}` na reserved keyword",
+                            )),
                         }],
                     );
                 }
@@ -192,13 +195,14 @@ impl<'ast> Resolver<'ast> {
                         vec![
                             Label {
                                 span: (*orig_span).clone(),
-                                message: Cow::Owned(format!(
+                                message: ArenaCow::Owned(arena_format!(
+                                    &self.arena,
                                     "You don already declare `{var}` for here",
                                 )),
                             },
                             Label {
                                 span: span.clone(),
-                                message: Cow::Borrowed("You try declare am again for here"),
+                                message: ArenaCow::Borrowed("You try declare am again for here"),
                             },
                         ],
                     );
@@ -225,7 +229,7 @@ impl<'ast> Resolver<'ast> {
                         SemanticError::AssignmentToUndeclared.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Borrowed("Dis variable no dey scope"),
+                            message: ArenaCow::Borrowed("Dis variable no dey scope"),
                         }],
                     );
                 }
@@ -260,7 +264,8 @@ impl<'ast> Resolver<'ast> {
                         SemanticError::ReservedKeyword.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Owned(format!(
+                            message: ArenaCow::Owned(arena_format!(
+                                &self.arena,
                                 "`{name}` dey reserved, you no fit use am as function name",
                             )),
                         }],
@@ -312,11 +317,14 @@ impl<'ast> Resolver<'ast> {
                 vec![
                     Label {
                         span: existing_func.span.clone(),
-                        message: Cow::Owned(format!("You don already define `{name}` for here")),
+                        message: ArenaCow::Owned(arena_format!(
+                            &self.arena,
+                            "You don already define `{name}` for here"
+                        )),
                     },
                     Label {
                         span: span.clone(),
-                        message: Cow::Borrowed("You try define am again for here"),
+                        message: ArenaCow::Borrowed("You try define am again for here"),
                     },
                 ],
             );
@@ -334,7 +342,8 @@ impl<'ast> Resolver<'ast> {
                     SemanticError::ReservedKeyword.as_str(),
                     vec![Label {
                         span: span.clone(),
-                        message: Cow::Owned(format!(
+                        message: ArenaCow::Owned(arena_format!(
+                            &self.arena,
                             "`{param_name}` dey reserved, you no fit use am as parameter name",
                         )),
                     }],
@@ -348,8 +357,9 @@ impl<'ast> Resolver<'ast> {
                     SemanticError::DuplicateIdentifier.as_str(),
                     vec![Label {
                         span: span.clone(),
-                        message: Cow::Owned(format!(
-                            "Parameter `{param_name}` dey appear more than once for dis function"
+                        message: ArenaCow::Owned(arena_format!(
+                            &self.arena,
+                            "Dis parameter `{param_name}` na duplicate"
                         )),
                     }],
                 );
@@ -393,7 +403,7 @@ impl<'ast> Resolver<'ast> {
                 SemanticError::TypeMismatch.as_str(),
                 vec![Label {
                     span: span.clone(),
-                    message: Cow::Borrowed("Return types for dis function no match"),
+                    message: ArenaCow::Borrowed("Return types for dis function no match"),
                 }],
             );
         }
@@ -463,7 +473,7 @@ impl<'ast> Resolver<'ast> {
                 SemanticError::UnreachableCode.as_str(),
                 vec![Label {
                     span: span.clone(),
-                    message: Cow::Borrowed("You no fit use `return` outside function"),
+                    message: ArenaCow::Borrowed("You no fit use `return` outside function"),
                 }],
             );
         } else {
@@ -498,7 +508,7 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Borrowed(
+                                    message: ArenaCow::Borrowed(
                                         "Return types for dis function no match",
                                     ),
                                 }],
@@ -538,7 +548,7 @@ impl<'ast> Resolver<'ast> {
                 SemanticError::TypeMismatch.as_str(),
                 vec![Label {
                     span,
-                    message: Cow::Borrowed("Condition for here suppose be true or false"),
+                    message: ArenaCow::Borrowed("Condition for here suppose be true or false"),
                 }],
             );
         }
@@ -562,7 +572,10 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::UndeclaredIdentifier.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Owned(format!("Variable `{var}` no dey scope")),
+                                    message: ArenaCow::Owned(arena_format!(
+                                        &self.arena,
+                                        "Variable `{var}` no dey scope"
+                                    )),
                                 }],
                             );
                         }
@@ -579,7 +592,7 @@ impl<'ast> Resolver<'ast> {
                         SemanticError::UndeclaredIdentifier.as_str(),
                         vec![Label {
                             span: span.clone(),
-                            message: Cow::Borrowed("Dis variable no dey scope"),
+                            message: ArenaCow::Borrowed("Dis variable no dey scope"),
                         }],
                     );
                 }
@@ -600,7 +613,7 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Borrowed("You no fit add boolean values"),
+                                    message: ArenaCow::Borrowed("You no fit add boolean values"),
                                 }],
                             );
                         }
@@ -628,7 +641,7 @@ impl<'ast> Resolver<'ast> {
                                     SemanticError::TypeMismatch.as_str(),
                                     vec![Label {
                                         span: span.clone(),
-                                        message: Cow::Borrowed(
+                                        message: ArenaCow::Borrowed(
                                             "You fit only use arithmetic operators with numbers",
                                         ),
                                     }],
@@ -642,7 +655,7 @@ impl<'ast> Resolver<'ast> {
                                     SemanticError::InvalidStringOperation.as_str(),
                                     vec![Label {
                                         span: span.clone(),
-                                        message: Cow::Borrowed(
+                                        message: ArenaCow::Borrowed(
                                             "You no fit do arithmetic with strings",
                                         ),
                                     }],
@@ -657,7 +670,7 @@ impl<'ast> Resolver<'ast> {
                                     SemanticError::TypeMismatch.as_str(),
                                     vec![Label {
                                         span: span.clone(),
-                                        message: Cow::Borrowed(
+                                        message: ArenaCow::Borrowed(
                                             "You no fit do arithmetic with string and number",
                                         ),
                                     }],
@@ -671,7 +684,7 @@ impl<'ast> Resolver<'ast> {
                                     SemanticError::TypeMismatch.as_str(),
                                     vec![Label {
                                         span: span.clone(),
-                                        message: Cow::Borrowed(
+                                        message: ArenaCow::Borrowed(
                                             "You no fit do arithmetic with boolean values",
                                         ),
                                     }],
@@ -693,7 +706,7 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Borrowed(
+                                    message: ArenaCow::Borrowed(
                                         "You fit only compare numbers, strings, or booleans",
                                     ),
                                 }],
@@ -711,7 +724,7 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Borrowed(
+                                    message: ArenaCow::Borrowed(
                                         "Logical operators fit only work with boolean values",
                                     ),
                                 }],
@@ -734,7 +747,9 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Borrowed("You fit only use `not` with boolean"),
+                                    message: ArenaCow::Borrowed(
+                                        "You fit only use `not` with boolean",
+                                    ),
                                 }],
                             );
                         }
@@ -749,7 +764,9 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Borrowed("You fit only use `minus` with number"),
+                                    message: ArenaCow::Borrowed(
+                                        "You fit only use `minus` with number",
+                                    ),
                                 }],
                             );
                         }
@@ -771,7 +788,8 @@ impl<'ast> Resolver<'ast> {
                                     SemanticError::FunctionCallArity.as_str(),
                                     vec![Label {
                                         span: span.clone(),
-                                        message: Cow::Owned(format!(
+                                        message: ArenaCow::Owned(arena_format!(
+                                            &self.arena,
                                             "Function `{}` expect {} arguments but you pass {}",
                                             func_name,
                                             builtin.arity(),
@@ -790,7 +808,8 @@ impl<'ast> Resolver<'ast> {
                                     SemanticError::FunctionCallArity.as_str(),
                                     vec![Label {
                                         span: span.clone(),
-                                        message: Cow::Owned(format!(
+                                        message: ArenaCow::Owned(arena_format!(
+                                            &self.arena,
                                             "Function `{}` expect {} arguments but you pass {}",
                                             func_name,
                                             func_sig.param_names.len(),
@@ -807,7 +826,7 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::UndeclaredIdentifier.as_str(),
                                 vec![Label {
                                     span: span.clone(),
-                                    message: Cow::Borrowed("Dis function no dey scope"),
+                                    message: ArenaCow::Borrowed("Dis function no dey scope"),
                                 }],
                             );
                         }

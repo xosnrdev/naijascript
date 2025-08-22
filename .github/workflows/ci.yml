@@ -50,4 +50,6 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-features --all-targets -- --no-deps --deny warnings
       - name: Check wasm
-        run: cargo check --target wasm32-unknown-unknown --lib
+        run: |
+          cargo check --target wasm32-unknown-unknown --lib
+          cargo clippy --target wasm32-unknown-unknown --lib -- --no-deps --deny warnings
