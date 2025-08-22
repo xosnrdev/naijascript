@@ -6,6 +6,8 @@ use std::process::ExitCode;
 
 use clap::Parser as ClapParser;
 use clap_cargo::style::CLAP_STYLING;
+use naijascript::MEBI;
+use naijascript::arena::{self, Arena, scratch_arena};
 use naijascript::resolver::Resolver;
 use naijascript::runtime::Runtime;
 use naijascript::syntax::parser::Parser;
@@ -28,47 +30,49 @@ struct Cli {
     eval: Option<String>,
 }
 
+#[cfg(target_pointer_width = "32")]
+const SCRATCH_ARENA_CAPACITY: usize = 128 * MEBI;
+#[cfg(target_pointer_width = "64")]
+const SCRATCH_ARENA_CAPACITY: usize = 512 * MEBI;
+
 // Entry point for the NaijaScript CLI.
 //
 // Parses command line arguments and dispatches to the appropriate mode (eval, script, stdin).
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
+    arena::init(SCRATCH_ARENA_CAPACITY).unwrap();
+    let arena = scratch_arena(None);
+
     if let Some(code) = cli.eval {
-        run_source("<eval>", &code)
+        run_source("<eval>", &code, &arena)
     } else if let Some(script) = cli.script {
-        if script == "-" { run_stdin() } else { run_file(&script) }
+        if script == "-" { run_stdin(&arena) } else { run_file(&script, &arena) }
     } else if !io::stdin().is_terminal() {
-        run_stdin()
+        run_stdin(&arena)
     } else {
         ExitCode::FAILURE
     }
 }
 
 // Run source code from a &str, with full diagnostics and semantic analysis.
-fn run_source(filename: &str, src: &str) -> ExitCode {
-    let mut lexer = Lexer::new(src);
+fn run_source(filename: &str, src: &str, arena: &Arena) -> ExitCode {
+    let mut lexer = Lexer::new(src, arena);
     let tokens: Vec<SpannedToken> = (&mut lexer).collect();
     if !lexer.errors.diagnostics.is_empty() {
         lexer.errors.report(src, filename);
         return ExitCode::FAILURE;
     }
 
-    let mut parser = Parser::new(tokens.into_iter());
-    let (root, parse_errors) = parser.parse_program();
-    if !parse_errors.diagnostics.is_empty() {
-        parse_errors.report(src, filename);
+    let mut parser = Parser::new(tokens.into_iter(), arena);
+    let (root, err) = parser.parse_program();
+    if !err.diagnostics.is_empty() {
+        err.report(src, filename);
         return ExitCode::FAILURE;
     }
 
-    let mut resolver = Resolver::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.block_arena,
-        &parser.param_arena,
-        &parser.arg_arena,
-    );
-    resolver.analyze(root);
+    let mut resolver = Resolver::new(arena);
+    resolver.resolve(root);
     if resolver.errors.has_errors() {
         resolver.errors.report(src, filename);
         return ExitCode::FAILURE;
@@ -77,14 +81,8 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
         resolver.errors.report(src, filename);
     }
 
-    let mut rt = Runtime::new(
-        &parser.stmt_arena,
-        &parser.expr_arena,
-        &parser.block_arena,
-        &parser.param_arena,
-        &parser.arg_arena,
-    );
-    let err = rt.run(root);
+    let mut runtime = Runtime::new(arena);
+    let err = runtime.run(root);
     if err.has_errors() {
         err.report(src, filename);
         return ExitCode::FAILURE;
@@ -92,7 +90,7 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
     if !err.diagnostics.is_empty() {
         err.report(src, filename);
     }
-    for value in &rt.output {
+    for value in &runtime.output {
         println!("{value}")
     }
 
@@ -100,7 +98,7 @@ fn run_source(filename: &str, src: &str) -> ExitCode {
 }
 
 // Runs a script file from disk.
-fn run_file(script: &str) -> ExitCode {
+fn run_file(script: &str, arena: &Arena) -> ExitCode {
     let stem = script.split_once('.').map_or(script, |(s, _)| s);
     if !(script.ends_with(".ns") || script.ends_with(".naija")) {
         eprintln!(
@@ -117,17 +115,17 @@ fn run_file(script: &str) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    run_source(script, &source)
+    run_source(script, &source, arena)
 }
 
 // Reads code from standard input and runs it as a script.
-fn run_stdin() -> ExitCode {
+fn run_stdin(arena: &Arena) -> ExitCode {
     let mut buffer = String::new();
     if io::stdin().read_to_string(&mut buffer).is_err() {
         eprintln!("E be like say I no fit read from stdin\n -> Check wetin you pipe");
         return ExitCode::FAILURE;
     }
-    run_source("<stdin>", &buffer)
+    run_source("<stdin>", &buffer, arena)
 }
 
 #[test]

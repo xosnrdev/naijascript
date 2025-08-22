@@ -1,0 +1,57 @@
+//! Platform abstractions.
+
+#![allow(non_camel_case_types)]
+
+#[cfg(windows)]
+mod windows;
+
+#[cfg(unix)]
+mod unix;
+
+#[cfg(target_arch = "wasm32")]
+mod wasm;
+
+use std::ptr::NonNull;
+
+#[cfg(unix)]
+use unix::*;
+#[cfg(target_arch = "wasm32")]
+use wasm::*;
+#[cfg(windows)]
+pub use windows::*;
+
+#[cfg(unix)]
+pub type virtual_memory = UnixVirtualMemory;
+#[cfg(target_arch = "wasm32")]
+pub type virtual_memory = WasmVirtualMemory;
+#[cfg(windows)]
+pub type virtual_memory = WindowsVirtualMemory;
+
+pub trait VirtualMemory {
+    /// Reserves a virtual memory region of the given size.
+    /// To commit the memory, use `commit`.
+    /// To release the memory, use `release`.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it uses raw pointers.
+    /// Don't forget to release the memory when you're done with it or you'll leak it.
+    unsafe fn reserve(size: usize) -> Result<NonNull<u8>, u32>;
+
+    /// Commits a virtual memory region of the given size.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it uses raw pointers.
+    /// Make sure to only pass pointers acquired from `reserve`
+    /// and to pass a size less than or equal to the size passed to `reserve`.
+    unsafe fn commit(base: NonNull<u8>, size: usize) -> Result<(), u32>;
+
+    /// Releases a virtual memory region of the given size.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it uses raw pointers.
+    /// Make sure to only pass pointers acquired from `reserve`.
+    unsafe fn release(base: NonNull<u8>, size: usize);
+}

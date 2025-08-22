@@ -1,5 +1,4 @@
-use std::borrow::Cow;
-
+use crate::arena::ArenaCow;
 use crate::diagnostics::Span;
 
 /// All possible token types in NaijaScript
@@ -7,7 +6,7 @@ use crate::diagnostics::Span;
 /// The lifetime parameter 'input ties token references to the source text lifetime,
 /// letting us avoid copying strings for identifiers and numbers
 #[derive(Debug, Default, Clone, PartialEq)]
-pub enum Token<'input> {
+pub enum Token<'arena, 'input> {
     // Keywords for variable declaration and assignment
     Make, // "make" - variable declaration
     Get,  // "get" - assignment operator
@@ -52,16 +51,16 @@ pub enum Token<'input> {
     Comma,  // ","
 
     // Variable length tokens
-    Identifier(&'input str),  // Variable names
-    Number(&'input str),      // Numeric literals
-    String(Cow<'input, str>), // String literals
+    Identifier(&'input str),          // Variable names
+    Number(&'input str),              // Numeric literals
+    String(ArenaCow<'arena, 'input>), // String literals
 
     // Special tokens
     #[default]
     EOF, // End of file
 }
 
-impl<'input> std::fmt::Display for Token<'input> {
+impl<'arena, 'input> std::fmt::Display for Token<'arena, 'input> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::Make => write!(f, "make"),
@@ -89,7 +88,7 @@ impl<'input> std::fmt::Display for Token<'input> {
     }
 }
 
-impl<'input> Token<'input> {
+impl<'arena, 'input> Token<'arena, 'input> {
     pub fn suggest_keyword(ident: &str) -> Option<&'static str> {
         Self::all_keywords()
             .iter()
@@ -208,7 +207,7 @@ impl<'input> Token<'input> {
 
 /// Represents a token along with its location in the original source text.
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct SpannedToken<'input> {
-    pub token: Token<'input>,
+pub struct SpannedToken<'arena, 'input> {
+    pub token: Token<'arena, 'input>,
     pub span: Span,
 }

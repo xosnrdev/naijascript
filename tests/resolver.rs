@@ -1,31 +1,23 @@
+use naijascript::KIBI;
 use naijascript::diagnostics::AsStr;
 use naijascript::resolver::{Resolver, SemanticError};
 
 mod common;
-use crate::common::parse_from_source;
+use crate::common::_parse_from_src;
 
 macro_rules! assert_resolve {
     ($src:expr, $err:expr) => {{
-        let mut parser = parse_from_source($src);
-        let (root, parser_errors) = parser.parse_program();
+        let arena = naijascript::arena::Arena::new(KIBI).unwrap();
+        let mut parser = _parse_from_src($src, &arena);
+        let (root, err) = parser.parse_program();
+        assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
+        let mut resolver = Resolver::new(&arena);
+        resolver.resolve(root);
         assert!(
-            parser_errors.diagnostics.is_empty(),
-            "Expected no parse errors, got: {:?}",
-            parser_errors.diagnostics
-        );
-        let mut analyzer = Resolver::new(
-            &parser.stmt_arena,
-            &parser.expr_arena,
-            &parser.block_arena,
-            &parser.param_arena,
-            &parser.arg_arena,
-        );
-        analyzer.analyze(root);
-        assert!(
-            analyzer.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
+            resolver.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
             "Expected error: {}, got: {:?}",
             $err.as_str(),
-            analyzer.errors.diagnostics
+            resolver.errors.diagnostics
         );
     }};
 }
