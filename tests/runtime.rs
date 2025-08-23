@@ -478,3 +478,8 @@ fn string_interpolation_resolve_whitespace() {
         output: vec![Value::Str(ArenaCow::Borrowed("Hello World"))]
     );
 }
+
+#[test]
+fn uninit_variable() {
+    assert_runtime!("make x x get 5 shout(x)", output: vec![Value::Number(5.0)]);
+}

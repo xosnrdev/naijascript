@@ -564,24 +564,14 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         };
         self.bump(); // consume variable name
 
-        // TODO: This reminds me that the interpreter lacks support for uninitialized variables
-        if let Token::Get = self.cur.token {
+        let expr = if let Token::Get = self.cur.token {
             self.bump(); // consume `get`
+            self.parse_expression(0)
         } else {
-            self.errors.emit(
-                var_span.clone(),
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedGetAfterIdentifier.as_str(),
-                vec![Label {
-                    span: self.cur.span.clone(),
-                    message: ArenaCow::Borrowed("I dey expect `get` after variable name"),
-                }],
-            );
-            return None;
-        }
+            // Oh, maybe uninitialized ?
+            self.alloc(Expr::Number("0", var_span))
+        };
 
-        let expr = self.parse_expression(0);
         let end = self.cur.span.end;
         Some(self.alloc(Stmt::Assign { var, expr, span: start..end }))
     }
