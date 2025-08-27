@@ -11,9 +11,6 @@ pub type Span = Range<usize>;
 const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
 
-// Maximum length for carets and dashes in diagnostics output.
-const MAX_CD_LEN: usize = 8;
-
 /// Diagnostic severity levels that determine display style and output routing.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Severity {
@@ -261,12 +258,8 @@ impl<'arena> Diagnostics<'arena> {
         }
         caret_line.push_str(BOLD);
         caret_line.push_str(color);
-        for _ in 0..len.min(MAX_CD_LEN) {
+        for _ in 0..len {
             caret_line.push('^');
-        }
-
-        if len > MAX_CD_LEN {
-            caret_line.push_str("...");
         }
         caret_line.push_str(RESET);
         caret_line.shrink_to_fit();
@@ -293,12 +286,8 @@ impl<'arena> Diagnostics<'arena> {
         }
         label_line.push_str(BOLD);
         label_line.push_str(color);
-        for _ in 0..dash_count.min(MAX_CD_LEN) {
+        for _ in 0..dash_count {
             label_line.push('-');
-        }
-
-        if dash_count > MAX_CD_LEN {
-            label_line.push_str("...");
         }
         label_line.push_str(RESET);
         label_line.push(' ');
