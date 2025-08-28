@@ -1,3 +1,7 @@
+#![feature(new_range_api)]
+
+use std::range::Range;
+
 use naijascript::KIBI;
 use naijascript::arena::{Arena, ArenaCow, ArenaString};
 use naijascript::diagnostics::AsStr;
@@ -87,7 +91,7 @@ fn test_scan_invalid_identifier() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 0..1);
+    assert_eq!(label.span, Range::from(0..1));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
 }
 
@@ -115,7 +119,7 @@ fn test_scan_invalid_number() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 1..2);
+    assert_eq!(label.span, Range::from(1..2));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidNumber.as_str()));
 }
 
@@ -127,7 +131,7 @@ fn test_scan_number_with_underscore_error() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 0..3);
+    assert_eq!(label.span, Range::from(0..3));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
 }
 
@@ -219,7 +223,7 @@ fn test_scan_string_with_invalid_escape() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 4..6);
+    assert_eq!(label.span, Range::from(4..6));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str()));
 }
 
@@ -235,7 +239,7 @@ fn test_scan_string_with_mixed_valid_and_invalid_escapes() {
     );
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 4..6);
+    assert_eq!(label.span, Range::from(4..6));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str()));
 }
 
@@ -247,7 +251,7 @@ fn test_scan_unterminated_string() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 0..src.len());
+    assert_eq!(label.span, Range::from(0..src.len()));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str()));
 }
 
@@ -275,7 +279,7 @@ fn test_scan_unterminated_single_quoted_string() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 0..src.len());
+    assert_eq!(label.span, Range::from(0..src.len()));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str()));
 }
 
@@ -307,7 +311,7 @@ fn test_scan_unexpected_character() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 0..0);
+    assert_eq!(label.span, Range::from(0..0));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
 }
 
@@ -319,6 +323,6 @@ fn test_scan_utf8_boundary_panic() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, 0..4);
+    assert_eq!(label.span, Range::from(0..4));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
 }

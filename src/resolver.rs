@@ -62,8 +62,8 @@ impl From<BuiltinReturnType> for VarType {
 #[derive(Debug)]
 struct FunctionSig<'ast> {
     name: &'ast str,
+    name_span: &'ast Span,
     param_names: &'ast [&'ast str],
-    span: &'ast Span,
     has_return: bool,
     return_type: Option<VarType>,
 }
@@ -135,12 +135,12 @@ impl<'ast> Resolver<'ast> {
                 };
 
                 self.errors.emit(
-                    span.clone(),
+                    *span,
                     Severity::Warning,
                     "semantic",
                     SemanticError::UnreachableCode.as_str(),
                     vec![Label {
-                        span: span.clone(),
+                        span: *span,
                         message: ArenaCow::Borrowed("Unreachable code after return statement"),
                     }],
                 );
@@ -165,12 +165,12 @@ impl<'ast> Resolver<'ast> {
             Stmt::Assign { var, expr, span } => {
                 if Builtin::from_name(var).is_some() {
                     self.errors.emit(
-                        span.clone(),
+                        *span,
                         Severity::Error,
                         "semantic",
                         SemanticError::ReservedKeyword.as_str(),
                         vec![Label {
-                            span: span.clone(),
+                            span: *span,
                             message: ArenaCow::Owned(arena_format!(
                                 &self.arena,
                                 "`{var}` na reserved keyword",
@@ -188,20 +188,20 @@ impl<'ast> Resolver<'ast> {
                     .find(|(name, ..)| name == var)
                 {
                     self.errors.emit(
-                        span.clone(),
+                        *span,
                         Severity::Error,
                         "semantic",
                         SemanticError::DuplicateIdentifier.as_str(),
                         vec![
                             Label {
-                                span: (*orig_span).clone(),
+                                span: **orig_span,
                                 message: ArenaCow::Owned(arena_format!(
                                     &self.arena,
                                     "You don already declare `{var}` for here",
                                 )),
                             },
                             Label {
-                                span: span.clone(),
+                                span: *span,
                                 message: ArenaCow::Borrowed("You try declare am again for here"),
                             },
                         ],
@@ -223,12 +223,12 @@ impl<'ast> Resolver<'ast> {
             Stmt::AssignExisting { var, expr, span } => {
                 if !self.lookup_var(var) {
                     self.errors.emit(
-                        span.clone(),
+                        *span,
                         Severity::Error,
                         "semantic",
                         SemanticError::AssignmentToUndeclared.as_str(),
                         vec![Label {
-                            span: span.clone(),
+                            span: *span,
                             message: ArenaCow::Borrowed("Dis variable no dey scope"),
                         }],
                     );
@@ -255,23 +255,23 @@ impl<'ast> Resolver<'ast> {
             Stmt::Block { block, .. } => {
                 self.check_block(block);
             }
-            Stmt::FunctionDef { name, params, body, span } => {
+            Stmt::FunctionDef { name, name_span, params, body, span } => {
                 if Builtin::from_name(name).is_some() {
                     self.errors.emit(
-                        span.clone(),
+                        *name_span,
                         Severity::Error,
                         "semantic",
                         SemanticError::ReservedKeyword.as_str(),
                         vec![Label {
-                            span: span.clone(),
+                            span: *name_span,
                             message: ArenaCow::Owned(arena_format!(
                                 &self.arena,
-                                "`{name}` dey reserved, you no fit use am as function name",
+                                "`{name}` na reserved keyword",
                             )),
                         }],
                     );
                 }
-                self.check_function_def(name, params, body, span);
+                self.check_function_def(name, name_span, params, body, span);
             }
             Stmt::Return { expr, span } => {
                 self.check_return_stmt(*expr, span);
@@ -301,6 +301,7 @@ impl<'ast> Resolver<'ast> {
     fn check_function_def(
         &mut self,
         name: &'ast str,
+        name_span: &'ast Span,
         params: ParamListRef<'ast>,
         body: BlockRef<'ast>,
         span: &'ast Span,
@@ -310,20 +311,20 @@ impl<'ast> Resolver<'ast> {
             && let Some(existing_func) = current_scope.iter().find(|sig| sig.name == name)
         {
             self.errors.emit(
-                span.clone(),
+                *name_span,
                 Severity::Error,
                 "semantic",
                 SemanticError::DuplicateIdentifier.as_str(),
                 vec![
                     Label {
-                        span: existing_func.span.clone(),
+                        span: *existing_func.name_span,
                         message: ArenaCow::Owned(arena_format!(
                             &self.arena,
                             "You don already define `{name}` for here"
                         )),
                     },
                     Label {
-                        span: span.clone(),
+                        span: *name_span,
                         message: ArenaCow::Borrowed("You try define am again for here"),
                     },
                 ],
@@ -332,31 +333,31 @@ impl<'ast> Resolver<'ast> {
         }
 
         // Check for duplicate parameter names
-        let mut seen_params = HashSet::new();
-        for param_name in params.params {
+        let mut set = HashSet::with_capacity(params.params.len());
+        for (param_name, param_span) in params.params.iter().zip(params.param_spans.iter()) {
             if Builtin::from_name(param_name).is_some() {
                 self.errors.emit(
-                    span.clone(),
+                    *param_span,
                     Severity::Error,
                     "semantic",
                     SemanticError::ReservedKeyword.as_str(),
                     vec![Label {
-                        span: span.clone(),
+                        span: *param_span,
                         message: ArenaCow::Owned(arena_format!(
                             &self.arena,
-                            "`{param_name}` dey reserved, you no fit use am as parameter name",
+                            "`{param_name}` na reserved keyword",
                         )),
                     }],
                 );
             }
-            if !seen_params.insert(param_name) {
+            if !set.insert(param_name) {
                 self.errors.emit(
-                    span.clone(),
+                    *param_span,
                     Severity::Error,
                     "semantic",
                     SemanticError::DuplicateIdentifier.as_str(),
                     vec![Label {
-                        span: span.clone(),
+                        span: *param_span,
                         message: ArenaCow::Owned(arena_format!(
                             &self.arena,
                             "Dis parameter `{param_name}` na duplicate"
@@ -370,8 +371,8 @@ impl<'ast> Resolver<'ast> {
         self.function_scopes.last_mut().expect("function scope stack should never be empty").push(
             FunctionSig {
                 name,
+                name_span,
                 param_names: params.params,
-                span,
                 has_return: false,
                 return_type: None,
             },
@@ -390,22 +391,29 @@ impl<'ast> Resolver<'ast> {
             self.variable_scopes.last_mut().unwrap().push((param_name, VarType::Dynamic, span));
         }
 
-        // We collect return types from the function body, skipping nested functions.
+        // We collect return types and spans from the function body, skipping nested functions.
         let mut return_types = Vec::new_in(self.arena);
         self.collect_return_types(body, &mut return_types);
 
-        let unique_types: HashSet<VarType> = return_types.iter().copied().collect();
+        let unique_types: HashSet<VarType> = return_types.iter().map(|(t, ..)| *t).collect();
         if unique_types.len() > 1 && !unique_types.contains(&VarType::Dynamic) {
-            self.errors.emit(
-                span.clone(),
-                Severity::Warning,
-                "semantic",
-                SemanticError::TypeMismatch.as_str(),
-                vec![Label {
-                    span: span.clone(),
-                    message: ArenaCow::Borrowed("Return types for dis function no match"),
-                }],
-            );
+            for (return_type, return_span) in &return_types {
+                if *return_type != VarType::Dynamic {
+                    self.errors.emit(
+                        **return_span,
+                        Severity::Warning,
+                        "semantic",
+                        SemanticError::TypeMismatch.as_str(),
+                        vec![Label {
+                            span: **return_span,
+                            message: ArenaCow::Owned(arena_format!(
+                                &self.arena,
+                                "Function `{name}` return types no match",
+                            )),
+                        }],
+                    );
+                }
+            }
         }
 
         // We want to set function return type to Dynamic if inconsistent, else to the single type
@@ -430,19 +438,23 @@ impl<'ast> Resolver<'ast> {
         self.current_function = prev_function;
     }
 
-    // FWIW, this function recursively collects return types from a block
+    // FWIW, this function recursively collects return types and spans from a block
     // which [`check_return_stmt`] uses to validate return statements.
     #[inline]
-    fn collect_return_types(&self, block: BlockRef<'ast>, types: &mut Vec<VarType, &'ast Arena>) {
+    fn collect_return_types(
+        &self,
+        block: BlockRef<'ast>,
+        types: &mut Vec<(VarType, &'ast Span), &'ast Arena>,
+    ) {
         for &stmt in block.stmts {
             match stmt {
-                Stmt::Return { expr, .. } => {
+                Stmt::Return { expr, span } => {
                     let var_type = if let Some(expr) = expr {
                         self.infer_expr_type(expr).unwrap_or(VarType::Dynamic)
                     } else {
                         VarType::Dynamic
                     };
-                    types.push(var_type);
+                    types.push((var_type, span));
                 }
                 Stmt::If { then_b, else_b, .. } => {
                     self.collect_return_types(then_b, types);
@@ -467,12 +479,12 @@ impl<'ast> Resolver<'ast> {
         // Check if we're inside a function
         if self.current_function.is_none() {
             self.errors.emit(
-                span.clone(),
+                *span,
                 Severity::Error,
                 "semantic",
                 SemanticError::UnreachableCode.as_str(),
                 vec![Label {
-                    span: span.clone(),
+                    span: *span,
                     message: ArenaCow::Borrowed("You no fit use `return` outside function"),
                 }],
             );
@@ -502,12 +514,12 @@ impl<'ast> Resolver<'ast> {
                             && new_type != VarType::Dynamic
                         {
                             self.errors.emit(
-                                span.clone(),
+                                *span,
                                 Severity::Warning,
                                 "semantic",
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
-                                    span: span.clone(),
+                                    span: *span,
                                     message: ArenaCow::Borrowed(
                                         "Return types for dis function no match",
                                     ),
@@ -533,16 +545,16 @@ impl<'ast> Resolver<'ast> {
             && !matches!(t, VarType::Bool | VarType::Dynamic)
         {
             let span = match expr {
-                Expr::Number(.., span) => span.clone(),
-                Expr::String { span, .. } => span.clone(),
-                Expr::Bool(.., span) => span.clone(),
-                Expr::Var(.., span) => span.clone(),
-                Expr::Binary { span, .. } => span.clone(),
-                Expr::Unary { span, .. } => span.clone(),
-                Expr::Call { span, .. } => span.clone(),
+                Expr::Number(.., span) => *span,
+                Expr::String { span, .. } => *span,
+                Expr::Bool(.., span) => *span,
+                Expr::Var(.., span) => *span,
+                Expr::Binary { span, .. } => *span,
+                Expr::Unary { span, .. } => *span,
+                Expr::Call { span, .. } => *span,
             };
             self.errors.emit(
-                span.clone(),
+                span,
                 Severity::Error,
                 "semantic",
                 SemanticError::TypeMismatch.as_str(),
@@ -566,12 +578,12 @@ impl<'ast> Resolver<'ast> {
                             && !self.lookup_var(var)
                         {
                             self.errors.emit(
-                                span.clone(),
+                                *span,
                                 Severity::Error,
                                 "semantic",
                                 SemanticError::UndeclaredIdentifier.as_str(),
                                 vec![Label {
-                                    span: span.clone(),
+                                    span: *span,
                                     message: ArenaCow::Owned(arena_format!(
                                         &self.arena,
                                         "Variable `{var}` no dey scope"
@@ -586,12 +598,12 @@ impl<'ast> Resolver<'ast> {
             Expr::Var(v, span) => {
                 if !self.lookup_var(v) {
                     self.errors.emit(
-                        span.clone(),
+                        *span,
                         Severity::Error,
                         "semantic",
                         SemanticError::UndeclaredIdentifier.as_str(),
                         vec![Label {
-                            span: span.clone(),
+                            span: *span,
                             message: ArenaCow::Borrowed("Dis variable no dey scope"),
                         }],
                     );
@@ -607,12 +619,12 @@ impl<'ast> Resolver<'ast> {
                     BinaryOp::Add => match (l, r) {
                         (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
                             self.errors.emit(
-                                span.clone(),
+                                *span,
                                 Severity::Error,
                                 "semantic",
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
-                                    span: span.clone(),
+                                    span: *span,
                                     message: ArenaCow::Borrowed("You no fit add boolean values"),
                                 }],
                             );
@@ -635,12 +647,12 @@ impl<'ast> Resolver<'ast> {
                             | (Some(VarType::Dynamic), Some(VarType::Bool))
                             | (Some(VarType::Bool), Some(VarType::Dynamic)) => {
                                 self.errors.emit(
-                                    span.clone(),
+                                    *span,
                                     Severity::Error,
                                     "semantic",
                                     SemanticError::TypeMismatch.as_str(),
                                     vec![Label {
-                                        span: span.clone(),
+                                        span: *span,
                                         message: ArenaCow::Borrowed(
                                             "You fit only use arithmetic operators with numbers",
                                         ),
@@ -649,12 +661,12 @@ impl<'ast> Resolver<'ast> {
                             }
                             (Some(VarType::String), Some(VarType::String)) => {
                                 self.errors.emit(
-                                    span.clone(),
+                                    *span,
                                     Severity::Error,
                                     "semantic",
                                     SemanticError::InvalidStringOperation.as_str(),
                                     vec![Label {
-                                        span: span.clone(),
+                                        span: *span,
                                         message: ArenaCow::Borrowed(
                                             "You no fit do arithmetic with strings",
                                         ),
@@ -664,12 +676,12 @@ impl<'ast> Resolver<'ast> {
                             (Some(VarType::String), Some(VarType::Number))
                             | (Some(VarType::Number), Some(VarType::String)) => {
                                 self.errors.emit(
-                                    span.clone(),
+                                    *span,
                                     Severity::Error,
                                     "semantic",
                                     SemanticError::TypeMismatch.as_str(),
                                     vec![Label {
-                                        span: span.clone(),
+                                        span: *span,
                                         message: ArenaCow::Borrowed(
                                             "You no fit do arithmetic with string and number",
                                         ),
@@ -678,12 +690,12 @@ impl<'ast> Resolver<'ast> {
                             }
                             (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
                                 self.errors.emit(
-                                    span.clone(),
+                                    *span,
                                     Severity::Error,
                                     "semantic",
                                     SemanticError::TypeMismatch.as_str(),
                                     vec![Label {
-                                        span: span.clone(),
+                                        span: *span,
                                         message: ArenaCow::Borrowed(
                                             "You no fit do arithmetic with boolean values",
                                         ),
@@ -700,12 +712,12 @@ impl<'ast> Resolver<'ast> {
                         (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
                         _ => {
                             self.errors.emit(
-                                span.clone(),
+                                *span,
                                 Severity::Error,
                                 "semantic",
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
-                                    span: span.clone(),
+                                    span: *span,
                                     message: ArenaCow::Borrowed(
                                         "You fit only compare numbers, strings, or booleans",
                                     ),
@@ -718,12 +730,12 @@ impl<'ast> Resolver<'ast> {
                         (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
                         _ => {
                             self.errors.emit(
-                                span.clone(),
+                                *span,
                                 Severity::Error,
                                 "semantic",
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
-                                    span: span.clone(),
+                                    span: *span,
                                     message: ArenaCow::Borrowed(
                                         "Logical operators fit only work with boolean values",
                                     ),
@@ -741,12 +753,12 @@ impl<'ast> Resolver<'ast> {
                     UnaryOp::Not => {
                         if t != Some(VarType::Bool) && t != Some(VarType::Dynamic) {
                             self.errors.emit(
-                                span.clone(),
+                                *span,
                                 Severity::Error,
                                 "semantic",
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
-                                    span: span.clone(),
+                                    span: *span,
                                     message: ArenaCow::Borrowed(
                                         "You fit only use `not` with boolean",
                                     ),
@@ -758,12 +770,12 @@ impl<'ast> Resolver<'ast> {
                     UnaryOp::Minus => {
                         if t != Some(VarType::Number) && t != Some(VarType::Dynamic) {
                             self.errors.emit(
-                                span.clone(),
+                                *span,
                                 Severity::Error,
                                 "semantic",
                                 SemanticError::TypeMismatch.as_str(),
                                 vec![Label {
-                                    span: span.clone(),
+                                    span: *span,
                                     message: ArenaCow::Borrowed(
                                         "You fit only use `minus` with number",
                                     ),
@@ -782,12 +794,12 @@ impl<'ast> Resolver<'ast> {
                             // Validate arity for built-in functions
                             if args.args.len() != builtin.arity() {
                                 self.errors.emit(
-                                    span.clone(),
+                                    *span,
                                     Severity::Error,
                                     "semantic",
                                     SemanticError::FunctionCallArity.as_str(),
                                     vec![Label {
-                                        span: span.clone(),
+                                        span: *span,
                                         message: ArenaCow::Owned(arena_format!(
                                             &self.arena,
                                             "Function `{}` expect {} arguments but you pass {}",
@@ -802,12 +814,12 @@ impl<'ast> Resolver<'ast> {
                             // Check parameter count for user-defined function
                             if args.args.len() != func_sig.param_names.len() {
                                 self.errors.emit(
-                                    span.clone(),
+                                    *span,
                                     Severity::Error,
                                     "semantic",
                                     SemanticError::FunctionCallArity.as_str(),
                                     vec![Label {
-                                        span: span.clone(),
+                                        span: *span,
                                         message: ArenaCow::Owned(arena_format!(
                                             &self.arena,
                                             "Function `{}` expect {} arguments but you pass {}",
@@ -820,12 +832,12 @@ impl<'ast> Resolver<'ast> {
                             }
                         } else {
                             self.errors.emit(
-                                span.clone(),
+                                *span,
                                 Severity::Error,
                                 "semantic",
                                 SemanticError::UndeclaredIdentifier.as_str(),
                                 vec![Label {
-                                    span: span.clone(),
+                                    span: *span,
                                     message: ArenaCow::Borrowed("Dis function no dey scope"),
                                 }],
                             );

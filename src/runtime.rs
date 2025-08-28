@@ -127,23 +127,17 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Err(err) => {
                 let labels = match err.kind {
                     RuntimeErrorKind::DivisionByZero => vec![Label {
-                        span: err.span.clone(),
+                        span: *err.span,
                         message: ArenaCow::Borrowed("No divide by zero"),
                     }],
                     RuntimeErrorKind::StackOverflow => {
                         vec![Label {
-                            span: err.span.clone(),
+                            span: *err.span,
                             message: ArenaCow::Borrowed("Dis function call too deep"),
                         }]
                     }
                 };
-                self.errors.emit(
-                    err.span.clone(),
-                    Severity::Error,
-                    "runtime",
-                    err.kind.as_str(),
-                    labels,
-                );
+                self.errors.emit(*err.span, Severity::Error, "runtime", err.kind.as_str(), labels);
             }
         }
         self.env.pop(); // exit global scope
