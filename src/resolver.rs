@@ -266,7 +266,7 @@ impl<'ast> Resolver<'ast> {
                             span: *name_span,
                             message: ArenaCow::Owned(arena_format!(
                                 &self.arena,
-                                "`{name}` dey reserved, you no fit use am as function name",
+                                "`{name}` na reserved keyword",
                             )),
                         }],
                     );
@@ -345,7 +345,7 @@ impl<'ast> Resolver<'ast> {
                         span: *param_span,
                         message: ArenaCow::Owned(arena_format!(
                             &self.arena,
-                            "`{param_name}` dey reserved, you no fit use am as parameter name",
+                            "`{param_name}` na reserved keyword",
                         )),
                     }],
                 );
