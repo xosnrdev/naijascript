@@ -1,6 +1,6 @@
 //! The diagnostics system for NaijaScript.
 
-use std::ops::Range;
+use std::range::Range;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
@@ -120,7 +120,6 @@ impl<'arena> Diagnostics<'arena> {
         for diag in &self.diagnostics {
             self.render_diagnostic(diag, src, filename, gutter_width, Some(&mut buf));
         }
-        buf.shrink_to_fit();
         buf
     }
 

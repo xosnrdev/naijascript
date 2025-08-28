@@ -1,5 +1,7 @@
 //! The lexer (or scanner) for NaijaScript.
 
+use std::range::Range;
+
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
@@ -60,7 +62,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
 
             // Check for EOF first
             if self.pos >= len {
-                return SpannedToken { token: Token::EOF, span: start..start };
+                return SpannedToken { token: Token::EOF, span: Range::from(start..start) };
             }
 
             // SAFETY: We just checked that self.pos < len
@@ -75,18 +77,18 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             // String literals
             if b == b'"' || b == b'\'' {
                 let token = self.scan_string(start, b);
-                return SpannedToken { token, span: start..self.pos };
+                return SpannedToken { token, span: Range::from(start..self.pos) };
             }
             if let Some(token) = self.scan_punctuation(b) {
-                return SpannedToken { token, span: start..self.pos };
+                return SpannedToken { token, span: Range::from(start..self.pos) };
             }
             if b.is_ascii_digit() {
                 let token = self.scan_number(start);
-                return SpannedToken { token, span: start..self.pos };
+                return SpannedToken { token, span: Range::from(start..self.pos) };
             }
             if Self::is_alpha_or_underscore(b) {
                 let token = self.scan_identifier_or_keyword(start);
-                return SpannedToken { token, span: start..self.pos };
+                return SpannedToken { token, span: Range::from(start..self.pos) };
             }
             // Unicode characters beyond ASCII require special handling since our lexer operates on bytes
             if !b.is_ascii() {
@@ -96,12 +98,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 if let Some(c) = rest.chars().next() {
                     let len = c.len_utf8();
                     self.errors.emit(
-                        start..self.pos + len,
+                        Range::from(start..self.pos + len),
                         Severity::Error,
                         "lexical",
                         LexError::UnexpectedChar.as_str(),
                         vec![Label {
-                            span: start..self.pos + len,
+                            span: Range::from(start..self.pos + len),
                             message: ArenaCow::Borrowed("I no sabi dis character"),
                         }],
                     );
@@ -116,12 +118,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             }
             // An unexpected character? We emit an error and advance by one byte
             self.errors.emit(
-                start..self.pos,
+                Range::from(start..self.pos),
                 Severity::Error,
                 "lexical",
                 LexError::UnexpectedChar.as_str(),
                 vec![Label {
-                    span: start..self.pos,
+                    span: Range::from(start..self.pos),
                     message: ArenaCow::Borrowed("I no sabi dis character"),
                 }],
             );
@@ -283,12 +285,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 // We don't want an incomplete escape sequence
                 if pos + 1 >= self.src.len() {
                     self.errors.emit(
-                        start..self.src.len(),
+                        Range::from(start..self.src.len()),
                         Severity::Error,
                         "lexical",
                         LexError::UnterminatedString.as_str(),
                         vec![Label {
-                            span: start..self.src.len(),
+                            span: Range::from(start..self.src.len()),
                             message: ArenaCow::Owned(arena_format!(
                                 &self.arena,
                                 "Dis string no get ending quote `{}`",
@@ -310,12 +312,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                     b't' => buffer.push('\t'),
                     _ => {
                         self.errors.emit(
-                            pos..pos + 2,
+                            Range::from(pos..pos + 2),
                             Severity::Error,
                             "lexical",
                             LexError::InvalidStringEscape.as_str(),
                             vec![Label {
-                                span: pos..pos + 2,
+                                span: Range::from(pos..pos + 2),
                                 message: ArenaCow::Borrowed("Dis escape character no valid"),
                             }],
                         );
@@ -334,11 +336,11 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             r#"Dis string no get ending quote `'`"#
         });
         self.errors.emit(
-            start..self.src.len(),
+            Range::from(start..self.src.len()),
             Severity::Error,
             "lexical",
             LexError::UnterminatedString.as_str(),
-            vec![Label { span: start..self.src.len(), message }],
+            vec![Label { span: Range::from(start..self.src.len()), message }],
         );
         self.pos = self.src.len();
         if has_escape {
@@ -395,12 +397,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 // We'll emit an error here so the user knows what's wrong,
                 // and then skip the dot so we don't get stuck in an infinite loop.
                 self.errors.emit(
-                    start..self.pos,
+                    Range::from(start..self.pos),
                     Severity::Error,
                     "lexical",
                     LexError::InvalidNumber.as_str(),
                     vec![Label {
-                        span: dot_pos..self.pos,
+                        span: Range::from(dot_pos..self.pos),
                         message: ArenaCow::Borrowed("Dis number no get digit after `.`"),
                     }],
                 );
@@ -418,12 +420,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             let extra_dot = self.pos;
             self.pos += 1;
             self.errors.emit(
-                start..self.pos,
+                Range::from(start..self.pos),
                 Severity::Error,
                 "lexical",
                 LexError::InvalidNumber.as_str(),
                 vec![Label {
-                    span: extra_dot..self.pos,
+                    span: Range::from(extra_dot..self.pos),
                     message: ArenaCow::Borrowed("Dis number get extra `.`"),
                 }],
             );
@@ -445,12 +447,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 self.pos += 1;
             }
             self.errors.emit(
-                start..self.pos,
+                Range::from(start..self.pos),
                 Severity::Error,
                 "lexical",
                 LexError::InvalidIdentifier.as_str(),
                 vec![Label {
-                    span: start..id_start,
+                    span: Range::from(start..id_start),
                     message: ArenaCow::Borrowed("Identifier must start with letter or underscore"),
                 }],
             );
@@ -461,7 +463,9 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
 
         // Grab the whole number as a string slice.
         // SAFETY: We know this is valid UTF-8 because we only process ASCII digits and dots
-        let num = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(start..self.pos)) };
+        let num = unsafe {
+            str::from_utf8_unchecked(self.src.get_unchecked(Range::from(start..self.pos)))
+        };
         Token::Number(num)
     }
 
@@ -526,12 +530,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 if let Some(first) = bytes.next() {
                     if !Self::is_alpha_or_underscore(first) {
                         self.errors.emit(
-                            start..self.pos,
+                            Range::from(start..self.pos),
                             Severity::Error,
                             "lexical",
                             LexError::InvalidIdentifier.as_str(),
                             vec![Label {
-                                span: start..start + 1,
+                                span: Range::from(start..start + 1),
                                 message: ArenaCow::Borrowed(
                                     "Identifier must start with letter or underscore",
                                 ),
@@ -546,12 +550,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                             if !b.is_ascii_alphanumeric() && b != b'_' {
                                 let bad_pos = start + offset;
                                 self.errors.emit(
-                                    start..self.pos,
+                                    Range::from(start..self.pos),
                                     Severity::Error,
                                     "lexical",
                                     LexError::InvalidIdentifier.as_str(),
                                     vec![Label {
-                                        span: bad_pos..bad_pos + 1,
+                                        span: Range::from(bad_pos..bad_pos + 1),
                                         message: ArenaCow::Borrowed(
                                             "Dis identifier get invalid character",
                                         ),
