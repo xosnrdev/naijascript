@@ -3,6 +3,16 @@
 pub enum Builtin {
     /// Output function that prints values to console
     Shout,
+    /// Absolute value function
+    Abs,
+    /// Square root function
+    Sqrt,
+    /// Floor function (round down)
+    Floor,
+    /// Ceiling function (round up)
+    Ceil,
+    /// Round to nearest integer
+    Round,
 }
 
 /// Represents the type of a value or return type in NaijaScript
@@ -18,7 +28,12 @@ impl Builtin {
     #[inline]
     pub const fn arity(self) -> usize {
         match self {
-            Builtin::Shout => 1,
+            Builtin::Shout
+            | Builtin::Abs
+            | Builtin::Sqrt
+            | Builtin::Floor
+            | Builtin::Ceil
+            | Builtin::Round => 1,
         }
     }
 
@@ -26,7 +41,12 @@ impl Builtin {
     #[inline]
     pub const fn return_type(self) -> BuiltinReturnType {
         match self {
-            Builtin::Shout => BuiltinReturnType::Number,
+            Builtin::Shout
+            | Builtin::Abs
+            | Builtin::Sqrt
+            | Builtin::Floor
+            | Builtin::Ceil
+            | Builtin::Round => BuiltinReturnType::Number,
         }
     }
 
@@ -35,6 +55,11 @@ impl Builtin {
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
             "shout" => Some(Builtin::Shout),
+            "abs" => Some(Builtin::Abs),
+            "sqrt" => Some(Builtin::Sqrt),
+            "floor" => Some(Builtin::Floor),
+            "ceil" => Some(Builtin::Ceil),
+            "round" => Some(Builtin::Round),
             _ => None,
         }
     }

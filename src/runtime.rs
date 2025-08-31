@@ -448,6 +448,41 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 self.output.push(arg_values[0].clone());
                 Ok(Value::Number(0.0))
             }
+            Builtin::Abs => {
+                if let Value::Number(n) = arg_values[0] {
+                    Ok(Value::Number(n.abs()))
+                } else {
+                    unreachable!("Semantic analysis guarantees number argument for abs")
+                }
+            }
+            Builtin::Sqrt => {
+                if let Value::Number(n) = arg_values[0] {
+                    Ok(Value::Number(n.sqrt()))
+                } else {
+                    unreachable!("Semantic analysis guarantees number argument for sqrt")
+                }
+            }
+            Builtin::Floor => {
+                if let Value::Number(n) = arg_values[0] {
+                    Ok(Value::Number(n.floor()))
+                } else {
+                    unreachable!("Semantic analysis guarantees number argument for floor")
+                }
+            }
+            Builtin::Ceil => {
+                if let Value::Number(n) = arg_values[0] {
+                    Ok(Value::Number(n.ceil()))
+                } else {
+                    unreachable!("Semantic analysis guarantees number argument for ceil")
+                }
+            }
+            Builtin::Round => {
+                if let Value::Number(n) = arg_values[0] {
+                    Ok(Value::Number(n.round()))
+                } else {
+                    unreachable!("Semantic analysis guarantees number argument for round")
+                }
+            }
         }
     }
 
