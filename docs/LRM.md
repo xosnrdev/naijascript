@@ -152,6 +152,43 @@ All mathematical functions take one number argument and return a number result:
 - **`round(number)`**: Round a number to the nearest integer. For .5 values, e go round away from zero.
   - Example: `round(3.4)` return 3, `round(3.6)` return 4, `round(minus 2.5)` return -3
 
+### 6.3. String Functions
+
+All string functions are Unicode-aware and work with international characters, emojis, and symbols:
+
+- **`len(string)`**: Return the number of Unicode characters in a string. This function count characters, not bytes, so e go work correctly with emojis and international characters.
+
+  - Example: `len("Hello")` return 5, `len("Naija🇳🇬")` return 7, `len("")` return 0
+
+- **`slice(string, start, end)`**: Extract a portion of a string from the start index to the end index (not including the end). The indices are 0-based and support negative values to count from the end of the string.
+
+  - **Parameters**:
+    - `string`: The string to slice
+    - `start`: Starting index (inclusive). Negative values count from the end
+    - `end`: Ending index (exclusive). Negative values count from the end
+  - **Behavior**:
+    - If start >= end, return empty string
+    - Indices are automatically clamped to valid range
+    - Out-of-bounds indices are handled gracefully
+  - Example:
+    - `slice("Hello, World!", 0, 5)` return "Hello"
+    - `slice("Hello, World!", 7, 12)` return "World"
+    - `slice("Hello, World!", 0 minus 6, 0 minus 1)` return "World" (negative indices)
+    - `slice("Hello", 2, 100)` return "llo" (end beyond string length)
+
+- **`upper(string)`**: Convert all alphabetic characters in a string to uppercase. This function work with both ASCII and Unicode characters, including accented letters and international alphabets.
+
+  - Example:
+    - `upper("hello")` return "HELLO"
+    - `upper("Naija Script")` return "NAIJA SCRIPT"
+    - `upper("αβγ")` return "ΑΒΓ" (Greek letters)
+
+- **`lower(string)`**: Convert all alphabetic characters in a string to lowercase. This function work with both ASCII and Unicode characters, including accented letters and international alphabets.
+  - Example:
+    - `lower("HELLO")` return "hello"
+    - `lower("NAIJA SCRIPT")` return "naija script"
+    - `lower("ΑΒΓ")` return "αβγ" (Greek letters)
+
 ## 7. Implementation-Defined Behavior
 
 - **Number Precision**: All numbers na 64-bit floating-point numbers (IEEE 754 standard).
