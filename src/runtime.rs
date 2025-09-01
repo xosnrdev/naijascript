@@ -494,7 +494,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 if let (Value::Str(s), Value::Number(start), Value::Number(end)) =
                     (&arg_values[0], &arg_values[1], &arg_values[2])
                 {
-                    let s = builtins::string_slice(s, *start, Some(*end), self.arena);
+                    let s = builtins::string_slice(s, *start, *end, self.arena);
                     Ok(Value::Str(ArenaCow::owned(s)))
                 } else {
                     unreachable!("Semantic analysis guarantees correct argument types for slice")

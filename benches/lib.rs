@@ -223,7 +223,7 @@ fn bench_string_slice(c: &mut Criterion) {
     c.bench_function("string_slice", |b| {
         b.iter(|| {
             let offset = arena.offset();
-            let s = builtins::string_slice(src, 0.0, Some(5.0), &arena);
+            let s = builtins::string_slice(src, 0.0, 5.0, &arena);
             black_box(s);
             unsafe { arena.reset(offset) };
         })

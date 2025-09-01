@@ -4,12 +4,11 @@ use crate::arena::{Arena, ArenaString};
 pub fn string_slice<'arena>(
     s: &str,
     start: f64,
-    end: Option<f64>,
+    end: f64,
     arena: &'arena Arena,
 ) -> ArenaString<'arena> {
     let len = s.chars().count() as isize;
-    let mut start = start.floor() as isize;
-    let mut end = end.map_or(len, |e| e.floor() as isize);
+    let (mut start, mut end) = (start.floor() as isize, end.floor() as isize);
 
     if start < 0 {
         start += len;
@@ -55,7 +54,7 @@ mod test {
     #[test]
     fn test_string_slice() {
         let arena = Arena::new(KIBI).unwrap();
-        let s = string_slice("Hello, 世界! 🌎", 0.0, Some(5.0), &arena);
+        let s = string_slice("Hello, 世界! 🌎", 0.0, 5.0, &arena);
         assert_eq!(s, "Hello");
     }
 
