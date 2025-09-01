@@ -1181,7 +1181,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             buffer.push(StringSegment::Literal(literal));
         }
 
-        buffer.shrink_to_fit();
         buffer
     }
 }
