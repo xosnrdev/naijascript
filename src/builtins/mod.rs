@@ -1,3 +1,7 @@
+mod string;
+
+pub use string::*;
+
 /// Built-in functions available in NaijaScript.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Builtin {
@@ -13,6 +17,14 @@ pub enum Builtin {
     Ceil,
     /// Round to nearest integer
     Round,
+    /// String length function
+    Len,
+    /// String slice function
+    Slice,
+    /// String to uppercase function
+    Upper,
+    /// String to lowercase function
+    Lower,
 }
 
 /// Represents the type of a value or return type in NaijaScript
@@ -33,7 +45,11 @@ impl Builtin {
             | Builtin::Sqrt
             | Builtin::Floor
             | Builtin::Ceil
-            | Builtin::Round => 1,
+            | Builtin::Round
+            | Builtin::Len
+            | Builtin::Upper
+            | Builtin::Lower => 1,
+            Builtin::Slice => 3,
         }
     }
 
@@ -46,7 +62,9 @@ impl Builtin {
             | Builtin::Sqrt
             | Builtin::Floor
             | Builtin::Ceil
-            | Builtin::Round => BuiltinReturnType::Number,
+            | Builtin::Round
+            | Builtin::Len => BuiltinReturnType::Number,
+            Builtin::Slice | Builtin::Upper | Builtin::Lower => BuiltinReturnType::String,
         }
     }
 
@@ -60,6 +78,10 @@ impl Builtin {
             "floor" => Some(Builtin::Floor),
             "ceil" => Some(Builtin::Ceil),
             "round" => Some(Builtin::Round),
+            "len" => Some(Builtin::Len),
+            "slice" => Some(Builtin::Slice),
+            "upper" => Some(Builtin::Upper),
+            "lower" => Some(Builtin::Lower),
             _ => None,
         }
     }

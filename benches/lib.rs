@@ -1,10 +1,10 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use naijascript::MEBI;
 use naijascript::arena::{self, scratch_arena};
 use naijascript::syntax::parser::Parser;
 use naijascript::syntax::scanner::Lexer;
+use naijascript::{MEBI, builtins};
 
 fn bench_skip_comment(c: &mut Criterion) {
     let src = r#"
@@ -216,9 +216,24 @@ fn bench_parse_nested_expr(c: &mut Criterion) {
     });
 }
 
+fn bench_string_slice(c: &mut Criterion) {
+    let src = "Hello, 世界! 🌎";
+    let arena = scratch_arena(None);
+
+    c.bench_function("string_slice", |b| {
+        b.iter(|| {
+            let offset = arena.offset();
+            let s = builtins::string_slice(src, 0.0, Some(5.0), &arena);
+            black_box(s);
+            unsafe { arena.reset(offset) };
+        })
+    });
+}
+
 fn bench(c: &mut Criterion) {
     arena::init(128 * MEBI).unwrap();
 
+    bench_string_slice(c);
     bench_skip_comment(c);
     bench_scan_string(c);
     bench_parse_assignment(c);
