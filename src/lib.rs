@@ -69,7 +69,6 @@ pub fn run_source(src: &str, filename: &str) -> String {
     let res = runtime.output.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n");
     if !non_err.is_empty() {
         non_err.push_str(&res);
-        non_err.shrink_to_fit();
         return non_err;
     }
     res

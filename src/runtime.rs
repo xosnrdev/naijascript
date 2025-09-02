@@ -3,7 +3,7 @@
 use std::fmt::Write;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
-use crate::builtins::Builtin;
+use crate::builtins::{self, Builtin};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     ArgList, BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts,
@@ -440,13 +440,81 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
 
-        // This should not escape semantic analysis
-        debug_assert_eq!(arg_values.len(), builtin.arity());
+        assert_eq!(arg_values.len(), builtin.arity());
 
         match builtin {
             Builtin::Shout => {
                 self.output.push(arg_values[0].clone());
                 Ok(Value::Number(0.0))
+            }
+            Builtin::Abs => {
+                if let Value::Number(n) = arg_values[0] {
+                    Ok(Value::Number(n.abs()))
+                } else {
+                    unreachable!("Semantic analysis guarantees number argument for abs")
+                }
+            }
+            Builtin::Sqrt => {
+                if let Value::Number(n) = arg_values[0] {
+                    Ok(Value::Number(n.sqrt()))
+                } else {
+                    unreachable!("Semantic analysis guarantees number argument for sqrt")
+                }
+            }
+            Builtin::Floor => {
+                if let Value::Number(n) = arg_values[0] {
+                    Ok(Value::Number(n.floor()))
+                } else {
+                    unreachable!("Semantic analysis guarantees number argument for floor")
+                }
+            }
+            Builtin::Ceil => {
+                if let Value::Number(n) = arg_values[0] {
+                    Ok(Value::Number(n.ceil()))
+                } else {
+                    unreachable!("Semantic analysis guarantees number argument for ceil")
+                }
+            }
+            Builtin::Round => {
+                if let Value::Number(n) = arg_values[0] {
+                    Ok(Value::Number(n.round()))
+                } else {
+                    unreachable!("Semantic analysis guarantees number argument for round")
+                }
+            }
+            Builtin::Len => {
+                if let Value::Str(s) = &arg_values[0] {
+                    // Count Unicode characters, not bytes
+                    Ok(Value::Number(s.chars().count() as f64))
+                } else {
+                    unreachable!("Semantic analysis guarantees string argument for len")
+                }
+            }
+            Builtin::Slice => {
+                if let (Value::Str(s), Value::Number(start), Value::Number(end)) =
+                    (&arg_values[0], &arg_values[1], &arg_values[2])
+                {
+                    let s = builtins::string_slice(s, *start, *end, self.arena);
+                    Ok(Value::Str(ArenaCow::owned(s)))
+                } else {
+                    unreachable!("Semantic analysis guarantees correct argument types for slice")
+                }
+            }
+            Builtin::Upper => {
+                if let Value::Str(s) = &arg_values[0] {
+                    let s = builtins::string_upper(s, self.arena);
+                    Ok(Value::Str(ArenaCow::owned(s)))
+                } else {
+                    unreachable!("Semantic analysis guarantees string argument for upper")
+                }
+            }
+            Builtin::Lower => {
+                if let Value::Str(s) = &arg_values[0] {
+                    let s = builtins::string_lower(s, self.arena);
+                    Ok(Value::Str(ArenaCow::owned(s)))
+                } else {
+                    unreachable!("Semantic analysis guarantees string argument for lower")
+                }
             }
         }
     }

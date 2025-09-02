@@ -178,7 +178,6 @@ impl<'arena> Diagnostics<'arena> {
                 self.render_label_line(label_col, dash_count, color, &label.message, &plain_gutter);
             cross_line_displays.push((line_display, label_underline));
         }
-        cross_line_displays.shrink_to_fit();
 
         // Output diagnostic components in specific order to match rustc/clang format:
         // This ordering helps developers pattern match against familiar error displays
@@ -261,7 +260,6 @@ impl<'arena> Diagnostics<'arena> {
             caret_line.push('^');
         }
         caret_line.push_str(RESET);
-        caret_line.shrink_to_fit();
         caret_line
     }
 
@@ -293,7 +291,6 @@ impl<'arena> Diagnostics<'arena> {
         label_line.push_str(BOLD);
         label_line.push_str(message);
         label_line.push_str(RESET);
-        label_line.shrink_to_fit();
         label_line
     }
 
