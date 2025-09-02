@@ -516,6 +516,33 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     unreachable!("Semantic analysis guarantees string argument for lower")
                 }
             }
+            Builtin::Find => {
+                if let (Value::Str(haystack), Value::Str(needle)) = (&arg_values[0], &arg_values[1])
+                {
+                    let i = builtins::string_find(haystack, needle);
+                    Ok(Value::Number(i))
+                } else {
+                    unreachable!("Semantic analysis guarantees string arguments for find")
+                }
+            }
+            Builtin::Replace => {
+                if let (Value::Str(s), Value::Str(old), Value::Str(new)) =
+                    (&arg_values[0], &arg_values[1], &arg_values[2])
+                {
+                    let s = builtins::string_replace(s, old, new, self.arena);
+                    Ok(Value::Str(ArenaCow::owned(s)))
+                } else {
+                    unreachable!("Semantic analysis guarantees string arguments for replace")
+                }
+            }
+            Builtin::Trim => {
+                if let Value::Str(s) = &arg_values[0] {
+                    let s = builtins::string_trim(s, self.arena);
+                    Ok(Value::Str(ArenaCow::owned(s)))
+                } else {
+                    unreachable!("Semantic analysis guarantees string argument for trim")
+                }
+            }
         }
     }
 

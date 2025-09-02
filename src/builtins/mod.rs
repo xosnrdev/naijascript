@@ -1,6 +1,8 @@
 mod string;
+mod tw;
 
 pub use string::*;
+pub use tw::*;
 
 /// Built-in functions available in NaijaScript.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +27,12 @@ pub enum Builtin {
     Upper,
     /// String to lowercase function
     Lower,
+    /// Find substring in string function
+    Find,
+    /// Replace substring in string function
+    Replace,
+    /// Trim whitespace from string function
+    Trim,
 }
 
 /// Represents the type of a value or return type in NaijaScript
@@ -48,8 +56,11 @@ impl Builtin {
             | Builtin::Round
             | Builtin::Len
             | Builtin::Upper
-            | Builtin::Lower => 1,
+            | Builtin::Lower
+            | Builtin::Trim => 1,
+            Builtin::Find => 2,
             Builtin::Slice => 3,
+            Builtin::Replace => 3,
         }
     }
 
@@ -63,8 +74,11 @@ impl Builtin {
             | Builtin::Floor
             | Builtin::Ceil
             | Builtin::Round
-            | Builtin::Len => BuiltinReturnType::Number,
-            Builtin::Slice | Builtin::Upper | Builtin::Lower => BuiltinReturnType::String,
+            | Builtin::Len
+            | Builtin::Find => BuiltinReturnType::Number,
+            Builtin::Slice | Builtin::Upper | Builtin::Lower | Builtin::Replace | Builtin::Trim => {
+                BuiltinReturnType::String
+            }
         }
     }
 
@@ -82,6 +96,9 @@ impl Builtin {
             "slice" => Some(Builtin::Slice),
             "upper" => Some(Builtin::Upper),
             "lower" => Some(Builtin::Lower),
+            "find" => Some(Builtin::Find),
+            "replace" => Some(Builtin::Replace),
+            "trim" => Some(Builtin::Trim),
             _ => None,
         }
     }

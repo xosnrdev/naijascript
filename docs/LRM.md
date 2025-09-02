@@ -189,6 +189,51 @@ All string functions are Unicode-aware and work with international characters, e
     - `lower("NAIJA SCRIPT")` return "naija script"
     - `lower("ΑΒΓ")` return "αβγ" (Greek letters)
 
+- **`find(string, needle)`**: Search for the first occurrence of `needle` substring within `string` and return the position (0-based index) where it starts. If the substring is not found, return -1. The search is case-sensitive and Unicode-aware.
+  - **Parameters**:
+    - `string`: The string to search in
+    - `needle`: The substring to search for
+  - **Behavior**:
+    - Returns 0-based character index, not byte index
+    - Empty needle returns 0 (always found at the beginning)
+    - Case-sensitive matching
+    - Works with Unicode characters correctly
+  - Example:
+    - `find("hello world", "world")` return 6
+    - `find("Hello", "hello")` return -1 (case sensitive)
+    - `find("naijá script", "já")` return 3 (Unicode support)
+    - `find("test", "")` return 0 (empty needle)
+    - `find("hello", "xyz")` return -1 (not found)
+
+- **`replace(string, needle, replacement)`**: Replace all occurrences of `needle` substring in `string` with `replacement` and return the new string. The original string is not modified. The search is case-sensitive and Unicode-aware.
+  - **Parameters**:
+    - `string`: The string to search in
+    - `needle`: The substring to replace
+    - `replacement`: The string to replace with
+  - **Behavior**:
+    - Replaces all occurrences, not just the first one
+    - If needle is empty, return original string unchanged
+    - Case-sensitive matching
+    - Works with Unicode characters correctly
+  - Example:
+    - `replace("hello world", "world", "naija")` return "hello naija"
+    - `replace("hello hello", "hello", "hi")` return "hi hi"
+    - `replace("Hello", "hello", "hi")` return "Hello" (case sensitive)
+    - `replace("naijá script", "já", "ja")` return "naija script"
+    - `replace("test", "", "x")` return "test" (empty needle)
+
+- **`trim(string)`**: Remove whitespace characters from both the beginning and end of a string and return the cleaned string. The original string is not modified. This function recognizes all Unicode whitespace characters including spaces, tabs, newlines, and other whitespace.
+  - **Behavior**:
+    - Removes leading and trailing whitespace only
+    - Preserves whitespace in the middle of the string
+    - Recognizes Unicode whitespace characters
+    - Returns empty string if input contains only whitespace
+  - Example:
+    - `trim("  hello world  ")` return "hello world"
+    - `trim("hello")` return "hello" (no whitespace to remove)
+    - `trim("   ")` return "" (only whitespace)
+    - `trim(" \t\n hello \t\n ")` return "hello" (various whitespace types)
+
 ## 7. Implementation-Defined Behavior
 
 - **Number Precision**: All numbers na 64-bit floating-point numbers (IEEE 754 standard).
