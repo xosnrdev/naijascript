@@ -33,6 +33,12 @@ pub enum Builtin {
     Replace,
     /// Trim whitespace from string function
     Trim,
+    /// Value to string function
+    ToString,
+    /// String to number function
+    ToNumber,
+    /// Type of value function
+    TypeOf,
 }
 
 /// Represents the type of a value or return type in NaijaScript
@@ -57,7 +63,10 @@ impl Builtin {
             | Builtin::Len
             | Builtin::Upper
             | Builtin::Lower
-            | Builtin::Trim => 1,
+            | Builtin::Trim
+            | Builtin::ToString
+            | Builtin::ToNumber
+            | Builtin::TypeOf => 1,
             Builtin::Find => 2,
             Builtin::Slice => 3,
             Builtin::Replace => 3,
@@ -75,10 +84,15 @@ impl Builtin {
             | Builtin::Ceil
             | Builtin::Round
             | Builtin::Len
-            | Builtin::Find => BuiltinReturnType::Number,
-            Builtin::Slice | Builtin::Upper | Builtin::Lower | Builtin::Replace | Builtin::Trim => {
-                BuiltinReturnType::String
-            }
+            | Builtin::Find
+            | Builtin::ToNumber => BuiltinReturnType::Number,
+            Builtin::Slice
+            | Builtin::Upper
+            | Builtin::Lower
+            | Builtin::Replace
+            | Builtin::Trim
+            | Builtin::ToString
+            | Builtin::TypeOf => BuiltinReturnType::String,
         }
     }
 
@@ -99,6 +113,9 @@ impl Builtin {
             "find" => Some(Builtin::Find),
             "replace" => Some(Builtin::Replace),
             "trim" => Some(Builtin::Trim),
+            "to_string" => Some(Builtin::ToString),
+            "to_number" => Some(Builtin::ToNumber),
+            "type_of" => Some(Builtin::TypeOf),
             _ => None,
         }
     }

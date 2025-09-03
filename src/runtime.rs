@@ -53,6 +53,16 @@ pub enum Value<'arena, 'src> {
     Bool(bool),
 }
 
+impl std::fmt::Display for Value<'_, '_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "{n}"),
+            Value::Str(s) => write!(f, "{s}"),
+            Value::Bool(b) => write!(f, "{b}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct FunctionDef<'ast> {
     name: &'ast str,
@@ -71,16 +81,6 @@ struct ActivationRecord<'arena, 'src> {
 enum ExecFlow<'arena, 'src> {
     Continue,
     Return(Value<'arena, 'src>),
-}
-
-impl std::fmt::Display for Value<'_, '_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Value::Number(n) => write!(f, "{n}"),
-            Value::Str(s) => write!(f, "{s}"),
-            Value::Bool(b) => write!(f, "{b}"),
-        }
-    }
 }
 
 /// The runtime interface for NaijaScript using arena-allocated AST.
@@ -440,7 +440,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
 
-        assert_eq!(arg_values.len(), builtin.arity());
+        debug_assert_eq!(arg_values.len(), builtin.arity());
 
         match builtin {
             Builtin::Shout => {
@@ -542,6 +542,27 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 } else {
                     unreachable!("Semantic analysis guarantees string argument for trim")
                 }
+            }
+            Builtin::ToString => {
+                let s = arg_values[0].to_string();
+                let s = ArenaString::from_str(self.arena, &s);
+                Ok(Value::Str(ArenaCow::owned(s)))
+            }
+            Builtin::ToNumber => {
+                if let Value::Str(s) = &arg_values[0] {
+                    let n = s.parse::<f64>().unwrap_or(0.0);
+                    Ok(Value::Number(n))
+                } else {
+                    unreachable!("Semantic analysis guarantees string argument for to_number")
+                }
+            }
+            Builtin::TypeOf => {
+                let t = match &arg_values[0] {
+                    Value::Number(..) => "number",
+                    Value::Str(..) => "string",
+                    Value::Bool(..) => "boolean",
+                };
+                Ok(Value::Str(ArenaCow::borrowed(t)))
             }
         }
     }
