@@ -6,7 +6,6 @@ use crate::simd::memchr2;
 
 const SIMD_THRESHOLD: usize = 16;
 
-#[inline]
 /// Two-Way string matching with SIMD acceleration.
 ///
 /// This implementation is neither textbook nor novel.  
@@ -16,6 +15,7 @@ const SIMD_THRESHOLD: usize = 16;
 /// compared to the standard [`std::str::find`].
 ///
 /// See [`twoway`](https://docs.rs/crate/twoway/latest/source/src/tw.rs) for reference.
+#[inline]
 pub fn find(haystack: &str, needle: &str) -> Option<usize> {
     let (h, n) = (haystack.as_bytes(), needle.as_bytes());
     let (hlen, nlen) = (h.len(), n.len());
