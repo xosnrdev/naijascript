@@ -1,6 +1,6 @@
 //! The runtime for NaijaScript.
 
-use std::fmt::Write;
+use std::fmt::{self, Write};
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::builtins::{self, Builtin};
@@ -53,8 +53,8 @@ pub enum Value<'arena, 'src> {
     Bool(bool),
 }
 
-impl std::fmt::Display for Value<'_, '_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Value<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Number(n) => write!(f, "{n}"),
             Value::Str(s) => write!(f, "{s}"),
