@@ -325,7 +325,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                                 _ => unreachable!("Semantic analysis guarantees valid string ops"),
                             },
                             (Value::Str(ls), Value::Number(n)) => {
-                                debug_assert!(matches!(op, BinaryOp::Add));
+                                assert!(matches!(op, BinaryOp::Add));
                                 let num_str = n.to_string();
                                 let mut s = ArenaString::with_capacity_in(
                                     ls.len() + num_str.len(),
@@ -336,7 +336,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                                 Ok(Value::Str(ArenaCow::Owned(s)))
                             }
                             (Value::Number(n), Value::Str(rs)) => {
-                                debug_assert!(matches!(op, BinaryOp::Add));
+                                assert!(matches!(op, BinaryOp::Add));
                                 let num_str = n.to_string();
                                 let mut s = ArenaString::with_capacity_in(
                                     num_str.len() + rs.len(),
@@ -407,7 +407,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
 
-        debug_assert_eq!(arg_values.len(), func_def.params.params.len());
+        assert_eq!(arg_values.len(), func_def.params.params.len());
 
         // We create a new activation record for the function call
         let mut local_vars = Vec::new_in(self.arena);
@@ -440,7 +440,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
 
-        debug_assert_eq!(arg_values.len(), builtin.arity());
+        assert_eq!(arg_values.len(), builtin.arity());
 
         match builtin {
             Builtin::Shout => {
