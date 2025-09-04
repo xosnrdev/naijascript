@@ -134,22 +134,21 @@ NaijaScript provides several built-in functions wey dey globally available:
 
 ### 6.1. Output Functions
 
-- **`shout(expression)`**: Print the value of the expression to the console. This function take any value (number, string, or boolean) and display am. The function return 0 after printing.
+- **`shout(expression)`**: Print the value of the expression to the console.
 
 ### 6.2. Mathematical Functions
 
 All mathematical functions take one number argument and return a number result:
 
 - **`abs(number)`**: Return the absolute value of a number. Remove the negative sign if the number na negative, otherwise return the number as e be.
-  - Example: `abs(5)` return 5, `abs(minus 5)` return 5
+
 - **`sqrt(number)`**: Calculate the square root of a number using Newton's method algorithm. If you give am negative number, e go return NaN (Not a Number).
-  - Example: `sqrt(25)` return 5, `sqrt(2)` return approximately 1.414
+
 - **`floor(number)`**: Round down a number to the nearest integer (toward negative infinity).
-  - Example: `floor(3.7)` return 3, `floor(minus 2.3)` return -3
+
 - **`ceil(number)`**: Round up a number to the nearest integer (toward positive infinity).
-  - Example: `ceil(3.2)` return 4, `ceil(minus 2.7)` return -2
+
 - **`round(number)`**: Round a number to the nearest integer. For .5 values, e go round away from zero.
-  - Example: `round(3.4)` return 3, `round(3.6)` return 4, `round(minus 2.5)` return -3
 
 ### 6.3. String Functions
 
