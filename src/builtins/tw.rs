@@ -2,7 +2,7 @@
 
 use std::cmp::max;
 
-use crate::simd::memchr2;
+use crate::simd::memchr;
 
 const SIMD_THRESHOLD: usize = 16;
 
@@ -28,7 +28,7 @@ pub fn find(haystack: &str, needle: &str) -> Option<usize> {
     }
 
     if nlen == 1 {
-        let pos = memchr2(n[0], n[0], h, 0);
+        let pos = memchr(n[0], h, 0);
         if pos < hlen {
             return Some(pos);
         } else {
@@ -40,7 +40,7 @@ pub fn find(haystack: &str, needle: &str) -> Option<usize> {
         let first = n[0];
         let mut offset = 0;
         while offset < hlen {
-            let pos = memchr2(first, first, h, offset);
+            let pos = memchr(first, h, offset);
             if pos >= hlen {
                 return None;
             }
@@ -56,7 +56,7 @@ pub fn find(haystack: &str, needle: &str) -> Option<usize> {
         let first = n[0];
         let mut offset = 0;
         while offset < hlen {
-            let pos = memchr2(first, first, h, offset);
+            let pos = memchr(first, h, offset);
             if pos >= hlen {
                 return None;
             }
@@ -74,7 +74,7 @@ pub fn find(haystack: &str, needle: &str) -> Option<usize> {
     let mut offset = 0;
 
     while offset + nlen <= hlen {
-        let pos = memchr2(anchor, anchor, h, offset);
+        let pos = memchr(anchor, h, offset);
         if pos >= hlen {
             return None;
         }
