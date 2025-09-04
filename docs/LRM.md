@@ -83,12 +83,11 @@ This section dey cover the rules wey dey checked before your code run.
 
 ### 4.1. Type System
 
-NaijaScript get four main data types:
+NaijaScript get three main data types:
 
 - **Number**: Represents numeric values (e.g., `10`, `99.9`). All numbers na floating-point numbers.
 - **String**: Represents text (e.g., `"Naija"`).
 - **Boolean**: Represents truth values wey fit be `true` or `false`.
-- **Function**: Represents callable code blocks with parameters and return values.
 
 Type inference dey automatic. You no need to declare the type of a variable.
 
@@ -156,83 +155,29 @@ All mathematical functions take one number argument and return a number result:
 
 All string functions are Unicode-aware and work with international characters, emojis, and symbols:
 
-- **`len(string)`**: Return the number of Unicode characters in a string. This function count characters, not bytes, so e go work correctly with emojis and international characters.
-
-  - Example: `len("Hello")` return 5, `len("Naija🇳🇬")` return 7, `len("")` return 0
+- **`len(string)`**: Return the number of Unicode characters in a string.
 
 - **`slice(string, start, end)`**: Extract a portion of a string from the start index to the end index (not including the end). The indices are 0-based and support negative values to count from the end of the string.
 
-  - **Parameters**:
-    - `string`: The string to slice
-    - `start`: Starting index (inclusive). Negative values count from the end
-    - `end`: Ending index (exclusive). Negative values count from the end
-  - **Behavior**:
-    - If start >= end, return empty string
-    - Indices are automatically clamped to valid range
-    - Out-of-bounds indices are handled gracefully
-  - Example:
-    - `slice("Hello, World!", 0, 5)` return "Hello"
-    - `slice("Hello, World!", 7, 12)` return "World"
-    - `slice("Hello, World!", 0 minus 6, 0 minus 1)` return "World" (negative indices)
-    - `slice("Hello", 2, 100)` return "llo" (end beyond string length)
+- **`upper(string)`**: Convert all alphabetic characters in a string to uppercase.
 
-- **`upper(string)`**: Convert all alphabetic characters in a string to uppercase. This function work with both ASCII and Unicode characters, including accented letters and international alphabets.
+- **`lower(string)`**: Convert all alphabetic characters in a string to lowercase.
 
-  - Example:
-    - `upper("hello")` return "HELLO"
-    - `upper("Naija Script")` return "NAIJA SCRIPT"
-    - `upper("αβγ")` return "ΑΒΓ" (Greek letters)
+- **`find(string, needle)`**: Search for the first occurrence of `needle` substring within `string` and return the position (0-based index) where it starts. If the substring is not found, return -1.
 
-- **`lower(string)`**: Convert all alphabetic characters in a string to lowercase. This function work with both ASCII and Unicode characters, including accented letters and international alphabets.
-  - Example:
-    - `lower("HELLO")` return "hello"
-    - `lower("NAIJA SCRIPT")` return "naija script"
-    - `lower("ΑΒΓ")` return "αβγ" (Greek letters)
+- **`replace(string, needle, replacement)`**: Replace all occurrences of `needle` substring in `string` with `replacement` and return the new string.
 
-- **`find(string, needle)`**: Search for the first occurrence of `needle` substring within `string` and return the position (0-based index) where it starts. If the substring is not found, return -1. The search is case-sensitive and Unicode-aware.
-  - **Parameters**:
-    - `string`: The string to search in
-    - `needle`: The substring to search for
-  - **Behavior**:
-    - Returns 0-based character index, not byte index
-    - Empty needle returns 0 (always found at the beginning)
-    - Case-sensitive matching
-    - Works with Unicode characters correctly
-  - Example:
-    - `find("hello world", "world")` return 6
-    - `find("Hello", "hello")` return -1 (case sensitive)
-    - `find("naijá script", "já")` return 3 (Unicode support)
-    - `find("test", "")` return 0 (empty needle)
-    - `find("hello", "xyz")` return -1 (not found)
+- **`trim(string)`**: Remove whitespace characters from both the beginning and end of a string.
 
-- **`replace(string, needle, replacement)`**: Replace all occurrences of `needle` substring in `string` with `replacement` and return the new string. The original string is not modified. The search is case-sensitive and Unicode-aware.
-  - **Parameters**:
-    - `string`: The string to search in
-    - `needle`: The substring to replace
-    - `replacement`: The string to replace with
-  - **Behavior**:
-    - Replaces all occurrences, not just the first one
-    - If needle is empty, return original string unchanged
-    - Case-sensitive matching
-    - Works with Unicode characters correctly
-  - Example:
-    - `replace("hello world", "world", "naija")` return "hello naija"
-    - `replace("hello hello", "hello", "hi")` return "hi hi"
-    - `replace("Hello", "hello", "hi")` return "Hello" (case sensitive)
-    - `replace("naijá script", "já", "ja")` return "naija script"
-    - `replace("test", "", "x")` return "test" (empty needle)
+### 6.4 Type Conversion Functions
 
-- **`trim(string)`**: Remove whitespace characters from both the beginning and end of a string and return the cleaned string. The original string is not modified. This function recognizes all Unicode whitespace characters including spaces, tabs, newlines, and other whitespace.
-  - **Behavior**:
-    - Removes leading and trailing whitespace only
-    - Preserves whitespace in the middle of the string
-    - Recognizes Unicode whitespace characters
-    - Returns empty string if input contains only whitespace
-  - Example:
-    - `trim("  hello world  ")` return "hello world"
-    - `trim("hello")` return "hello" (no whitespace to remove)
-    - `trim("   ")` return "" (only whitespace)
-    - `trim(" \t\n hello \t\n ")` return "hello" (various whitespace types)
+- **`to_string(value)`**: Convert any value of [supported types](#41-type-system) to its string representation.
+
+- **`to_number(string)`**: Convert a string to a number. If the string is not a valid number, return NaN (Not a Number).
+
+### 6.5 Type Checking Functions
+
+- **`typeof(value)`**: Return the type of the value as a string. See [Type System](#41-type-system) for supported types.
 
 ## 7. Implementation-Defined Behavior
 
