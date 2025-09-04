@@ -550,7 +550,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             }
             Builtin::ToNumber => {
                 if let Value::Str(s) = &arg_values[0] {
-                    let n = s.parse::<f64>().unwrap_or(0.0);
+                    let n = s.parse::<f64>().unwrap_or(f64::NAN);
                     Ok(Value::Number(n))
                 } else {
                     unreachable!("Semantic analysis guarantees string argument for to_number")
