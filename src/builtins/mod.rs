@@ -115,7 +115,7 @@ impl Builtin {
             "trim" => Some(Builtin::Trim),
             "to_string" => Some(Builtin::ToString),
             "to_number" => Some(Builtin::ToNumber),
-            "type_of" => Some(Builtin::TypeOf),
+            "typeof" => Some(Builtin::TypeOf),
             _ => None,
         }
     }
