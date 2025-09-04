@@ -1,0 +1,73 @@
+program         = statement_list ;
+
+statement_list  = { statement } ;
+
+statement       = assignment
+                | reassignment
+                | expression_statement
+                | if_statement
+                | loop_statement
+                | block
+                | function_def
+                | return_statement
+                | comment ;
+
+assignment      = "make" variable "get" expression ;
+reassignment    = variable "get" expression ;
+expression_statement = expression ;
+
+function_def    = "do" identifier "(" [ param_list ] ")" "start" statement_list "end" ;
+param_list      = identifier { "," identifier } ;
+
+return_statement = "return" [ expression ] ;
+
+function_call   = identifier "(" [ arg_list ] ")" ;
+arg_list        = expression { "," expression } ;
+
+if_statement    = "if to say" "(" expression ")" block [ else_clause ] ;
+else_clause     = "if not so" block
+                | "if to say" "(" expression ")" block [ else_clause ] ;
+
+loop_statement  = "jasi" "(" expression ")" block ;
+
+block           = "start" statement_list "end" ;
+
+comment         = "#" { comment_char } ;
+comment_char    = ? any character except newline ? ;
+
+variable        = identifier ;
+
+identifier      = id_start { id_continue } ;
+id_start        = letter | "_" ;
+id_continue     = letter | digit | "_" ;
+
+letter          = "a" | … | "z" | "A" | … | "Z" ;
+digit           = "0" | … | "9" ;
+
+expression      = logic_or ;
+
+logic_or        = logic_and { "or" logic_and } ;
+logic_and       = equality { "and" equality } ;
+equality        = comparison { ( "na" | "pass" | "small pass" ) comparison } ;
+comparison      = arith_expr ;
+
+arith_expr      = term { ( "add" | "minus" ) term } ;
+term            = factor { ( "times" | "divide" | "mod" ) factor } ;
+
+factor          = "not" factor
+                | "minus" factor
+                | "(" expression ")"
+                | function_call
+                | variable
+                | number
+                | string
+                | boolean ;
+
+boolean         = "true" | "false" ;
+
+string          = "\"" { string_char } "\"" ;
+string_char     = ? any character except "\"" or "\\" ?
+                | "\\" escape_sequence ;
+escape_sequence = "\"" | "\\" | "n" | "t" ;
+
+number          = digit { digit } [ "." digit { digit } ] ;
