@@ -1,6 +1,8 @@
 mod string;
+mod tw;
 
 pub use string::*;
+pub use tw::*;
 
 /// Built-in functions available in NaijaScript.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +27,18 @@ pub enum Builtin {
     Upper,
     /// String to lowercase function
     Lower,
+    /// Find substring in string function
+    Find,
+    /// Replace substring in string function
+    Replace,
+    /// Trim whitespace from string function
+    Trim,
+    /// Value to string function
+    ToString,
+    /// String to number function
+    ToNumber,
+    /// Type of value function
+    TypeOf,
 }
 
 /// Represents the type of a value or return type in NaijaScript
@@ -48,8 +62,14 @@ impl Builtin {
             | Builtin::Round
             | Builtin::Len
             | Builtin::Upper
-            | Builtin::Lower => 1,
+            | Builtin::Lower
+            | Builtin::Trim
+            | Builtin::ToString
+            | Builtin::ToNumber
+            | Builtin::TypeOf => 1,
+            Builtin::Find => 2,
             Builtin::Slice => 3,
+            Builtin::Replace => 3,
         }
     }
 
@@ -63,8 +83,16 @@ impl Builtin {
             | Builtin::Floor
             | Builtin::Ceil
             | Builtin::Round
-            | Builtin::Len => BuiltinReturnType::Number,
-            Builtin::Slice | Builtin::Upper | Builtin::Lower => BuiltinReturnType::String,
+            | Builtin::Len
+            | Builtin::Find
+            | Builtin::ToNumber => BuiltinReturnType::Number,
+            Builtin::Slice
+            | Builtin::Upper
+            | Builtin::Lower
+            | Builtin::Replace
+            | Builtin::Trim
+            | Builtin::ToString
+            | Builtin::TypeOf => BuiltinReturnType::String,
         }
     }
 
@@ -82,6 +110,12 @@ impl Builtin {
             "slice" => Some(Builtin::Slice),
             "upper" => Some(Builtin::Upper),
             "lower" => Some(Builtin::Lower),
+            "find" => Some(Builtin::Find),
+            "replace" => Some(Builtin::Replace),
+            "trim" => Some(Builtin::Trim),
+            "to_string" => Some(Builtin::ToString),
+            "to_number" => Some(Builtin::ToNumber),
+            "typeof" => Some(Builtin::TypeOf),
             _ => None,
         }
     }

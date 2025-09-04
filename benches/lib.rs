@@ -230,9 +230,24 @@ fn bench_string_slice(c: &mut Criterion) {
     });
 }
 
+fn bench_two_way(c: &mut Criterion) {
+    let src = "ab cd ef gh ij kl mn op qr st uv wx yz";
+    let arena = scratch_arena(None);
+
+    c.bench_function("two_way", |b| {
+        b.iter(|| {
+            let offset = arena.offset();
+            let index = builtins::find(src, "uv");
+            black_box(index);
+            unsafe { arena.reset(offset) };
+        })
+    });
+}
+
 fn bench(c: &mut Criterion) {
     arena::init(128 * MEBI).unwrap();
 
+    bench_two_way(c);
     bench_string_slice(c);
     bench_skip_comment(c);
     bench_scan_string(c);

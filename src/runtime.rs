@@ -1,6 +1,6 @@
 //! The runtime for NaijaScript.
 
-use std::fmt::Write;
+use std::fmt::{self, Write};
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::builtins::{self, Builtin};
@@ -53,6 +53,16 @@ pub enum Value<'arena, 'src> {
     Bool(bool),
 }
 
+impl fmt::Display for Value<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "{n}"),
+            Value::Str(s) => write!(f, "{s}"),
+            Value::Bool(b) => write!(f, "{b}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct FunctionDef<'ast> {
     name: &'ast str,
@@ -71,16 +81,6 @@ struct ActivationRecord<'arena, 'src> {
 enum ExecFlow<'arena, 'src> {
     Continue,
     Return(Value<'arena, 'src>),
-}
-
-impl std::fmt::Display for Value<'_, '_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Value::Number(n) => write!(f, "{n}"),
-            Value::Str(s) => write!(f, "{s}"),
-            Value::Bool(b) => write!(f, "{b}"),
-        }
-    }
 }
 
 /// The runtime interface for NaijaScript using arena-allocated AST.
@@ -325,7 +325,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                                 _ => unreachable!("Semantic analysis guarantees valid string ops"),
                             },
                             (Value::Str(ls), Value::Number(n)) => {
-                                debug_assert!(matches!(op, BinaryOp::Add));
+                                assert!(matches!(op, BinaryOp::Add));
                                 let num_str = n.to_string();
                                 let mut s = ArenaString::with_capacity_in(
                                     ls.len() + num_str.len(),
@@ -336,7 +336,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                                 Ok(Value::Str(ArenaCow::Owned(s)))
                             }
                             (Value::Number(n), Value::Str(rs)) => {
-                                debug_assert!(matches!(op, BinaryOp::Add));
+                                assert!(matches!(op, BinaryOp::Add));
                                 let num_str = n.to_string();
                                 let mut s = ArenaString::with_capacity_in(
                                     num_str.len() + rs.len(),
@@ -407,7 +407,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
 
-        debug_assert_eq!(arg_values.len(), func_def.params.params.len());
+        assert_eq!(arg_values.len(), func_def.params.params.len());
 
         // We create a new activation record for the function call
         let mut local_vars = Vec::new_in(self.arena);
@@ -515,6 +515,54 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 } else {
                     unreachable!("Semantic analysis guarantees string argument for lower")
                 }
+            }
+            Builtin::Find => {
+                if let (Value::Str(haystack), Value::Str(needle)) = (&arg_values[0], &arg_values[1])
+                {
+                    let i = builtins::string_find(haystack, needle);
+                    Ok(Value::Number(i))
+                } else {
+                    unreachable!("Semantic analysis guarantees string arguments for find")
+                }
+            }
+            Builtin::Replace => {
+                if let (Value::Str(s), Value::Str(old), Value::Str(new)) =
+                    (&arg_values[0], &arg_values[1], &arg_values[2])
+                {
+                    let s = builtins::string_replace(s, old, new, self.arena);
+                    Ok(Value::Str(ArenaCow::owned(s)))
+                } else {
+                    unreachable!("Semantic analysis guarantees string arguments for replace")
+                }
+            }
+            Builtin::Trim => {
+                if let Value::Str(s) = &arg_values[0] {
+                    let s = builtins::string_trim(s, self.arena);
+                    Ok(Value::Str(ArenaCow::owned(s)))
+                } else {
+                    unreachable!("Semantic analysis guarantees string argument for trim")
+                }
+            }
+            Builtin::ToString => {
+                let s = arg_values[0].to_string();
+                let s = ArenaString::from_str(self.arena, &s);
+                Ok(Value::Str(ArenaCow::owned(s)))
+            }
+            Builtin::ToNumber => {
+                if let Value::Str(s) = &arg_values[0] {
+                    let n = s.parse::<f64>().unwrap_or(f64::NAN);
+                    Ok(Value::Number(n))
+                } else {
+                    unreachable!("Semantic analysis guarantees string argument for to_number")
+                }
+            }
+            Builtin::TypeOf => {
+                let t = match &arg_values[0] {
+                    Value::Number(..) => "number",
+                    Value::Str(..) => "string",
+                    Value::Bool(..) => "boolean",
+                };
+                Ok(Value::Str(ArenaCow::borrowed(t)))
             }
         }
     }

@@ -1,4 +1,5 @@
 use crate::arena::{Arena, ArenaString};
+use crate::builtins::find;
 
 #[inline]
 pub fn string_slice<'arena>(
@@ -43,6 +44,27 @@ pub fn string_lower<'arena>(s: &str, arena: &'arena Arena) -> ArenaString<'arena
     let mut buffer = ArenaString::with_capacity_in(s.len(), arena);
     s.chars().flat_map(char::to_lowercase).for_each(|ch| buffer.push(ch));
     buffer
+}
+
+#[inline]
+pub fn string_find(haystack: &str, needle: &str) -> f64 {
+    find(haystack, needle).map_or(-1.0, |v| v as f64)
+}
+
+#[inline]
+pub fn string_replace<'arena>(
+    s: &str,
+    old: &str,
+    new: &str,
+    arena: &'arena Arena,
+) -> ArenaString<'arena> {
+    let s = s.replace(old, new);
+    ArenaString::from_str(arena, &s)
+}
+
+#[inline]
+pub fn string_trim<'arena>(s: &str, arena: &'arena Arena) -> ArenaString<'arena> {
+    ArenaString::from_str(arena, s.trim())
 }
 
 #[cfg(test)]
