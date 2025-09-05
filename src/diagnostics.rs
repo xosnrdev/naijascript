@@ -101,7 +101,7 @@ impl<'arena> Diagnostics<'arena> {
     }
 
     /// Report all collected diagnostics as HTML for the web.
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(target_family = "wasm")]
     pub fn report_html(&self, src: &str, filename: &str) -> String {
         let ansi = self.render_ansi(src, filename);
         ansi_to_html::convert(&ansi).unwrap()

@@ -8,21 +8,21 @@ mod windows;
 #[cfg(unix)]
 mod unix;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 mod wasm;
 
 use std::ptr::NonNull;
 
 #[cfg(unix)]
 use unix::*;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use wasm::*;
 #[cfg(windows)]
 pub use windows::*;
 
 #[cfg(unix)]
 pub type virtual_memory = UnixVirtualMemory;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub type virtual_memory = WasmVirtualMemory;
 #[cfg(windows)]
 pub type virtual_memory = WindowsVirtualMemory;

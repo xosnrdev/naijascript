@@ -28,11 +28,11 @@ regex-lite = "0.1.6"
 reqwest = { version = "0.12.19", default-features = false, features = ["rustls-tls", "blocking", "json"] }
 tar = "0.4.44"
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 xz2 = "0.1.7"
 zip = { version = "4.0.0", default-features = false, features = ["deflate"] }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(target_family = "wasm")'.dependencies]
 ansi-to-html = "0.2.2"
 html-escape = "0.2.13" 
 wasm-bindgen = "0.2.100"
