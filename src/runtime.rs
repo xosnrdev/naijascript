@@ -39,9 +39,7 @@ impl AsStr for RuntimeErrorKind {
 
 impl From<io::Error> for RuntimeErrorKind {
     fn from(err: io::Error) -> Self {
-        // RuntimeErrorKind::Io takes a str with a static lifetime
-        // We want to transmute the io::Error into a &'static str
-        // TODO: make `AsStr` return `ArenaCow` so we don't have to do this.
+        // Safety: It's unlikely for io error to emit so this is fine
         let msg: &'static str = Box::leak(err.to_string().into_boxed_str());
         RuntimeErrorKind::Io(msg)
     }
