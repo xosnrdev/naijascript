@@ -79,8 +79,7 @@ impl Stdin for UnixStdin {
 
         loop {
             if total == cap {
-                cap =
-                    cap.checked_mul(2).ok_or_else(|| io::Error::from_raw_os_error(libc::ENOMEM))?;
+                cap = cap.checked_mul(2).ok_or(io::Error::from_raw_os_error(libc::ENOMEM))?;
                 buf.reserve_exact(cap.saturating_sub(buf.capacity()));
             }
 
@@ -91,12 +90,7 @@ impl Stdin for UnixStdin {
                 libc::read(libc::STDIN_FILENO, base.add(total) as *mut libc::c_void, avail)
             };
             if n < 0 {
-                let err = io::Error::last_os_error();
-                if err.kind() == io::ErrorKind::Interrupted {
-                    continue;
-                } else {
-                    return Err(err);
-                }
+                return Err(io::Error::last_os_error());
             } else if n == 0 {
                 // EOF
                 break;

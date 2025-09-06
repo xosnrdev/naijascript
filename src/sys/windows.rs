@@ -3,11 +3,9 @@ use std::io::{self, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::ptr::{NonNull, null_mut};
-use std::slice;
+use std::{char, slice};
 
-use windows_sys::Win32::Foundation::{
-    self, ERROR_MORE_DATA, ERROR_OPERATION_ABORTED, ERROR_SUCCESS, INVALID_HANDLE_VALUE,
-};
+use windows_sys::Win32::Foundation::{self, ERROR_MORE_DATA, ERROR_SUCCESS, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::ReadFile;
 use windows_sys::Win32::System::Console::{
     GetConsoleMode, GetStdHandle, ReadConsoleW, STD_INPUT_HANDLE,
@@ -233,62 +231,82 @@ fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>
     }
 
     let mut cap = 16 * KIBI;
-    let mut buf: Vec<u16, &Arena> = Vec::with_capacity_in(cap, arena);
+    let mut buf16: Vec<u16, &Arena> = Vec::with_capacity_in(cap, arena);
     let mut total = 0;
+    let mut scan_start = 0;
 
     loop {
         if total == cap {
             cap = cap
                 .checked_mul(2)
-                .ok_or_else(|| win32_error_to_io_error(Foundation::ERROR_NOT_ENOUGH_MEMORY))?;
-            buf.reserve_exact(cap.saturating_sub(buf.capacity()));
+                .ok_or(win32_error_to_io_error(Foundation::ERROR_NOT_ENOUGH_MEMORY))?;
+            buf16.reserve_exact(cap.saturating_sub(buf16.capacity()));
         }
 
         let avail = cap - total;
-        let base = buf.as_ptr();
-        let mut read_count = 0;
+        let base = buf16.as_mut_ptr();
+        let mut chars_read = 0;
 
         let n = unsafe {
             ReadConsoleW(
                 handle,
                 base.add(total) as *mut _,
                 avail as u32,
-                &mut read_count,
+                &mut chars_read,
                 null_mut(),
             )
         };
 
         if n == 0 {
-            let err = io::Error::last_os_error();
-            if let Some(code) = err.raw_os_error()
-                && code == ERROR_OPERATION_ABORTED as i32
-            {
-                continue;
-            }
-            return Err(err);
+            return Err(io::Error::last_os_error());
         }
-        if read_count == 0 {
+        if chars_read == 0 {
             // EOF
             break;
         }
 
-        // TODO: I'm having headache already, will come back to this later
-        total = total.saturating_add(read_count as usize);
+        total = total.saturating_add(chars_read as usize);
+        let len = total - scan_start;
 
-        let hay = unsafe { slice::from_raw_parts(base, total) };
-        if let Some(pos) = hay.iter().position(|&c| c == (b'\n' as u16)) {
-            total = pos + 1;
+        let hay = unsafe { slice::from_raw_parts(base.add(scan_start), len) };
+
+        if let Some(pos) = hay.iter().position(|&c| c == 0x1A) {
+            total = scan_start + pos;
             break;
         }
+        if let Some(pos) = hay.iter().position(|&c| c == (b'\n' as u16)) {
+            let pos = scan_start + pos;
+            // Check for and strip the preceding Carriage Return for CRLF endings
+            if pos > 0 && unsafe { *base.add(pos - 1) } == (b'\r' as u16) {
+                total = pos - 1;
+            } else {
+                total = pos;
+            }
+            break;
+        }
+
+        scan_start = total;
     }
 
     unsafe {
-        buf.set_len(total);
+        buf16.set_len(total);
     }
 
-    let s = String::from_utf16_lossy(&buf);
+    let len: usize = char::decode_utf16(buf16.iter().cloned())
+        .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER).len_utf8())
+        .sum();
 
-    Ok(ArenaString::from_str(arena, &s))
+    let mut buf8: Vec<u8, &Arena> = Vec::with_capacity_in(len, arena);
+    let mut i = 0;
+    for ch in char::decode_utf16(buf16.into_iter()) {
+        let ch = ch.unwrap_or(char::REPLACEMENT_CHARACTER);
+        let enc = ch.encode_utf8(&mut buf8[i..]);
+        i += enc.len();
+    }
+
+    let res = unsafe { ArenaString::from_utf8_unchecked(buf8) };
+
+    Ok(res)
 }
 
 fn read_line_pipe<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, io::Error> {
@@ -305,33 +323,27 @@ fn read_line_pipe<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, i
         if total == cap {
             cap = cap
                 .checked_mul(2)
-                .ok_or_else(|| win32_error_to_io_error(Foundation::ERROR_NOT_ENOUGH_MEMORY))?;
+                .ok_or(win32_error_to_io_error(Foundation::ERROR_NOT_ENOUGH_MEMORY))?;
             buf.reserve_exact(cap.saturating_sub(buf.capacity()));
         }
 
         let avail = cap - total;
         let base = buf.as_ptr();
-        let mut read_count = 0;
+        let mut bytes_read = 0;
 
         let n = unsafe {
-            ReadFile(handle, base.add(total) as *mut _, avail as u32, &mut read_count, null_mut())
+            ReadFile(handle, base.add(total) as *mut _, avail as u32, &mut bytes_read, null_mut())
         };
 
         if n == 0 {
-            let err = io::Error::last_os_error();
-            if let Some(code) = err.raw_os_error()
-                && code == ERROR_OPERATION_ABORTED as i32
-            {
-                continue;
-            }
-            return Err(err);
+            return Err(io::Error::last_os_error());
         }
-        if read_count == 0 {
+        if bytes_read == 0 {
             // EOF
             break;
         }
 
-        let n = read_count as usize;
+        let n = bytes_read as usize;
         total = total.saturating_add(n);
 
         let hay = unsafe { slice::from_raw_parts(base, total) };
