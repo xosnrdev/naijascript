@@ -1,17 +1,27 @@
 use std::ffi::OsStr;
-use std::io;
+use std::io::{self, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::ptr::{NonNull, null_mut};
+use std::slice;
 
-use windows_sys::Win32::Foundation::{self, ERROR_MORE_DATA, ERROR_SUCCESS};
+use windows_sys::Win32::Foundation::{
+    self, ERROR_MORE_DATA, ERROR_OPERATION_ABORTED, ERROR_SUCCESS, INVALID_HANDLE_VALUE,
+};
+use windows_sys::Win32::Storage::FileSystem::ReadFile;
+use windows_sys::Win32::System::Console::{
+    GetConsoleMode, GetStdHandle, ReadConsoleW, STD_INPUT_HANDLE,
+};
 use windows_sys::Win32::System::Memory;
 use windows_sys::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ, RegCloseKey, RegOpenKeyExW,
     RegQueryValueExW, RegSetValueExW,
 };
 
-use super::VirtualMemory;
+use super::{Stdin, VirtualMemory};
+use crate::KIBI;
+use crate::arena::{Arena, ArenaString};
+use crate::simd::memchr;
 
 pub fn add_to_path(dir: &Path) -> io::Result<()> {
     let dir_str = dir.to_string_lossy();
@@ -55,8 +65,8 @@ fn get_current_path() -> io::Result<String> {
         }
 
         // First, query the size needed
-        let mut size = 0u32;
-        let mut value_type = 0u32;
+        let mut size = 0;
+        let mut value_type = 0;
         let query_result = RegQueryValueExW(
             hkey,
             path_value.as_ptr(),
@@ -73,7 +83,7 @@ fn get_current_path() -> io::Result<String> {
 
         // Allocate buffer and read the value
         let buffer_size = (size / 2) as usize;
-        let mut buffer = vec![0u16; buffer_size];
+        let mut buffer = vec![0; buffer_size];
         let read_result = RegQueryValueExW(
             hkey,
             path_value.as_ptr(),
@@ -200,4 +210,152 @@ fn get_last_error() -> u32 {
 #[inline]
 const fn gle_to_apperr(gle: u32) -> u32 {
     if gle == 0 { 0x8000FFFF } else { 0x80070000 | gle }
+}
+
+pub struct WindowsStdin;
+
+impl Stdin for WindowsStdin {
+    fn read_line<'arena>(
+        prompt: &str,
+        arena: &'arena Arena,
+    ) -> Result<ArenaString<'arena>, io::Error> {
+        print!("{prompt}");
+        io::stdout().flush()?;
+
+        if is_console() { read_line_console(arena) } else { read_line_pipe(arena) }
+    }
+}
+
+fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, io::Error> {
+    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    if handle == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+
+    let mut cap = 16 * KIBI;
+    let mut buf: Vec<u16, &Arena> = Vec::with_capacity_in(cap, arena);
+    let mut total = 0;
+
+    loop {
+        if total == cap {
+            cap = cap
+                .checked_mul(2)
+                .ok_or_else(|| win32_error_to_io_error(Foundation::ERROR_NOT_ENOUGH_MEMORY))?;
+            buf.reserve_exact(cap.saturating_sub(buf.capacity()));
+        }
+
+        let avail = cap - total;
+        let base = buf.as_ptr();
+        let mut read_count = 0;
+
+        let n = unsafe {
+            ReadConsoleW(
+                handle,
+                base.add(total) as *mut _,
+                avail as u32,
+                &mut read_count,
+                null_mut(),
+            )
+        };
+
+        if n == 0 {
+            let err = io::Error::last_os_error();
+            if let Some(code) = err.raw_os_error()
+                && code == ERROR_OPERATION_ABORTED as i32
+            {
+                continue;
+            }
+            return Err(err);
+        }
+        if read_count == 0 {
+            // EOF
+            break;
+        }
+
+        // TODO: I'm having headache already, will come back to this later
+        total = total.saturating_add(read_count as usize);
+
+        let hay = unsafe { slice::from_raw_parts(base, total) };
+        if let Some(pos) = hay.iter().position(|&c| c == (b'\n' as u16)) {
+            total = pos + 1;
+            break;
+        }
+    }
+
+    unsafe {
+        buf.set_len(total);
+    }
+
+    let s = String::from_utf16_lossy(&buf);
+
+    Ok(ArenaString::from_str(arena, &s))
+}
+
+fn read_line_pipe<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, io::Error> {
+    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    if handle == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+
+    let mut cap = 8 * KIBI;
+    let mut buf = ArenaString::with_capacity_in(cap, arena);
+    let mut total = 0;
+
+    loop {
+        if total == cap {
+            cap = cap
+                .checked_mul(2)
+                .ok_or_else(|| win32_error_to_io_error(Foundation::ERROR_NOT_ENOUGH_MEMORY))?;
+            buf.reserve_exact(cap.saturating_sub(buf.capacity()));
+        }
+
+        let avail = cap - total;
+        let base = buf.as_ptr();
+        let mut read_count = 0;
+
+        let n = unsafe {
+            ReadFile(handle, base.add(total) as *mut _, avail as u32, &mut read_count, null_mut())
+        };
+
+        if n == 0 {
+            let err = io::Error::last_os_error();
+            if let Some(code) = err.raw_os_error()
+                && code == ERROR_OPERATION_ABORTED as i32
+            {
+                continue;
+            }
+            return Err(err);
+        }
+        if read_count == 0 {
+            // EOF
+            break;
+        }
+
+        let n = read_count as usize;
+        total = total.saturating_add(n);
+
+        let hay = unsafe { slice::from_raw_parts(base, total) };
+        let pos = memchr(b'\n', hay, total - n);
+        if pos < total {
+            total = pos + 1;
+            break;
+        }
+    }
+
+    unsafe {
+        buf.as_mut_vec().set_len(total);
+    }
+
+    Ok(buf)
+}
+
+fn is_console() -> bool {
+    unsafe {
+        let handle = GetStdHandle(STD_INPUT_HANDLE);
+        if handle == INVALID_HANDLE_VALUE {
+            return false;
+        }
+        let mut mode = 0;
+        GetConsoleMode(handle, &mut mode) != 0
+    }
 }

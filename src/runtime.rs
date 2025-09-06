@@ -1,6 +1,7 @@
 //! The runtime for NaijaScript.
 
 use std::fmt::{self, Write};
+use std::io;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::builtins::{self, Builtin};
@@ -9,34 +10,55 @@ use crate::syntax::parser::{
     ArgList, BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts,
     StringSegment, UnaryOp,
 };
+#[cfg(not(target_family = "wasm"))]
+use crate::sys::{self, Stdin};
 
 /// Runtime errors that can occur during NaijaScript execution.
 ///
 /// We separate runtime errors from syntax/semantic errors because these
 /// can only be detected when expressions actually evaluate.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum RuntimeErrorKind {
     /// Division by zero, which we can't catch until the divisor evaluates to zero
     DivisionByZero,
     /// Call stack overflow to prevent infinite recursion from crashing the host
     StackOverflow,
+    /// I/O error that occurred
+    Io(&'static str),
 }
 
 impl AsStr for RuntimeErrorKind {
     fn as_str(&self) -> &'static str {
-        match self {
+        match &self {
             RuntimeErrorKind::DivisionByZero => "Division by zero",
             RuntimeErrorKind::StackOverflow => "Stack overflow",
+            RuntimeErrorKind::Io(..) => "I/O error",
         }
     }
 }
 
-#[derive(Debug, Clone)]
-struct RuntimeError<'src> {
+impl From<io::Error> for RuntimeErrorKind {
+    fn from(err: io::Error) -> Self {
+        // RuntimeErrorKind::Io takes a str with a static lifetime
+        // We want to transmute the io::Error into a &'static str
+        // TODO: make `AsStr` return `ArenaCow` so we don't have to do this.
+        let msg: &'static str = Box::leak(err.to_string().into_boxed_str());
+        RuntimeErrorKind::Io(msg)
+    }
+}
+
+#[derive(Debug)]
+struct RuntimeError {
     // The specific kind of runtime error that occurred.
     kind: RuntimeErrorKind,
     // Reference to the source span.
-    span: &'src Span,
+    span: Span,
+}
+
+impl From<RuntimeErrorKind> for RuntimeError {
+    fn from(kind: RuntimeErrorKind) -> Self {
+        RuntimeError { kind, span: Span::default() }
+    }
 }
 
 /// Maximum recursion depth to prevent stack overflow
@@ -127,17 +149,20 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Err(err) => {
                 let labels = match err.kind {
                     RuntimeErrorKind::DivisionByZero => vec![Label {
-                        span: *err.span,
+                        span: err.span,
                         message: ArenaCow::Borrowed("No divide by zero"),
                     }],
                     RuntimeErrorKind::StackOverflow => {
                         vec![Label {
-                            span: *err.span,
+                            span: err.span,
                             message: ArenaCow::Borrowed("Dis function call too deep"),
                         }]
                     }
+                    RuntimeErrorKind::Io(msg) => {
+                        vec![Label { span: err.span, message: ArenaCow::Borrowed(msg) }]
+                    }
                 };
-                self.errors.emit(*err.span, Severity::Error, "runtime", err.kind.as_str(), labels);
+                self.errors.emit(err.span, Severity::Error, "runtime", err.kind.as_str(), labels);
             }
         }
         self.env.pop(); // exit global scope
@@ -148,10 +173,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     //
     // Each statement type updates the environment or controls flow.
     // Functions definitions populate the global function table.
-    fn exec_stmt(
-        &mut self,
-        stmt: StmtRef<'src>,
-    ) -> Result<ExecFlow<'arena, 'src>, RuntimeError<'src>> {
+    fn exec_stmt(&mut self, stmt: StmtRef<'src>) -> Result<ExecFlow<'arena, 'src>, RuntimeError> {
         match stmt {
             Stmt::Assign { var, expr, .. } => {
                 let val = self.eval_expr(expr)?;
@@ -226,7 +248,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     fn exec_block_with_flow(
         &mut self,
         block: BlockRef<'src>,
-    ) -> Result<ExecFlow<'arena, 'src>, RuntimeError<'src>> {
+    ) -> Result<ExecFlow<'arena, 'src>, RuntimeError> {
         self.env.push(Vec::new_in(self.arena)); // enter new block scope
         for &stmt in block.stmts {
             match self.exec_stmt(stmt)? {
@@ -242,10 +264,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         Ok(ExecFlow::Continue)
     }
 
-    fn eval_expr(
-        &mut self,
-        expr: ExprRef<'src>,
-    ) -> Result<Value<'arena, 'src>, RuntimeError<'src>> {
+    fn eval_expr(&mut self, expr: ExprRef<'src>) -> Result<Value<'arena, 'src>, RuntimeError> {
         match expr {
             Expr::Number(n, ..) => Ok(Value::Number(
                 n.parse::<f64>().expect("Scanner should guarantee valid number format"),
@@ -294,7 +313,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                                     if rv == 0.0 {
                                         Err(RuntimeError {
                                             kind: RuntimeErrorKind::DivisionByZero,
-                                            span,
+                                            span: *span,
                                         })
                                     } else {
                                         Ok(Value::Number(match op {
@@ -377,7 +396,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         callee: ExprRef<'src>,
         args: &'src ArgList<'src>,
         span: &'src Span,
-    ) -> Result<Value<'arena, 'src>, RuntimeError<'src>> {
+    ) -> Result<Value<'arena, 'src>, RuntimeError> {
         let func_name = match callee {
             Expr::Var(name, ..) => *name,
             _ => unreachable!("Semantic analysis guarantees callee is a variable"),
@@ -398,7 +417,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
         // We check for recursion depth
         if self.call_stack.len() >= MAX_CALL_DEPTH {
-            return Err(RuntimeError { kind: RuntimeErrorKind::StackOverflow, span });
+            return Err(RuntimeError { kind: RuntimeErrorKind::StackOverflow, span: *span });
         }
 
         // We evaluate all arguments eagerly (left-to-right evaluation order)
@@ -433,7 +452,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         &mut self,
         builtin: Builtin,
         args: &'src ArgList<'src>,
-    ) -> Result<Value<'arena, 'src>, RuntimeError<'src>> {
+    ) -> Result<Value<'arena, 'src>, RuntimeError> {
         // We evaluate all arguments eagerly (left-to-right evaluation order)
         let mut arg_values = Vec::new_in(self.arena);
         for &arg_expr in args.args {
@@ -564,6 +583,13 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 };
                 Ok(Value::Str(ArenaCow::borrowed(t)))
             }
+            #[cfg(not(target_family = "wasm"))]
+            Builtin::ReadLine => {
+                let prompt = arg_values[0].to_string();
+                let s =
+                    sys::stdin::read_line(&prompt, self.arena).map_err(RuntimeErrorKind::from)?;
+                Ok(Value::Str(ArenaCow::owned(s)))
+            }
         }
     }
 
@@ -620,7 +646,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     fn eval_string_expr(
         &mut self,
         parts: &StringParts<'src>,
-    ) -> Result<Value<'arena, 'src>, RuntimeError<'src>> {
+    ) -> Result<Value<'arena, 'src>, RuntimeError> {
         match parts {
             StringParts::Static(content) => Ok(Value::Str(ArenaCow::borrowed(content))),
             StringParts::Interpolated(segments) => {

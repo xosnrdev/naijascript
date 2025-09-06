@@ -11,6 +11,7 @@ mod unix;
 #[cfg(target_family = "wasm")]
 mod wasm;
 
+use std::io;
 use std::ptr::NonNull;
 
 #[cfg(unix)]
@@ -20,12 +21,19 @@ use wasm::*;
 #[cfg(windows)]
 pub use windows::*;
 
+use crate::arena::{Arena, ArenaString};
+
 #[cfg(unix)]
 pub type virtual_memory = UnixVirtualMemory;
 #[cfg(target_family = "wasm")]
 pub type virtual_memory = WasmVirtualMemory;
 #[cfg(windows)]
 pub type virtual_memory = WindowsVirtualMemory;
+
+#[cfg(unix)]
+pub type stdin = UnixStdin;
+#[cfg(windows)]
+pub type stdin = WindowsStdin;
 
 pub trait VirtualMemory {
     /// Reserves a virtual memory region of the given size.
@@ -54,4 +62,15 @@ pub trait VirtualMemory {
     /// This function is unsafe because it uses raw pointers.
     /// Make sure to only pass pointers acquired from `reserve`.
     unsafe fn release(base: NonNull<u8>, size: usize);
+}
+
+pub trait Stdin {
+    /// Reads a line from the standard input.
+    ///
+    /// Unlike the `read_line` from [`std::io::stdin`] that's hardcoded to [`std::string::String`] type, this
+    /// one allocates with [`ArenaString`].
+    fn read_line<'arena>(
+        prompt: &str,
+        arena: &'arena Arena,
+    ) -> Result<ArenaString<'arena>, io::Error>;
 }

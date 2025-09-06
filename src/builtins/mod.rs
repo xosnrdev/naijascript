@@ -39,6 +39,9 @@ pub enum Builtin {
     ToNumber,
     /// Type of value function
     TypeOf,
+    /// Read line from input function
+    #[cfg(not(target_family = "wasm"))]
+    ReadLine,
 }
 
 /// Represents the type of a value or return type in NaijaScript
@@ -67,6 +70,8 @@ impl Builtin {
             | Builtin::ToString
             | Builtin::ToNumber
             | Builtin::TypeOf => 1,
+            #[cfg(not(target_family = "wasm"))]
+            Builtin::ReadLine => 1,
             Builtin::Find => 2,
             Builtin::Slice => 3,
             Builtin::Replace => 3,
@@ -93,6 +98,8 @@ impl Builtin {
             | Builtin::Trim
             | Builtin::ToString
             | Builtin::TypeOf => BuiltinReturnType::String,
+            #[cfg(not(target_family = "wasm"))]
+            Builtin::ReadLine => BuiltinReturnType::String,
         }
     }
 
@@ -116,6 +123,8 @@ impl Builtin {
             "to_string" => Some(Builtin::ToString),
             "to_number" => Some(Builtin::ToNumber),
             "typeof" => Some(Builtin::TypeOf),
+            #[cfg(not(target_family = "wasm"))]
+            "read_line" => Some(Builtin::ReadLine),
             _ => None,
         }
     }

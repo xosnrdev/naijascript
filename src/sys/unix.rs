@@ -3,9 +3,14 @@
 //! Read the `windows` module for reference.
 
 use std::ffi::c_int;
+use std::io::{self, Write};
 use std::ptr::{self, NonNull, null_mut};
+use std::slice;
 
-use super::VirtualMemory;
+use super::{Stdin, VirtualMemory};
+use crate::KIBI;
+use crate::arena::{Arena, ArenaString};
+use crate::simd::memchr;
 
 #[cfg(target_os = "netbsd")]
 const fn desired_mprotect(flags: c_int) -> c_int {
@@ -55,5 +60,63 @@ impl VirtualMemory for UnixVirtualMemory {
         unsafe {
             libc::munmap(base.cast().as_ptr(), size);
         }
+    }
+}
+
+pub struct UnixStdin;
+
+impl Stdin for UnixStdin {
+    fn read_line<'arena>(
+        prompt: &str,
+        arena: &'arena Arena,
+    ) -> Result<ArenaString<'arena>, io::Error> {
+        print!("{prompt}");
+        io::stdout().flush()?;
+
+        let mut cap = 8 * KIBI;
+        let mut buf = ArenaString::with_capacity_in(cap, arena);
+        let mut total = 0;
+
+        loop {
+            if total == cap {
+                cap =
+                    cap.checked_mul(2).ok_or_else(|| io::Error::from_raw_os_error(libc::ENOMEM))?;
+                buf.reserve_exact(cap.saturating_sub(buf.capacity()));
+            }
+
+            let avail = cap - total;
+            let base = buf.as_ptr();
+
+            let n = unsafe {
+                libc::read(libc::STDIN_FILENO, base.add(total) as *mut libc::c_void, avail)
+            };
+            if n < 0 {
+                let err = io::Error::last_os_error();
+                if err.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                } else {
+                    return Err(err);
+                }
+            } else if n == 0 {
+                // EOF
+                break;
+            }
+
+            let n = n as usize;
+            total = total.saturating_add(n);
+
+            let hay = unsafe { slice::from_raw_parts(base, total) };
+            let pos = memchr(b'\n', hay, total - n);
+            if pos < total {
+                total = pos + 1;
+                break;
+            }
+        }
+
+        unsafe {
+            buf.as_mut_vec().set_len(total);
+        }
+
+        Ok(buf)
     }
 }

@@ -136,6 +136,8 @@ NaijaScript provides several built-in functions wey dey globally available:
 
 - **`shout(expression)`**: Print the value of the expression to the console.
 
+- **`read_line()`**: Read a line of input from standard input (stdin).
+
 ### 6.2. Mathematical Functions
 
 All mathematical functions take one number argument and return a number result:
