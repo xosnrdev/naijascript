@@ -6,6 +6,10 @@
 
 A scripting language interpreter inspired by the expressive linguistics of Naija (Nigerian Pidgin English).
 
+> [!WARNING]
+>
+> This project is **experimental** and may be subjected to breaking changes.
+
 ## Getting Started
 
 1. **Install the Toolchain Manager (`naijaup`)**

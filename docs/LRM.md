@@ -75,7 +75,7 @@ If you wan write comment, just put `#` for anywhere for the line. Anything wey d
 
 ## 3. Grammar and Syntax
 
-NaijaScript syntax dey defined with a formal grammar using Backus-Naur Form (BNF). You fit check the full grammar for this [link](https://raw.githubusercontent.com/xosnrdev/naijascript/master/docs/grammar.bnf).
+NaijaScript syntax dey defined with a formal grammar using Extended Backus-Naur Form (EBNF). You fit check the full grammar for this [link](https://raw.githubusercontent.com/xosnrdev/naijascript/master/docs/grammar.ebnf).
 
 ## 4. Static Semantics
 
@@ -135,6 +135,8 @@ NaijaScript provides several built-in functions wey dey globally available:
 ### 6.1. Output Functions
 
 - **`shout(expression)`**: Print the value of the expression to the console.
+
+- **`read_line()`**: Read a line of input from standard input (stdin).
 
 ### 6.2. Mathematical Functions
 

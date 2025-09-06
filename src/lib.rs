@@ -18,7 +18,7 @@ pub const KIBI: usize = 1024;
 pub const MEBI: usize = 1024 * 1024;
 pub const GIBI: usize = 1024 * 1024 * 1024;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use {
     crate::{
         arena::scratch_arena,
@@ -29,7 +29,7 @@ use {
     wasm_bindgen::prelude::*,
 };
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 #[wasm_bindgen]
 pub fn run_source(src: &str, filename: &str) -> String {
     arena::init(128 * MEBI).unwrap();

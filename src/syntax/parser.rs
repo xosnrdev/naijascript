@@ -6,7 +6,7 @@ use std::{mem, slice};
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
-use crate::simd::memchr2;
+use crate::simd::{memchr, memchr2};
 use crate::syntax::token::{SpannedToken, Token};
 
 // Direct references to AST nodes allocated in the arena.
@@ -1005,7 +1005,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let len = bytes.len();
 
         // No braces = static string
-        let pos = memchr2(b'{', 0, bytes, 0);
+        let pos = memchr(b'{', bytes, 0);
         if pos == len {
             let s = self.alloc_str(&content);
             return self.alloc(Expr::String { parts: StringParts::Static(s), span });
