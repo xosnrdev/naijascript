@@ -265,13 +265,12 @@ fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>
         buf16.set_len(total);
     }
 
-    let cap = total * 3 + 4;
-    let mut buf8: Vec<u8, &Arena> = Vec::with_capacity_in(cap, arena);
-    let mut i = 0;
+    let mut buf8: Vec<u8, &Arena> = Vec::with_capacity_in(total * 3 + 4, arena);
     for ch in char::decode_utf16(buf16.into_iter()) {
         let ch = ch.unwrap_or(char::REPLACEMENT_CHARACTER);
-        let enc = ch.encode_utf8(&mut buf8[i..]);
-        i += enc.len();
+        let mut dst = [0u8; 4];
+        let enc = ch.encode_utf8(&mut dst);
+        buf8.extend_from_slice(enc.as_bytes());
     }
 
     let buf = unsafe { ArenaString::from_utf8_unchecked(buf8) };
