@@ -75,40 +75,41 @@ impl Stdin for UnixStdin {
 
         let mut cap = 8 * KIBI;
         let mut buf = ArenaString::with_capacity_in(cap, arena);
-        let mut total = 0;
+        let mut len = 0;
 
         loop {
-            if total == cap {
-                cap = cap.checked_mul(2).ok_or(io::Error::from_raw_os_error(libc::ENOMEM))?;
-                buf.reserve_exact(cap.saturating_sub(buf.capacity()));
+            if len == cap {
+                cap *= 2;
+                buf.reserve_exact(cap - buf.capacity());
             }
 
-            let avail = cap - total;
+            let count = cap - len;
             let base = buf.as_ptr();
 
             let n = unsafe {
-                libc::read(libc::STDIN_FILENO, base.add(total) as *mut libc::c_void, avail)
+                libc::read(libc::STDIN_FILENO, base.add(len) as *mut libc::c_void, count)
             };
             if n < 0 {
                 return Err(io::Error::last_os_error());
-            } else if n == 0 {
+            }
+            if n == 0 {
                 // EOF
                 break;
             }
-
             let n = n as usize;
-            total = total.saturating_add(n);
 
-            let hay = unsafe { slice::from_raw_parts(base, total) };
-            let pos = memchr(b'\n', hay, total - n);
-            if pos < total {
-                total = pos + 1;
+            len += n;
+
+            let hay = unsafe { slice::from_raw_parts(base, len) };
+            let pos = memchr(b'\n', hay, len - n);
+            if pos < len {
+                len = pos + 1;
                 break;
             }
         }
 
         unsafe {
-            buf.as_mut_vec().set_len(total);
+            buf.as_mut_vec().set_len(len);
         }
 
         Ok(buf)
