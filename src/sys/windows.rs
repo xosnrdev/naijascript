@@ -12,8 +12,8 @@ use windows_sys::Win32::System::Console::{
 };
 use windows_sys::Win32::System::Memory;
 use windows_sys::Win32::System::Registry::{
-    HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ, RegCloseKey, RegOpenKeyExW,
-    RegQueryValueExW, RegSetValueExW,
+    HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ, RegCloseKey, RegOpenKeyExW, RegQueryValueExW,
+    RegSetValueExW,
 };
 
 use super::{Stdin, VirtualMemory};
@@ -50,85 +50,62 @@ pub fn remove_from_path(dir: &Path) -> io::Result<()> {
 
 fn get_current_path() -> io::Result<String> {
     unsafe {
-        let mut hkey: HKEY = null_mut();
-        let environment_key = to_utf16("Environment");
-        let path_value = to_utf16("PATH");
+        let mut hkey = null_mut();
+        let lpsubkey = to_utf16("Environment");
+        let lpsubkey = lpsubkey.as_ptr();
+        let lpvaluename: Vec<u16> = to_utf16("PATH");
+        let lpvaluename = lpvaluename.as_ptr();
 
         // Open the registry key
-        let result =
-            RegOpenKeyExW(HKEY_CURRENT_USER, environment_key.as_ptr(), 0, KEY_READ, &mut hkey);
+        let n = RegOpenKeyExW(HKEY_CURRENT_USER, lpsubkey, 0, KEY_READ, &mut hkey);
 
-        if result != ERROR_SUCCESS {
+        if n != ERROR_SUCCESS {
             return Ok(String::new());
         }
 
         // First, query the size needed
-        let mut size = 0;
-        let mut value_type = 0;
-        let query_result = RegQueryValueExW(
-            hkey,
-            path_value.as_ptr(),
-            null_mut(),
-            &mut value_type,
-            null_mut(),
-            &mut size,
-        );
+        let (mut lpcbdata, mut lptype) = (0, 0);
+        let n =
+            RegQueryValueExW(hkey, lpvaluename, null_mut(), &mut lptype, null_mut(), &mut lpcbdata);
 
-        if query_result != ERROR_SUCCESS && query_result != ERROR_MORE_DATA {
+        if n != ERROR_SUCCESS && n != ERROR_MORE_DATA {
             RegCloseKey(hkey);
             return Ok(String::new());
         }
 
         // Allocate buffer and read the value
-        let buffer_size = (size / 2) as usize;
-        let mut buffer = vec![0; buffer_size];
-        let read_result = RegQueryValueExW(
-            hkey,
-            path_value.as_ptr(),
-            null_mut(),
-            &mut value_type,
-            buffer.as_mut_ptr() as *mut u8,
-            &mut size,
-        );
+        let len = (lpcbdata / 2) as usize;
+        let mut buffer = vec![0u16; len];
+        let lpdata = buffer.as_mut_ptr() as *mut u8;
+        let n = RegQueryValueExW(hkey, lpvaluename, null_mut(), &mut lptype, lpdata, &mut lpcbdata);
 
         RegCloseKey(hkey);
 
-        if read_result == ERROR_SUCCESS {
-            Ok(from_utf16_buffer(&buffer))
-        } else {
-            Ok(String::new())
-        }
+        if n == ERROR_SUCCESS { Ok(from_utf16_buffer(&buffer)) } else { Ok(String::new()) }
     }
 }
 
 fn set_path(path: &str) -> io::Result<()> {
     unsafe {
-        let mut hkey: HKEY = null_mut();
-        let environment_key = to_utf16("Environment");
-        let path_value = to_utf16("PATH");
-        let path_data = to_utf16(path);
+        let mut hkey = null_mut();
+        let lpsubkey = to_utf16("Environment");
+        let lpsubkey = lpsubkey.as_ptr();
+        let lpvaluename = to_utf16("PATH");
+        let lpvaluename = lpvaluename.as_ptr();
+        let lpdata = to_utf16(path);
+        let cbdata = (lpdata.len() * 2) as u32;
+        let lpdata = lpdata.as_ptr() as *const u8;
 
         // Open the registry key for writing
-        let result =
-            RegOpenKeyExW(HKEY_CURRENT_USER, environment_key.as_ptr(), 0, KEY_WRITE, &mut hkey);
-
-        if result != ERROR_SUCCESS {
-            return Err(win32_error_to_io_error(result));
+        let n = RegOpenKeyExW(HKEY_CURRENT_USER, lpsubkey, 0, KEY_WRITE, &mut hkey);
+        if n != ERROR_SUCCESS {
+            return Err(win32_error_to_io_error(n));
         }
 
         // Set the value
-        let set_result = RegSetValueExW(
-            hkey,
-            path_value.as_ptr(),
-            0,
-            REG_SZ,
-            path_data.as_ptr() as *const u8,
-            (path_data.len() * 2) as u32,
-        );
-
+        let n = RegSetValueExW(hkey, lpvaluename, 0, REG_SZ, lpdata, cbdata);
         RegCloseKey(hkey);
-
-        if set_result == ERROR_SUCCESS { Ok(()) } else { Err(win32_error_to_io_error(set_result)) }
+        if n == ERROR_SUCCESS { Ok(()) } else { Err(win32_error_to_io_error(n)) }
     }
 }
 
@@ -225,51 +202,47 @@ impl Stdin for WindowsStdin {
 }
 
 fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, io::Error> {
-    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
-    if handle == INVALID_HANDLE_VALUE {
+    let hconsoleinput = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    if hconsoleinput == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
     }
 
     let mut cap = 16 * KIBI;
     let mut buf16: Vec<u16, &Arena> = Vec::with_capacity_in(cap, arena);
-    let mut total = 0;
-    let mut scan_start = 0;
+    let (mut total, mut scan_start) = (0, 0);
 
     loop {
         if total == cap {
-            cap = cap
-                .checked_mul(2)
-                .ok_or(win32_error_to_io_error(Foundation::ERROR_NOT_ENOUGH_MEMORY))?;
-            buf16.reserve_exact(cap.saturating_sub(buf16.capacity()));
+            cap *= 2;
+            buf16.reserve_exact(cap - buf16.capacity());
         }
 
-        let avail = cap - total;
-        let base = buf16.as_mut_ptr();
-        let mut chars_read = 0;
+        let nnumberofcharstoread = (cap - total) as u32;
+        let base = buf16.as_ptr();
+        let mut lpnumberofcharsread = 0;
 
         let n = unsafe {
             ReadConsoleW(
-                handle,
+                hconsoleinput,
                 base.add(total) as *mut _,
-                avail as u32,
-                &mut chars_read,
+                nnumberofcharstoread,
+                &mut lpnumberofcharsread,
                 null_mut(),
             )
         };
-
         if n == 0 {
             return Err(io::Error::last_os_error());
         }
-        if chars_read == 0 {
+
+        if lpnumberofcharsread == 0 {
             // EOF
             break;
         }
 
-        total = total.saturating_add(chars_read as usize);
+        total += lpnumberofcharsread as usize;
         let len = total - scan_start;
 
         let hay = unsafe { slice::from_raw_parts(base.add(scan_start), len) };
-
         if let Some(pos) = hay.iter().position(|&c| c == 0x1A) {
             total = scan_start + pos;
             break;
@@ -292,11 +265,8 @@ fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>
         buf16.set_len(total);
     }
 
-    let len: usize = char::decode_utf16(buf16.iter().cloned())
-        .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER).len_utf8())
-        .sum();
-
-    let mut buf8: Vec<u8, &Arena> = Vec::with_capacity_in(len, arena);
+    let cap = total * 3 + 4;
+    let mut buf8: Vec<u8, &Arena> = Vec::with_capacity_in(cap, arena);
     let mut i = 0;
     for ch in char::decode_utf16(buf16.into_iter()) {
         let ch = ch.unwrap_or(char::REPLACEMENT_CHARACTER);
@@ -304,14 +274,14 @@ fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>
         i += enc.len();
     }
 
-    let res = unsafe { ArenaString::from_utf8_unchecked(buf8) };
+    let buf = unsafe { ArenaString::from_utf8_unchecked(buf8) };
 
-    Ok(res)
+    Ok(buf)
 }
 
 fn read_line_pipe<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, io::Error> {
-    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
-    if handle == INVALID_HANDLE_VALUE {
+    let hfile = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    if hfile == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
     }
 
@@ -321,30 +291,34 @@ fn read_line_pipe<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, i
 
     loop {
         if total == cap {
-            cap = cap
-                .checked_mul(2)
-                .ok_or(win32_error_to_io_error(Foundation::ERROR_NOT_ENOUGH_MEMORY))?;
-            buf.reserve_exact(cap.saturating_sub(buf.capacity()));
+            cap *= 2;
+            buf.reserve_exact(cap - buf.capacity());
         }
 
-        let avail = cap - total;
         let base = buf.as_ptr();
-        let mut bytes_read = 0;
+        let nnumberofbytestoread = (cap - total) as u32;
+        let mut lpnumberofbytesread = 0;
 
         let n = unsafe {
-            ReadFile(handle, base.add(total) as *mut _, avail as u32, &mut bytes_read, null_mut())
+            ReadFile(
+                hfile,
+                base.add(total) as *mut _,
+                nnumberofbytestoread,
+                &mut lpnumberofbytesread,
+                null_mut(),
+            )
         };
-
         if n == 0 {
             return Err(io::Error::last_os_error());
         }
-        if bytes_read == 0 {
+
+        if lpnumberofbytesread == 0 {
             // EOF
             break;
         }
 
-        let n = bytes_read as usize;
-        total = total.saturating_add(n);
+        let n = lpnumberofbytesread as usize;
+        total += n;
 
         let hay = unsafe { slice::from_raw_parts(base, total) };
         let pos = memchr(b'\n', hay, total - n);
@@ -363,11 +337,11 @@ fn read_line_pipe<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, i
 
 fn is_console() -> bool {
     unsafe {
-        let handle = GetStdHandle(STD_INPUT_HANDLE);
-        if handle == INVALID_HANDLE_VALUE {
+        let hconsolehandle = GetStdHandle(STD_INPUT_HANDLE);
+        if hconsolehandle == INVALID_HANDLE_VALUE {
             return false;
         }
-        let mut mode = 0;
-        GetConsoleMode(handle, &mut mode) != 0
+        let mut lpmode = 0;
+        GetConsoleMode(hconsolehandle, &mut lpmode) != 0
     }
 }
