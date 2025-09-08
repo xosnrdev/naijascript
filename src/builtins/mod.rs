@@ -40,7 +40,6 @@ pub enum Builtin {
     /// Type of value function
     TypeOf,
     /// Read line from input function
-    #[cfg(not(target_family = "wasm"))]
     ReadLine,
 }
 
@@ -69,9 +68,8 @@ impl Builtin {
             | Builtin::Trim
             | Builtin::ToString
             | Builtin::ToNumber
-            | Builtin::TypeOf => 1,
-            #[cfg(not(target_family = "wasm"))]
-            Builtin::ReadLine => 1,
+            | Builtin::TypeOf
+            | Builtin::ReadLine => 1,
             Builtin::Find => 2,
             Builtin::Slice => 3,
             Builtin::Replace => 3,
@@ -97,9 +95,8 @@ impl Builtin {
             | Builtin::Replace
             | Builtin::Trim
             | Builtin::ToString
-            | Builtin::TypeOf => BuiltinReturnType::String,
-            #[cfg(not(target_family = "wasm"))]
-            Builtin::ReadLine => BuiltinReturnType::String,
+            | Builtin::TypeOf
+            | Builtin::ReadLine => BuiltinReturnType::String,
         }
     }
 
@@ -123,7 +120,6 @@ impl Builtin {
             "to_string" => Some(Builtin::ToString),
             "to_number" => Some(Builtin::ToNumber),
             "typeof" => Some(Builtin::TypeOf),
-            #[cfg(not(target_family = "wasm"))]
             "read_line" => Some(Builtin::ReadLine),
             _ => None,
         }

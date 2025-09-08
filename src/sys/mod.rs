@@ -34,6 +34,8 @@ pub type virtual_memory = WindowsVirtualMemory;
 pub type stdin = UnixStdin;
 #[cfg(windows)]
 pub type stdin = WindowsStdin;
+#[cfg(target_family = "wasm")]
+pub type stdin = WasmStdin;
 
 pub trait VirtualMemory {
     /// Reserves a virtual memory region of the given size.

@@ -1,8 +1,10 @@
 use std::alloc::{Layout, alloc, alloc_zeroed, dealloc};
+use std::io;
 use std::ptr::NonNull;
 
-use super::VirtualMemory;
+use super::{Stdin, VirtualMemory};
 use crate::KIBI;
+use crate::arena::{Arena, ArenaString};
 
 const WASM_PAGE: usize = 64 * KIBI;
 const ZERO_ON_RESERVE: bool = false;
@@ -40,5 +42,16 @@ impl VirtualMemory for WasmVirtualMemory {
                 dealloc(base.as_ptr(), layout);
             }
         }
+    }
+}
+
+pub struct WasmStdin;
+
+impl Stdin for WasmStdin {
+    fn read_line<'arena>(
+        _prompt: &str,
+        _arena: &'arena Arena,
+    ) -> Result<ArenaString<'arena>, io::Error> {
+        Err(io::Error::new(io::ErrorKind::Unsupported, "Dis platform lack I/O support"))
     }
 }
