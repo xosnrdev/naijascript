@@ -10,7 +10,6 @@ use crate::syntax::parser::{
     ArgList, BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts,
     StringSegment, UnaryOp,
 };
-#[cfg(not(target_family = "wasm"))]
 use crate::sys::{self, Stdin};
 
 /// Runtime errors that can occur during NaijaScript execution.
@@ -51,12 +50,6 @@ struct RuntimeError {
     kind: RuntimeErrorKind,
     // Reference to the source span.
     span: Span,
-}
-
-impl From<RuntimeErrorKind> for RuntimeError {
-    fn from(kind: RuntimeErrorKind) -> Self {
-        RuntimeError { kind, span: Span::default() }
-    }
 }
 
 /// Maximum recursion depth to prevent stack overflow
@@ -402,7 +395,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
         // We check for built-in functions first, as they are guaranteed to exist
         if let Some(builtin) = Builtin::from_name(func_name) {
-            return self.eval_builtin_call(builtin, args);
+            return self.eval_builtin_call(builtin, args, *span);
         }
 
         // We check for user-defined functions next
@@ -450,6 +443,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         &mut self,
         builtin: Builtin,
         args: &'src ArgList<'src>,
+        span: Span,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
         // We evaluate all arguments eagerly (left-to-right evaluation order)
         let mut arg_values = Vec::new_in(self.arena);
@@ -581,11 +575,10 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 };
                 Ok(Value::Str(ArenaCow::borrowed(t)))
             }
-            #[cfg(not(target_family = "wasm"))]
             Builtin::ReadLine => {
                 let prompt = arg_values[0].to_string();
-                let s =
-                    sys::stdin::read_line(&prompt, self.arena).map_err(RuntimeErrorKind::from)?;
+                let s = sys::stdin::read_line(&prompt, self.arena)
+                    .map_err(|err| RuntimeError { kind: RuntimeErrorKind::from(err), span })?;
                 Ok(Value::Str(ArenaCow::owned(s)))
             }
         }
