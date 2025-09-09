@@ -4,6 +4,7 @@ use std::range::Range;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
+use crate::simd::memchr2;
 
 /// Byte-range span within source text.
 pub type Span = Range<usize>;
@@ -116,7 +117,7 @@ impl<'arena> Diagnostics<'arena> {
     // Render all diagnostics as a single ANSI string
     fn render_ansi(&self, src: &str, filename: &str) -> ArenaString<'arena> {
         let mut buf = ArenaString::new_in(self.arena);
-        let gutter_width = Self::compute_gutter_width(&self.diagnostics, src);
+        let gutter_width = self.compute_gutter_width(&self.diagnostics, src);
         for diag in &self.diagnostics {
             self.render_diagnostic(diag, src, filename, gutter_width, Some(&mut buf));
         }
@@ -132,7 +133,7 @@ impl<'arena> Diagnostics<'arena> {
         mut buf: Option<&mut ArenaString<'arena>>,
     ) {
         let color = diag.severity.color_code();
-        let (line, col, line_start, line_end) = Self::line_col_from_span(src, diag.span.start);
+        let (line, col, line_start, line_end) = self.line_col_from_span(src, diag.span.start);
         let header = self.render_header(diag.severity, diag.code, diag.message);
         let location = self.render_location(filename, line, col, color);
         let src_line = &src[line_start..line_end];
@@ -146,7 +147,7 @@ impl<'arena> Diagnostics<'arena> {
         // the source line, while cross-line labels get their own source context.
         let (same_line_labels, cross_line_labels): (Vec<_>, Vec<_>) =
             diag.labels.iter().partition(|label| {
-                let (label_line, _, _, _) = Self::line_col_from_span(src, label.span.start);
+                let (label_line, _, _, _) = self.line_col_from_span(src, label.span.start);
                 label_line == line
             });
 
@@ -169,7 +170,7 @@ impl<'arena> Diagnostics<'arena> {
         let mut cross_line_displays = Vec::with_capacity_in(cross_line_labels.len(), &self.arena);
         for label in cross_line_labels {
             let (label_line, label_col, label_line_start, label_line_end) =
-                Self::line_col_from_span(src, label.span.start);
+                self.line_col_from_span(src, label.span.start);
             let label_src_line = &src[label_line_start..label_line_end];
             let label_gutter = self.render_gutter(label_line, color, gutter_width);
             let line_display = format!("{label_gutter}{label_src_line}");
@@ -295,65 +296,66 @@ impl<'arena> Diagnostics<'arena> {
     }
 
     #[inline]
-    fn line_col_from_span(src: &str, start: usize) -> (usize, usize, usize, usize) {
-        assert!(start <= src.len(), "Start span out of bounds");
+    fn line_col_from_span(&self, src: &str, start: usize) -> (usize, usize, usize, usize) {
+        let line_starts = self.compute_line_starts(src);
+        let line_idx = line_starts.binary_search(&start).unwrap_or_else(|x| x - 1);
+        let line_start = line_starts[line_idx];
+        let line_end = if line_idx + 1 < line_starts.len() {
+            line_starts[line_idx + 1] - 1
+        } else {
+            src.len()
+        };
+        let col = src[line_start..start].chars().count() + 1;
+        (line_idx + 1, col, line_start, line_end)
+    }
 
-        let bytes = src.as_bytes();
-        let mut line_start = 0;
-        let mut line = 1;
+    #[inline]
+    fn compute_line_starts(&self, src: &str) -> Vec<usize, &'arena Arena> {
+        let haystack = src.as_bytes();
+        let len = haystack.len();
+        let mut starts = Vec::with_capacity_in(len, self.arena);
+        starts.push(0);
 
-        // Find last '\n' before start (for line_start)
-        let mut i = 0;
-        while i < start {
-            if unsafe { *bytes.get_unchecked(i) } == b'\n' {
-                line_start = i + 1;
-                line += 1;
-            }
-            i += 1;
-        }
-
-        // Find next '\n' after line_start (for line_end)
-        let mut line_end = src.len();
-        i = line_start;
-        while i < src.len() {
-            if unsafe { *bytes.get_unchecked(i) } == b'\n' {
-                line_end = i;
+        let mut offset = 0;
+        while offset < len {
+            // find either '\n' or ('\r' for windows)
+            let idx = memchr2(b'r', b'\n', haystack, offset);
+            if idx == len {
                 break;
             }
-            i += 1;
+
+            // handle '\r' (Windows case)
+            if haystack[idx] == b'\r' {
+                if idx + 1 < len && haystack[idx + 1] == b'\n' {
+                    starts.push(idx + 2);
+                    offset = idx + 2;
+                    continue;
+                } else {
+                    // lone '\r' as a newline
+                    starts.push(idx + 1);
+                    offset = idx + 1;
+                    continue;
+                }
+            }
+
+            // plain '\n' (Unix case)
+            starts.push(idx + 1);
+            offset = idx + 1
         }
 
-        // Count UTF-8 chars from line_start to start (for col)
-        let mut col = 1;
-        let mut j = line_start;
-        while j < start {
-            let c = unsafe { *bytes.get_unchecked(j) };
-            let step = if c < 0x80 {
-                1
-            } else if c < 0xE0 {
-                2
-            } else if c < 0xF0 {
-                3
-            } else {
-                4
-            };
-            col += 1;
-            j += step;
-        }
-
-        (line, col, line_start, line_end)
+        starts
     }
 
     // We calculate the widest line number so the gutter always lines up,
     // no matter how many digits the line numbers have.
     #[inline]
-    fn compute_gutter_width(diagnostics: &[Diagnostic], src: &str) -> usize {
+    fn compute_gutter_width(&self, diagnostics: &[Diagnostic], src: &str) -> usize {
         let mut max_line = 1;
         for diag in diagnostics {
-            let (line, _, _, _) = Self::line_col_from_span(src, diag.span.start);
+            let (line, _, _, _) = self.line_col_from_span(src, diag.span.start);
             max_line = max_line.max(line);
             for label in &diag.labels {
-                let (label_line, _, _, _) = Self::line_col_from_span(src, label.span.start);
+                let (label_line, _, _, _) = self.line_col_from_span(src, label.span.start);
                 max_line = max_line.max(label_line);
             }
         }
@@ -372,33 +374,38 @@ pub trait AsStr: 'static {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::KIBI;
 
     #[test]
     fn test_utf8_column_calculation() {
         let src = "áé你😆"; // 2-byte, 2-byte, 3-byte, 4-byte characters
+        let arena = Arena::new(KIBI).unwrap();
+        let diagnostics = Diagnostics::new(&arena);
 
-        let (_, col, ..) = Diagnostics::line_col_from_span(src, 0);
+        let (_, col, ..) = diagnostics.line_col_from_span(src, 0);
         assert_eq!(col, 1); // First character 'á'
 
-        let (_, col, ..) = Diagnostics::line_col_from_span(src, 2);
+        let (_, col, ..) = diagnostics.line_col_from_span(src, 2);
         assert_eq!(col, 2); // Second character 'é' at byte 2
 
-        let (_, col, ..) = Diagnostics::line_col_from_span(src, 4);
+        let (_, col, ..) = diagnostics.line_col_from_span(src, 4);
         assert_eq!(col, 3); // Third character '你' at byte 4
 
-        let (_, col, ..) = Diagnostics::line_col_from_span(src, 7);
+        let (_, col, ..) = diagnostics.line_col_from_span(src, 7);
         assert_eq!(col, 4); // Fourth character '😆' at byte 7
     }
 
     #[test]
     fn test_utf8_multiline_handling() {
         let src = "foó\nbár";
+        let arena = Arena::new(KIBI).unwrap();
+        let diagnostics = Diagnostics::new(&arena);
 
-        let (line, col, ..) = Diagnostics::line_col_from_span(src, 2);
+        let (line, col, ..) = diagnostics.line_col_from_span(src, 2);
         assert_eq!(line, 1);
         assert_eq!(col, 3); // 'ó' in "foó" at character position 3
 
-        let (line, col, ..) = Diagnostics::line_col_from_span(src, 6);
+        let (line, col, ..) = diagnostics.line_col_from_span(src, 6);
         assert_eq!(line, 2);
         assert_eq!(col, 2); // 'á' in "bár" at character position 2
     }
