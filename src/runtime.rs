@@ -119,6 +119,7 @@ pub struct Runtime<'arena, 'src> {
 
 impl<'arena, 'src> Runtime<'arena, 'src> {
     /// Creates a new [`Runtime`] instance.
+    #[inline]
     pub fn new(arena: &'arena Arena) -> Self {
         Runtime {
             env: Vec::new_in(arena),
@@ -131,6 +132,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     /// Executes a NaijaScript program starting from the root block.
+    #[inline]
     pub fn run(&mut self, root: BlockRef<'src>) -> &Diagnostics<'arena> {
         self.env.push(Vec::new_in(self.arena)); // enter global scope
 
@@ -164,16 +166,17 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     //
     // Each statement type updates the environment or controls flow.
     // Functions definitions populate the global function table.
+    #[inline]
     fn exec_stmt(&mut self, stmt: StmtRef<'src>) -> Result<ExecFlow<'arena, 'src>, RuntimeError> {
         match stmt {
             Stmt::Assign { var, expr, .. } => {
                 let val = self.eval_expr(expr)?;
-                self.insert_or_update(var, val);
+                self.define_var(var, val);
                 Ok(ExecFlow::Continue)
             }
             Stmt::AssignExisting { var, expr, .. } => {
                 let val = self.eval_expr(expr)?;
-                self.update_existing(var, val);
+                self.assign_var(var, val);
                 Ok(ExecFlow::Continue)
             }
             Stmt::If { cond, then_b, else_b, .. } => {
@@ -236,6 +239,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     // Block execution with proper scope management and early return handling
+    #[inline]
     fn exec_block_with_flow(
         &mut self,
         block: BlockRef<'src>,
@@ -255,6 +259,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         Ok(ExecFlow::Continue)
     }
 
+    #[inline]
     fn eval_expr(&mut self, expr: ExprRef<'src>) -> Result<Value<'arena, 'src>, RuntimeError> {
         match expr {
             Expr::Number(n, ..) => Ok(Value::Number(
@@ -382,6 +387,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     // Function call evaluation
+    #[inline]
     fn eval_function_call(
         &mut self,
         callee: ExprRef<'src>,
@@ -399,12 +405,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
 
         // We check for user-defined functions next
-        let func_def = self
-            .functions
-            .iter()
-            .find(|f| f.name == func_name)
-            .expect("Semantic analysis guarantees function exists")
-            .clone();
+        let func_idx = self.lookup_func(func_name);
 
         // We check for recursion depth
         if self.call_stack.len() >= MAX_CALL_DEPTH {
@@ -417,6 +418,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
 
+        let func_def = &self.functions[func_idx];
         assert_eq!(arg_values.len(), func_def.params.params.len());
 
         // We create a new activation record for the function call
@@ -439,6 +441,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     // Built-in function evaluation
+    #[inline]
     fn eval_builtin_call(
         &mut self,
         builtin: Builtin,
@@ -584,55 +587,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    // Variable assignment, adds or updates in current scope
-    fn insert_or_update(&mut self, var: &'src str, val: Value<'arena, 'src>) {
-        if let Some(scope) = self.env.last_mut() {
-            if let Some((.., slot)) = scope.iter_mut().find(|(name, ..)| *name == var) {
-                *slot = val;
-            } else {
-                scope.push((var, val));
-            }
-        }
-    }
-
-    fn update_existing(&mut self, var: &'src str, val: Value<'arena, 'src>) {
-        // First try function-local variables
-        if let Some(activation) = self.call_stack.last_mut()
-            && let Some((.., slot)) =
-                activation.local_vars.iter_mut().find(|(name, ..)| *name == var)
-        {
-            *slot = val;
-            return;
-        }
-
-        // Then try regular scope stack
-        for scope in self.env.iter_mut().rev() {
-            if let Some((.., slot)) = scope.iter_mut().find(|(name, ..)| *name == var) {
-                *slot = val;
-                return;
-            }
-        }
-        unreachable!("Semantic analysis guarantees variable exists");
-    }
-
-    #[inline]
-    fn lookup_var(&self, var: &str) -> Option<Value<'arena, 'src>> {
-        // Function locals take precedence over outer scopes
-        if let Some(activation) = self.call_stack.last()
-            && let Some((.., val)) = activation.local_vars.iter().find(|(name, ..)| *name == var)
-        {
-            return Some(val.clone());
-        }
-
-        // Then check regular scope stack (global and block scopes)
-        for scope in self.env.iter().rev() {
-            if let Some((.., val)) = scope.iter().find(|(name, ..)| *name == var) {
-                return Some(val.clone());
-            }
-        }
-        None
-    }
-
     #[inline]
     fn eval_string_expr(
         &mut self,
@@ -656,5 +610,86 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 Ok(Value::Str(ArenaCow::owned(result)))
             }
         }
+    }
+
+    #[inline]
+    fn define_var(&mut self, name: &'src str, val: Value<'arena, 'src>) {
+        if let Some(scope) = self.env.last_mut() {
+            if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
+                *slot = val;
+            } else {
+                scope.push((name, val));
+            }
+        }
+    }
+
+    #[inline]
+    fn assign_var(&mut self, name: &'src str, val: Value<'arena, 'src>) {
+        // First try function-local variables
+        if let Some(slot) = self.lookup_call_stack_mut(name) {
+            *slot = val;
+            return;
+        }
+
+        // Then try regular scope stack
+        for scope in self.env.iter_mut().rev() {
+            if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
+                *slot = val;
+                return;
+            }
+        }
+        unreachable!("Semantic analysis guarantees variable exists");
+    }
+
+    #[inline]
+    fn lookup_var(&self, name: &str) -> Option<Value<'arena, 'src>> {
+        // Function locals take precedence over outer scopes
+        if let Some(val) = self.lookup_call_stack(name) {
+            return Some(val.clone());
+        }
+
+        // Then check regular scope stack (global and block scopes)
+        if let Some(val) = self.lookup_env(name) {
+            return Some(val.clone());
+        }
+        None
+    }
+
+    #[inline]
+    fn lookup_func(&self, name: &str) -> usize {
+        self.functions
+            .iter()
+            .position(|f| f.name == name)
+            .expect("Semantic analysis guarantees function exists")
+    }
+
+    #[inline]
+    fn lookup_env(&self, name: &str) -> Option<&Value<'arena, 'src>> {
+        for scope in self.env.iter().rev() {
+            if let Some((.., val)) = scope.iter().find(|(var, ..)| *var == name) {
+                return Some(val);
+            }
+        }
+        None
+    }
+
+    #[inline]
+    fn lookup_call_stack(&self, name: &str) -> Option<&Value<'arena, 'src>> {
+        if let Some(activation) = self.call_stack.last()
+            && let Some((.., val)) = activation.local_vars.iter().find(|(var, ..)| *var == name)
+        {
+            return Some(val);
+        }
+        None
+    }
+
+    #[inline]
+    fn lookup_call_stack_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
+        if let Some(activation) = self.call_stack.last_mut()
+            && let Some((.., val)) = activation.local_vars.iter_mut().find(|(var, ..)| *var == name)
+        {
+            return Some(val);
+        }
+        None
     }
 }
