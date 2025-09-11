@@ -89,14 +89,6 @@ impl<'arena, 'input> std::fmt::Display for Token<'arena, 'input> {
 }
 
 impl<'arena, 'input> Token<'arena, 'input> {
-    pub fn suggest_keyword(ident: &str) -> Option<&'static str> {
-        Self::all_keywords()
-            .iter()
-            .find(|&&kw| Self::is_single_edit(ident, kw))
-            .copied()
-            .map(|v| v as _)
-    }
-
     pub fn is_reserved_keyword(&self) -> bool {
         matches!(
             self,
@@ -121,87 +113,6 @@ impl<'arena, 'input> Token<'arena, 'input> {
                 | Token::True
                 | Token::False
         )
-    }
-
-    // Returns a static list of all reserved keywords in NaijaScript.
-    #[inline(always)]
-    const fn all_keywords() -> &'static [&'static str] {
-        &[
-            "make",
-            "get",
-            "add",
-            "minus",
-            "times",
-            "divide",
-            "mod",
-            "jasi",
-            "start",
-            "end",
-            "na",
-            "pass",
-            "small pass",
-            "if to say",
-            "if not so",
-            "do",
-            "return",
-            "true",
-            "false",
-            "and",
-            "not",
-            "or",
-        ]
-    }
-
-    // Checks if two strings differ by exactly one simple change: either a single character replaced, added, or removed.
-    #[inline]
-    fn is_single_edit(a: &str, b: &str) -> bool {
-        if a == b {
-            return false;
-        }
-        let a_bytes = a.as_bytes();
-        let b_bytes = b.as_bytes();
-        let (alen, blen) = (a_bytes.len(), b_bytes.len());
-        if alen == blen {
-            // Handles the case where only one character is different between the two strings
-            let mut diff = 0;
-            for (x, y) in a_bytes.iter().zip(b_bytes.iter()) {
-                if x != y {
-                    diff += 1;
-                    if diff > 1 {
-                        return false;
-                    }
-                }
-            }
-            diff == 1
-        } else if alen + 1 == blen {
-            // Handles when the second string has one extra character compared to the first
-            b.starts_with(a) || Self::is_one_insert(a_bytes, b_bytes)
-        } else if alen == blen + 1 {
-            // Handles when the first string has one extra character compared to the second
-            a.starts_with(b) || Self::is_one_insert(b_bytes, a_bytes)
-        } else {
-            false
-        }
-    }
-
-    #[inline]
-    const fn is_one_insert(short: &[u8], long: &[u8]) -> bool {
-        let mut i = 0;
-        let mut j = 0;
-        let mut found = false;
-        while i < short.len() && j < long.len() {
-            if short[i] != long[j] {
-                if found {
-                    return false;
-                }
-                found = true;
-                j += 1;
-            } else {
-                i += 1;
-                j += 1;
-            }
-        }
-        true
     }
 }
 
