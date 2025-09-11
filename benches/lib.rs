@@ -15,16 +15,13 @@ fn bench_skip_comment(c: &mut Criterion) {
         # Comment
         x add "baz"
     "#;
-    let arena = scratch_arena(None);
+
     c.bench_function("skip_comment", |b| {
         b.iter(|| {
-            let offset = arena.offset();
+            let arena = scratch_arena(None);
             let lexer = Lexer::new(src, &arena);
             let token: Vec<_> = lexer.collect();
             black_box(token);
-            unsafe {
-                arena.reset(offset);
-            }
         })
     });
 }
@@ -36,46 +33,38 @@ fn bench_scan_string(c: &mut Criterion) {
         # String escape sequence
         "abcd\nefgh\tijkl\"mnop\\qrst"
     "#;
-    let arena = scratch_arena(None);
     c.bench_function("scan_string", |b| {
         b.iter(|| {
-            let offset = arena.offset();
+            let arena = scratch_arena(None);
             let lexer = Lexer::new(src, &arena);
             let token: Vec<_> = lexer.collect();
             black_box(token);
-            unsafe {
-                arena.reset(offset);
-            }
         })
     });
 }
 
 fn bench_parse_assignment(c: &mut Criterion) {
     let src = "make x get 42";
-    let arena = scratch_arena(None);
     c.bench_function("parse_assignment", |b| {
         b.iter(|| {
-            let offset = arena.offset();
+            let arena = scratch_arena(None);
             let lexer = Lexer::new(src, &arena);
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-            unsafe { arena.reset(offset) };
         })
     });
 }
 
 fn bench_parse_arithmetic_expr(c: &mut Criterion) {
     let src = "make result get 1 add 2 times 3 divide 4 minus 5";
-    let arena = scratch_arena(None);
     c.bench_function("parse_arithmetic_expression", |b| {
         b.iter(|| {
-            let offset = arena.offset();
+            let arena = scratch_arena(None);
             let lexer = Lexer::new(src, &arena);
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-            unsafe { arena.reset(offset) };
         })
     });
 }
@@ -89,15 +78,14 @@ fn bench_parse_fn_def(c: &mut Criterion) {
             return fibonacci(n minus 1) add fibonacci(n minus 2)
         end
     "#;
-    let arena = scratch_arena(None);
+
     c.bench_function("parse_function_definition", |b| {
         b.iter(|| {
-            let offset = arena.offset();
+            let arena = scratch_arena(None);
             let lexer = Lexer::new(src, &arena);
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-            unsafe { arena.reset(offset) };
         })
     });
 }
@@ -114,15 +102,14 @@ fn bench_parse_ctrl_flow(c: &mut Criterion) {
             i get i add 1
         end
     "#;
-    let arena = scratch_arena(None);
+
     c.bench_function("parse_control_flow", |b| {
         b.iter(|| {
-            let offset = arena.offset();
+            let arena = scratch_arena(None);
             let lexer = Lexer::new(src, &arena);
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-            unsafe { arena.reset(offset) };
         })
     });
 }
@@ -168,15 +155,14 @@ fn bench_parse_long_program(c: &mut Criterion) {
             i get i add 1
         end
     "#;
-    let arena = scratch_arena(None);
+
     c.bench_function("parse_long_program", |b| {
         b.iter(|| {
-            let offset = arena.offset();
+            let arena = scratch_arena(None);
             let lexer = Lexer::new(src, &arena);
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-            unsafe { arena.reset(offset) };
         })
     });
 }
@@ -187,59 +173,51 @@ fn bench_parse_string_interpolation(c: &mut Criterion) {
         make greeting get "Hello {name}, how you dey?"
         shout(greeting)
     "#;
-    let arena = scratch_arena(None);
+
     c.bench_function("parse_string_interpolation", |b| {
         b.iter(|| {
-            let offset = arena.offset();
+            let arena = scratch_arena(None);
             let lexer = Lexer::new(src, &arena);
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-            unsafe { arena.reset(offset) };
         })
     });
 }
 
 fn bench_parse_nested_expr(c: &mut Criterion) {
     let src = "make result get ((((1 add 2) times 3) divide 4) minus 5) add ((6 times 7) divide (8 add 9))";
-    let arena = scratch_arena(None);
 
     c.bench_function("parse_nested_expression", |b| {
         b.iter(|| {
-            let offset = arena.offset();
+            let arena = scratch_arena(None);
             let lexer = Lexer::new(src, &arena);
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-            unsafe { arena.reset(offset) };
         })
     });
 }
 
 fn bench_string_slice(c: &mut Criterion) {
     let src = "Hello, 世界! 🌎";
-    let arena = scratch_arena(None);
 
     c.bench_function("string_slice", |b| {
         b.iter(|| {
-            let offset = arena.offset();
+            let arena = scratch_arena(None);
             let s = builtins::string_slice(src, 0.0, 5.0, &arena);
             black_box(s);
-            unsafe { arena.reset(offset) };
         })
     });
 }
 
 fn bench_two_way(c: &mut Criterion) {
     let src = "ab cd ef gh ij kl mn op qr st uv wx yz";
-    let arena = scratch_arena(None);
 
     c.bench_function("two_way", |b| {
         b.iter(|| {
-            let offset = arena.offset();
             let index = builtins::find(src, "uv");
             black_box(index);
-            unsafe { arena.reset(offset) };
         })
     });
 }

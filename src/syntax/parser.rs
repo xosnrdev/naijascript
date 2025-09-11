@@ -348,21 +348,15 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         let end = self.cur.span.end;
                         Some(self.alloc(Stmt::Expression { expr, span: Range::from(start..end) }))
                     } else {
-                        let message: ArenaCow<'ast, 'static> =
-                            if let Some(suggestion) = Token::suggest_keyword(var) {
-                                ArenaCow::Owned(arena_format!(
-                                    &self.arena,
-                                    "I dey expect statement. Na `{suggestion}` you mean?",
-                                ))
-                            } else {
-                                ArenaCow::Borrowed("I dey expect statement")
-                            };
                         self.errors.emit(
                             var_span,
                             Severity::Error,
                             "syntax",
                             SyntaxError::ExpectedStatement.as_str(),
-                            vec![Label { span: var_span, message }],
+                            vec![Label {
+                                span: var_span,
+                                message: ArenaCow::Borrowed("I dey expect statement"),
+                            }],
                         );
                         None
                     }
