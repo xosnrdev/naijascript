@@ -18,20 +18,20 @@ use crate::sys::{self, Stdin};
 /// can only be detected when expressions actually evaluate.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RuntimeErrorKind {
+    /// I/O error that occurred
+    Io(&'static str),
     /// Division by zero, which we can't catch until the divisor evaluates to zero
     DivisionByZero,
     /// Call stack overflow to prevent infinite recursion from crashing the host
     StackOverflow,
-    /// I/O error that occurred
-    Io(&'static str),
 }
 
 impl AsStr for RuntimeErrorKind {
     fn as_str(&self) -> &'static str {
         match &self {
+            RuntimeErrorKind::Io(..) => "I/O error",
             RuntimeErrorKind::DivisionByZero => "Division by zero",
             RuntimeErrorKind::StackOverflow => "Stack overflow",
-            RuntimeErrorKind::Io(..) => "I/O error",
         }
     }
 }
@@ -58,10 +58,10 @@ const MAX_CALL_DEPTH: usize = 1000;
 /// The value types our runtime can work with at runtime.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value<'arena, 'src> {
-    /// All numbers are f64 to keep arithmetic simple and avoid int/float distinction
-    Number(f64),
     /// String literals reference original source when possible
     Str(ArenaCow<'arena, 'src>),
+    /// All numbers are f64 to keep arithmetic simple and avoid int/float distinction
+    Number(f64),
     /// Standard boolean values
     Bool(bool),
 }
@@ -69,8 +69,8 @@ pub enum Value<'arena, 'src> {
 impl fmt::Display for Value<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Number(n) => write!(f, "{n}"),
             Value::Str(s) => write!(f, "{s}"),
+            Value::Number(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
         }
     }
@@ -92,8 +92,8 @@ struct ActivationRecord<'arena, 'src> {
 // Controls how function execution should proceed after statements
 #[derive(Debug, Clone, PartialEq)]
 enum ExecFlow<'arena, 'src> {
-    Continue,
     Return(Value<'arena, 'src>),
+    Continue,
 }
 
 /// The runtime interface for NaijaScript using arena-allocated AST.
@@ -110,23 +110,23 @@ pub struct Runtime<'arena, 'src> {
     /// Output from `shout()` function calls, public for caller access
     pub output: Vec<Value<'arena, 'src>, &'arena Arena>,
 
-    // Reference to the arena for allocating runtime data structures
-    arena: &'arena Arena,
-
     /// Collection of runtime errors encountered during execution
     pub errors: Diagnostics<'arena>,
+
+    // Reference to the arena for allocating runtime data structures
+    arena: &'arena Arena,
 }
 
 impl<'arena, 'src> Runtime<'arena, 'src> {
     /// Creates a new [`Runtime`] instance.
     pub fn new(arena: &'arena Arena) -> Self {
-        Runtime {
+        Self {
             env: Vec::new_in(arena),
             functions: Vec::new_in(arena),
             call_stack: Vec::new_in(arena),
             output: Vec::new_in(arena),
-            arena,
             errors: Diagnostics::new(arena),
+            arena,
         }
     }
 

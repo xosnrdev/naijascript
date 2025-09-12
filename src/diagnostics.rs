@@ -55,17 +55,17 @@ impl Severity {
 /// Secondary annotation attached to a diagnostic.
 #[derive(Debug)]
 pub struct Label<'arena> {
-    pub span: Span,
     pub message: ArenaCow<'arena, 'static>,
+    pub span: Span,
 }
 
 #[derive(Debug)]
 pub struct Diagnostic<'arena> {
+    pub labels: Vec<Label<'arena>>,
     pub span: Span,
-    pub severity: Severity,
     pub code: &'static str,
     pub message: &'static str,
-    pub labels: Vec<Label<'arena>>,
+    pub severity: Severity,
 }
 
 /// Collection of diagnostics with batch reporting capabilities.

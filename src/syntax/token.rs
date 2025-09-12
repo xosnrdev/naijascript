@@ -14,6 +14,11 @@ pub struct SpannedToken<'arena, 'input> {
 /// letting us avoid copying strings for identifiers and numbers
 #[derive(Debug, Default, Clone, PartialEq)]
 pub enum Token<'arena, 'input> {
+    // Variable length tokens
+    String(ArenaCow<'arena, 'input>), // String literals
+    Identifier(&'input str),          // Variable names
+    Number(&'input str),              // Numeric literals
+
     // Keywords for variable declaration and assignment
     Make, // "make" - variable declaration
     Get,  // "get" - assignment operator
@@ -56,11 +61,6 @@ pub enum Token<'arena, 'input> {
     LParen, // "("
     RParen, // ")"
     Comma,  // ","
-
-    // Variable length tokens
-    Identifier(&'input str),          // Variable names
-    Number(&'input str),              // Numeric literals
-    String(ArenaCow<'arena, 'input>), // String literals
 
     // Special tokens
     #[default]

@@ -32,21 +32,21 @@ impl AsStr for LexError {
 
 /// The interface for the NaijaScript lexer.
 pub struct Lexer<'arena, 'input> {
+    /// Collection of errors encountered during scanning
+    pub errors: Diagnostics<'arena>,
     // The original source text as bytes
     src: &'input [u8],
+    arena: &'arena Arena,
     // Current position in the source text
     pos: usize,
     len: usize,
-    arena: &'arena Arena,
-    /// Collection of errors encountered during scanning
-    pub errors: Diagnostics<'arena>,
 }
 
 impl<'arena, 'input> Lexer<'arena, 'input> {
     /// Creates a new lexer from source text
     pub fn new(src: &'input str, arena: &'arena Arena) -> Self {
         let src = src.as_bytes();
-        Lexer { src, pos: 0, len: src.len(), arena, errors: Diagnostics::new(arena) }
+        Self { errors: Diagnostics::new(arena), src, arena, pos: 0, len: src.len() }
     }
 
     // Returns the next token and its span from the input.

@@ -62,8 +62,8 @@ impl From<BuiltinReturnType> for VarType {
 #[derive(Debug)]
 struct FunctionSig<'ast> {
     name: &'ast str,
-    name_span: &'ast Span,
     param_names: &'ast [&'ast str],
+    name_span: &'ast Span,
     has_return: bool,
     return_type: Option<VarType>,
 }
@@ -81,22 +81,22 @@ pub struct Resolver<'ast> {
     // Track current function context for return statement validation
     current_function: Option<&'ast str>,
 
-    // Reference to the arena for allocating scope vectors
-    arena: &'ast Arena,
-
     /// Collection of semantic errors found during analysis
     pub errors: Diagnostics<'ast>,
+
+    // Reference to the arena for allocating scope vectors
+    arena: &'ast Arena,
 }
 
 impl<'ast> Resolver<'ast> {
     /// Creates a new [`Resolver`] instance.
     pub fn new(arena: &'ast Arena) -> Self {
-        Resolver {
+        Self {
             variable_scopes: Vec::new_in(arena),
             function_scopes: Vec::new_in(arena),
             current_function: None,
-            arena,
             errors: Diagnostics::new(arena),
+            arena,
         }
     }
 

@@ -68,6 +68,14 @@ pub enum StringSegment<'ast> {
 /// Represents a statement in NaijaScript.
 #[derive(Debug)]
 pub enum Stmt<'ast> {
+    // Function definition: do <name>(<params>?) start ... end
+    FunctionDef {
+        name: &'ast str,
+        name_span: Span,
+        params: ParamListRef<'ast>,
+        body: BlockRef<'ast>,
+        span: Span,
+    },
     // "make x get 5"
     Assign {
         var: &'ast str,
@@ -98,14 +106,6 @@ pub enum Stmt<'ast> {
         block: BlockRef<'ast>,
         span: Span,
     },
-    // Function definition: do <name>(<params>?) start ... end
-    FunctionDef {
-        name: &'ast str,
-        name_span: Span,
-        params: ParamListRef<'ast>,
-        body: BlockRef<'ast>,
-        span: Span,
-    },
     // Return statement: return <expr>?
     Return {
         expr: Option<ExprRef<'ast>>,
@@ -121,16 +121,16 @@ pub enum Stmt<'ast> {
 /// Represents an expression in NaijaScript.
 #[derive(Debug)]
 pub enum Expr<'ast> {
-    Number(&'ast str, Span),                         // 42, 3.14, etc.
     String { parts: StringParts<'ast>, span: Span }, // "hello" or "hello {name}"
-    Bool(bool, Span),                                // "true", "false"
+    Number(&'ast str, Span),                         // 42, 3.14, etc.
     Var(&'ast str, Span),                            // variable references
     // arithmetic/logical operations
     Binary { op: BinaryOp, lhs: ExprRef<'ast>, rhs: ExprRef<'ast>, span: Span },
-    // logical/arithmetic negation
-    Unary { op: UnaryOp, expr: ExprRef<'ast>, span: Span },
     // Function call: <callee>(<args>?)
     Call { callee: ExprRef<'ast>, args: ArgListRef<'ast>, span: Span },
+    // logical/arithmetic negation
+    Unary { op: UnaryOp, expr: ExprRef<'ast>, span: Span },
+    Bool(bool, Span), // "true", "false"
 }
 
 /// Represents a block of statements, which can be nested.
@@ -190,15 +190,15 @@ where
 {
     tokens: I,
     cur: SpannedToken<'ast, 'src>,
-    arena: &'ast Arena,
     errors: Diagnostics<'ast>,
+    arena: &'ast Arena,
 }
 
 impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src, 'ast, I> {
     /// Creates a new [`Parser`] instance.
     pub fn new(mut tokens: I, arena: &'ast Arena) -> Self {
         let cur = tokens.next().unwrap_or_default();
-        Parser { tokens, cur, arena, errors: Diagnostics::new(arena) }
+        Self { tokens, cur, errors: Diagnostics::new(arena), arena }
     }
 
     #[inline]
