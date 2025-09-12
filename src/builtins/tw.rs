@@ -15,7 +15,6 @@ const SIMD_THRESHOLD: usize = 16;
 /// compared to the standard [`std::str::find`].
 ///
 /// See [`twoway`](https://docs.rs/crate/twoway/latest/source/src/tw.rs) for reference.
-#[inline]
 pub fn find(haystack: &str, needle: &str) -> Option<usize> {
     let (h, n) = (haystack.as_bytes(), needle.as_bytes());
     let (hlen, nlen) = (h.len(), n.len());
@@ -126,7 +125,6 @@ fn maximal_suffix(x: &[u8], rev: bool) -> (usize, usize) {
     (i, p)
 }
 
-#[inline]
 fn crit_period(x: &[u8]) -> (usize, usize) {
     let (i, p) = maximal_suffix(x, false);
     let (j, q) = maximal_suffix(x, true);

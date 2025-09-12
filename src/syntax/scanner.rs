@@ -36,23 +36,21 @@ pub struct Lexer<'arena, 'input> {
     src: &'input [u8],
     // Current position in the source text
     pos: usize,
+    len: usize,
+    arena: &'arena Arena,
     /// Collection of errors encountered during scanning
     pub errors: Diagnostics<'arena>,
-    arena: &'arena Arena,
 }
 
 impl<'arena, 'input> Lexer<'arena, 'input> {
     /// Creates a new lexer from source text
-    #[inline(always)]
     pub fn new(src: &'input str, arena: &'arena Arena) -> Self {
-        Lexer { src: src.as_bytes(), pos: 0, errors: Diagnostics::new(arena), arena }
+        let src = src.as_bytes();
+        Lexer { src, pos: 0, len: src.len(), arena, errors: Diagnostics::new(arena) }
     }
 
     // Returns the next token and its span from the input.
-    #[inline(always)]
     fn next_token(&mut self) -> SpannedToken<'arena, 'input> {
-        let len = self.src.len();
-
         loop {
             // Skip over any whitespace before the next token
             self.skip_whitespace();
@@ -61,11 +59,11 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             let start = self.pos;
 
             // Check for EOF first
-            if self.pos >= len {
+            if self.pos >= self.len {
                 return SpannedToken { token: Token::EOF, span: Range::from(start..start) };
             }
 
-            // SAFETY: We just checked that self.pos < len
+            // SAFETY: We just checked that self.pos < self.len
             let b = unsafe { *self.src.get_unchecked(self.pos) };
 
             // If we see a '#' character, that means the start of a comment.
@@ -135,17 +133,16 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
     //
     // Since NaijaScript doesn't have significant whitespace (like Python),
     // we can simply skip over all spaces, tabs, newlines, etc.
-    #[inline(always)]
     fn skip_whitespace(&mut self) {
-        let len = self.src.len();
-        while self.pos < len && unsafe { self.src.get_unchecked(self.pos) }.is_ascii_whitespace() {
+        while self.pos < self.len
+            && unsafe { self.src.get_unchecked(self.pos) }.is_ascii_whitespace()
+        {
             self.pos += 1;
         }
     }
 
-    #[inline(always)]
     fn skip_comment(&mut self) {
-        let len = self.src.len();
+        let len = self.len;
 
         // SAFETY: self.pos..len is guaranteed to be a valid slice
         // and the performance gain is significant in our benchmarks
@@ -170,7 +167,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
     // Checks if a byte is a letter (A-Z, a-z) or underscore (_)
     //
     // Used for identifier and keyword detection
-    #[inline(always)]
+    #[inline]
     const fn is_alpha_or_underscore(b: u8) -> bool {
         b.is_ascii_alphabetic() || b == b'_'
     }
@@ -181,12 +178,10 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
     // 1. We only match ASCII alphabetic/numeric/underscore characters, which are valid UTF-8
     // 2. The original source was already valid UTF-8
     // 3. The performance gain is significant in our benchmarks
-    #[inline(always)]
     fn read_word(&mut self) -> &'input str {
         let beg = self.pos;
-        let len = self.src.len();
 
-        while self.pos < len {
+        while self.pos < self.len {
             let ch = unsafe { *self.src.get_unchecked(self.pos) };
             if !Self::is_alpha_or_underscore(ch) && !ch.is_ascii_digit() {
                 break;
@@ -204,9 +199,9 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
     // and only consumes it if:
     // 1. It's followed by a non-alphabetic character (prevents partial matches)
     // 2. We have enough input left
-    #[inline(always)]
+    #[inline]
     fn try_consume_word(&mut self, word: &str) -> bool {
-        let len = self.src.len();
+        let len = self.len;
         let mut beg = self.pos;
 
         while beg < len && unsafe { *self.src.get_unchecked(beg) }.is_ascii_whitespace() {
@@ -228,7 +223,6 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         false
     }
 
-    #[inline(always)]
     fn scan_string(&mut self, start: usize, quote: u8) -> Token<'arena, 'input> {
         self.pos += 1; // Skip the opening quote
         let beg = self.pos;
@@ -238,7 +232,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
 
         loop {
             // Find the next quote or escape sequence
-            // SAFETY: self.pos is always <= self.src.len() due to lexer invariants
+            // SAFETY: self.pos is always <= self.len due to lexer invariants
             let bytes = unsafe { self.src.get_unchecked(self.pos..) };
             let pos = memchr2(quote, b'\\', bytes, 0);
             // We don't have a closing quote or escape sequence
@@ -283,14 +277,14 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                     buffer.push_str(slice);
                 }
                 // We don't want an incomplete escape sequence
-                if pos + 1 >= self.src.len() {
+                if pos + 1 >= self.len {
                     self.errors.emit(
-                        Range::from(start..self.src.len()),
+                        Range::from(start..self.len),
                         Severity::Error,
                         "lexical",
                         LexError::UnterminatedString.as_str(),
                         vec![Label {
-                            span: Range::from(start..self.src.len()),
+                            span: Range::from(start..self.len),
                             message: ArenaCow::Owned(arena_format!(
                                 &self.arena,
                                 "Dis string no get ending quote `{}`",
@@ -298,11 +292,11 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                             )),
                         }],
                     );
-                    self.pos = self.src.len();
+                    self.pos = self.len;
                     return Token::String(ArenaCow::Owned(buffer));
                 }
 
-                // SAFETY: We just checked that pos + 1 < self.src.len()
+                // SAFETY: We just checked that pos + 1 < self.len
                 let esc = unsafe { *self.src.get_unchecked(pos + 1) };
                 match esc {
                     b'"' if quote == b'"' => buffer.push('"'),
@@ -336,24 +330,22 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             r#"Dis string no get ending quote `'`"#
         });
         self.errors.emit(
-            Range::from(start..self.src.len()),
+            Range::from(start..self.len),
             Severity::Error,
             "lexical",
             LexError::UnterminatedString.as_str(),
-            vec![Label { span: Range::from(start..self.src.len()), message }],
+            vec![Label { span: Range::from(start..self.len), message }],
         );
-        self.pos = self.src.len();
+        self.pos = self.len;
         if has_escape {
             Token::String(ArenaCow::Owned(buffer))
         } else {
             // SAFETY: We know this is valid UTF-8 because we only process valid string content
-            let s =
-                unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..self.src.len())) };
+            let s = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..self.len)) };
             Token::String(ArenaCow::Borrowed(s))
         }
     }
 
-    #[inline(always)]
     fn scan_punctuation(&mut self, b: u8) -> Option<Token<'arena, 'input>> {
         match b {
             b'(' => {
@@ -372,10 +364,9 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         }
     }
 
-    #[inline(always)]
     fn scan_number(&mut self, start: usize) -> Token<'arena, 'input> {
         let mut saw_dot = false;
-        let len = self.src.len();
+        let len = self.len;
 
         // Let's consume the integer part of the number first.
         // We'll keep bumping as long as we see digits.
@@ -469,7 +460,6 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         Token::Number(num)
     }
 
-    #[inline(always)]
     fn scan_identifier_or_keyword(&mut self, start: usize) -> Token<'arena, 'input> {
         let word = self.read_word();
         // Handle multi-word constructs
@@ -580,7 +570,7 @@ impl<'arena, 'input> Iterator for Lexer<'arena, 'input> {
         // We want to yield exactly one EOF token at the end of the input.
         // After that, the iterator should return None on all subsequent calls.
         // This check ensures we don't emit multiple EOF tokens if .next() is called repeatedly.
-        if matches!(st.token, Token::EOF) && self.pos >= self.src.len() {
+        if matches!(st.token, Token::EOF) && self.pos >= self.len {
             // We're already at the end, so let's stop iterating.
             return None;
         }

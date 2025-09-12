@@ -53,7 +53,6 @@ pub enum BuiltinReturnType {
 
 impl Builtin {
     /// Get the expected parameter count for the built-in function
-    #[inline]
     pub const fn arity(self) -> usize {
         match self {
             Builtin::Shout
@@ -77,7 +76,6 @@ impl Builtin {
     }
 
     /// Get the return type of the built-in function
-    #[inline]
     pub const fn return_type(self) -> BuiltinReturnType {
         match self {
             Builtin::Shout
@@ -101,7 +99,6 @@ impl Builtin {
     }
 
     /// Check if a function name refers to a built-in
-    #[inline]
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
             "shout" => Some(Builtin::Shout),

@@ -107,32 +107,30 @@ pub struct Runtime<'arena, 'src> {
     // Call stack for function execution, prevents infinite recursion
     call_stack: Vec<ActivationRecord<'arena, 'src>, &'arena Arena>,
 
-    /// Collection of runtime errors encountered during execution
-    pub errors: Diagnostics<'arena>,
-
     /// Output from `shout()` function calls, public for caller access
     pub output: Vec<Value<'arena, 'src>, &'arena Arena>,
 
     // Reference to the arena for allocating runtime data structures
     arena: &'arena Arena,
+
+    /// Collection of runtime errors encountered during execution
+    pub errors: Diagnostics<'arena>,
 }
 
 impl<'arena, 'src> Runtime<'arena, 'src> {
     /// Creates a new [`Runtime`] instance.
-    #[inline]
     pub fn new(arena: &'arena Arena) -> Self {
         Runtime {
             env: Vec::new_in(arena),
             functions: Vec::new_in(arena),
             call_stack: Vec::new_in(arena),
-            errors: Diagnostics::new(arena),
             output: Vec::new_in(arena),
             arena,
+            errors: Diagnostics::new(arena),
         }
     }
 
     /// Executes a NaijaScript program starting from the root block.
-    #[inline]
     pub fn run(&mut self, root: BlockRef<'src>) -> &Diagnostics<'arena> {
         self.env.push(Vec::new_in(self.arena)); // enter global scope
 
@@ -166,7 +164,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     //
     // Each statement type updates the environment or controls flow.
     // Functions definitions populate the global function table.
-    #[inline]
     fn exec_stmt(&mut self, stmt: StmtRef<'src>) -> Result<ExecFlow<'arena, 'src>, RuntimeError> {
         match stmt {
             Stmt::Assign { var, expr, .. } => {
@@ -387,7 +384,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     // Function call evaluation
-    #[inline]
     fn eval_function_call(
         &mut self,
         callee: ExprRef<'src>,
@@ -441,7 +437,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     // Built-in function evaluation
-    #[inline]
     fn eval_builtin_call(
         &mut self,
         builtin: Builtin,
@@ -587,7 +582,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    #[inline]
     fn eval_string_expr(
         &mut self,
         parts: &StringParts<'src>,
@@ -612,7 +606,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    #[inline]
     fn define_var(&mut self, name: &'src str, val: Value<'arena, 'src>) {
         if let Some(scope) = self.env.last_mut() {
             if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
@@ -623,7 +616,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    #[inline]
     fn assign_var(&mut self, name: &'src str, val: Value<'arena, 'src>) {
         // First try function-local variables
         if let Some(slot) = self.lookup_call_stack_mut(name) {
@@ -655,7 +647,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         None
     }
 
-    #[inline]
     fn lookup_func(&self, name: &str) -> usize {
         self.functions
             .iter()
@@ -663,7 +654,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             .expect("Semantic analysis guarantees function exists")
     }
 
-    #[inline]
     fn lookup_env(&self, name: &str) -> Option<&Value<'arena, 'src>> {
         for scope in self.env.iter().rev() {
             if let Some((.., val)) = scope.iter().find(|(var, ..)| *var == name) {
@@ -673,7 +663,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         None
     }
 
-    #[inline]
     fn lookup_call_stack(&self, name: &str) -> Option<&Value<'arena, 'src>> {
         if let Some(activation) = self.call_stack.last()
             && let Some((.., val)) = activation.local_vars.iter().find(|(var, ..)| *var == name)
@@ -683,7 +672,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         None
     }
 
-    #[inline]
     fn lookup_call_stack_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
         if let Some(activation) = self.call_stack.last_mut()
             && let Some((.., val)) = activation.local_vars.iter_mut().find(|(var, ..)| *var == name)

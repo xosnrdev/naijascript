@@ -81,28 +81,26 @@ pub struct Resolver<'ast> {
     // Track current function context for return statement validation
     current_function: Option<&'ast str>,
 
-    /// Collection of semantic errors found during analysis
-    pub errors: Diagnostics<'ast>,
-
     // Reference to the arena for allocating scope vectors
     arena: &'ast Arena,
+
+    /// Collection of semantic errors found during analysis
+    pub errors: Diagnostics<'ast>,
 }
 
 impl<'ast> Resolver<'ast> {
     /// Creates a new [`Resolver`] instance.
-    #[inline]
     pub fn new(arena: &'ast Arena) -> Self {
         Resolver {
             variable_scopes: Vec::new_in(arena),
             function_scopes: Vec::new_in(arena),
             current_function: None,
-            errors: Diagnostics::new(arena),
             arena,
+            errors: Diagnostics::new(arena),
         }
     }
 
     /// Resolves the given AST root node.
-    #[inline]
     pub fn resolve(&mut self, root: BlockRef<'ast>) {
         // Enter the first (global) scope
         self.variable_scopes.push(Vec::new_in(self.arena));
@@ -158,7 +156,6 @@ impl<'ast> Resolver<'ast> {
         self.function_scopes.pop();
     }
 
-    #[inline]
     fn check_stmt(&mut self, stmt: StmtRef<'ast>) {
         match stmt {
             // Handle "make variable get expression" statements
@@ -297,7 +294,6 @@ impl<'ast> Resolver<'ast> {
         None
     }
 
-    #[inline]
     fn check_function_def(
         &mut self,
         name: &'ast str,
@@ -474,7 +470,6 @@ impl<'ast> Resolver<'ast> {
         }
     }
 
-    #[inline]
     fn check_return_stmt(&mut self, expr: Option<ExprRef<'ast>>, span: &'ast Span) {
         // Check if we're inside a function
         if self.current_function.is_none() {

@@ -182,7 +182,6 @@ fn get_last_error() -> u32 {
     unsafe { gle_to_apperr(Foundation::GetLastError()) }
 }
 
-#[inline]
 const fn gle_to_apperr(gle: u32) -> u32 {
     if gle == 0 { 0x8000FFFF } else { 0x80070000 | gle }
 }

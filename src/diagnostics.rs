@@ -21,7 +21,6 @@ pub enum Severity {
 }
 
 impl Severity {
-    #[inline]
     const fn label(self) -> &'static str {
         match self {
             Severity::Error => "error",
@@ -83,7 +82,6 @@ impl<'arena> Diagnostics<'arena> {
     }
 
     /// Add a new diagnostic to the collection.
-    #[inline]
     pub fn emit(
         &mut self,
         span: Span,
@@ -109,7 +107,6 @@ impl<'arena> Diagnostics<'arena> {
     }
 
     /// Check if there are any error-level diagnostics
-    #[inline]
     pub fn has_errors(&self) -> bool {
         self.diagnostics.iter().any(|d| d.severity == Severity::Error)
     }
@@ -209,7 +206,6 @@ impl<'arena> Diagnostics<'arena> {
         }
     }
 
-    #[inline]
     fn render_header(&self, severity: Severity, code: &str, message: &str) -> ArenaString<'arena> {
         let color = severity.color_code();
         arena_format!(
@@ -219,7 +215,6 @@ impl<'arena> Diagnostics<'arena> {
         )
     }
 
-    #[inline]
     fn render_location(
         &self,
         filename: &str,
@@ -235,13 +230,11 @@ impl<'arena> Diagnostics<'arena> {
         arena_format!(&self.arena, "{BOLD}{color}{line:>width$} |{RESET} ")
     }
 
-    #[inline]
     fn render_plain_gutter(&self, color: &str, width: usize) -> ArenaString<'arena> {
         arena_format!(&self.arena, "{BOLD}{color}{:>width$} |{RESET} ", "")
     }
 
     // Build the caret `^^^` line that points to the error location.
-    #[inline]
     fn render_caret_line(
         &self,
         col: usize,
@@ -309,7 +302,6 @@ impl<'arena> Diagnostics<'arena> {
         (line_idx + 1, col, line_start, line_end)
     }
 
-    #[inline]
     fn compute_line_starts(&self, src: &str) -> Vec<usize, &'arena Arena> {
         let haystack = src.as_bytes();
         let len = haystack.len();
@@ -348,7 +340,6 @@ impl<'arena> Diagnostics<'arena> {
 
     // We calculate the widest line number so the gutter always lines up,
     // no matter how many digits the line numbers have.
-    #[inline]
     fn compute_gutter_width(&self, diagnostics: &[Diagnostic], src: &str) -> usize {
         let mut max_line = 1;
         for diag in diagnostics {
