@@ -480,7 +480,7 @@ impl<'ast> Resolver<'ast> {
                 SemanticError::UnreachableCode.as_str(),
                 vec![Label {
                     span: *span,
-                    message: ArenaCow::Borrowed("You no fit use `return` outside function"),
+                    message: ArenaCow::Borrowed("You no fit `return` outside function"),
                 }],
             );
         } else {
