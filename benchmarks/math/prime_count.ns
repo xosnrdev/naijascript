@@ -1,0 +1,35 @@
+# Prime checking - NaijaScript
+# Tests conditional logic and mathematical operations
+
+do is_prime(n) start
+    if to say (n small pass 2) start
+        return false
+    end
+    if to say (n na 2) start
+        return true
+    end
+    if to say (n mod 2 na 0) start
+        return false
+    end
+    
+    make i get 3
+    jasi (i times i small pass n add 1) start
+        if to say (n mod i na 0) start
+            return false
+        end
+        i get i add 2
+    end
+    return true
+end
+
+# Count primes up to 10000
+make count get 0
+make i get 2
+jasi (i small pass 10001) start
+    if to say (is_prime(i)) start
+        count get count add 1
+    end
+    i get i add 1
+end
+
+shout(count)

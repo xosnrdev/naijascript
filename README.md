@@ -41,6 +41,16 @@ A scripting language interpreter inspired by the expressive linguistics of Naija
    - [Design Philosophy](./docs/DESIGN.md): Philosophy and architecture behind NaijaScript.
    - [Language Reference Manual](./docs/LRM.md): The official language specification.
 
+## Performance
+
+NaijaScript performance has been rigorously benchmarked against JavaScript (Node.js) and Python using academic methodology.
+
+![Performance Comparison](./benchmarks/results/charts/performance_comparison.svg)
+
+![Relative Performance](./benchmarks/results/charts/relative_performance.svg)
+
+See [`benchmarks/`](./benchmarks/) for complete analysis and methodology.
+
 ## License
 
 This project is licensed under the [MIT License](./LICENSE).
