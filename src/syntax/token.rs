@@ -1,12 +1,24 @@
 use crate::arena::ArenaCow;
 use crate::diagnostics::Span;
 
+/// Represents a token along with its location in the original source text.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct SpannedToken<'arena, 'input> {
+    pub token: Token<'arena, 'input>,
+    pub span: Span,
+}
+
 /// All possible token types in NaijaScript
 ///
 /// The lifetime parameter 'input ties token references to the source text lifetime,
 /// letting us avoid copying strings for identifiers and numbers
 #[derive(Debug, Default, Clone, PartialEq)]
 pub enum Token<'arena, 'input> {
+    // Variable length tokens
+    String(ArenaCow<'arena, 'input>), // String literals
+    Identifier(&'input str),          // Variable names
+    Number(&'input str),              // Numeric literals
+
     // Keywords for variable declaration and assignment
     Make, // "make" - variable declaration
     Get,  // "get" - assignment operator
@@ -49,11 +61,6 @@ pub enum Token<'arena, 'input> {
     LParen, // "("
     RParen, // ")"
     Comma,  // ","
-
-    // Variable length tokens
-    Identifier(&'input str),          // Variable names
-    Number(&'input str),              // Numeric literals
-    String(ArenaCow<'arena, 'input>), // String literals
 
     // Special tokens
     #[default]
@@ -114,11 +121,4 @@ impl<'arena, 'input> Token<'arena, 'input> {
                 | Token::False
         )
     }
-}
-
-/// Represents a token along with its location in the original source text.
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct SpannedToken<'arena, 'input> {
-    pub token: Token<'arena, 'input>,
-    pub span: Span,
 }

@@ -68,6 +68,14 @@ pub enum StringSegment<'ast> {
 /// Represents a statement in NaijaScript.
 #[derive(Debug)]
 pub enum Stmt<'ast> {
+    // Function definition: do <name>(<params>?) start ... end
+    FunctionDef {
+        name: &'ast str,
+        name_span: Span,
+        params: ParamListRef<'ast>,
+        body: BlockRef<'ast>,
+        span: Span,
+    },
     // "make x get 5"
     Assign {
         var: &'ast str,
@@ -98,14 +106,6 @@ pub enum Stmt<'ast> {
         block: BlockRef<'ast>,
         span: Span,
     },
-    // Function definition: do <name>(<params>?) start ... end
-    FunctionDef {
-        name: &'ast str,
-        name_span: Span,
-        params: ParamListRef<'ast>,
-        body: BlockRef<'ast>,
-        span: Span,
-    },
     // Return statement: return <expr>?
     Return {
         expr: Option<ExprRef<'ast>>,
@@ -121,16 +121,16 @@ pub enum Stmt<'ast> {
 /// Represents an expression in NaijaScript.
 #[derive(Debug)]
 pub enum Expr<'ast> {
-    Number(&'ast str, Span),                         // 42, 3.14, etc.
     String { parts: StringParts<'ast>, span: Span }, // "hello" or "hello {name}"
-    Bool(bool, Span),                                // "true", "false"
+    Number(&'ast str, Span),                         // 42, 3.14, etc.
     Var(&'ast str, Span),                            // variable references
     // arithmetic/logical operations
     Binary { op: BinaryOp, lhs: ExprRef<'ast>, rhs: ExprRef<'ast>, span: Span },
-    // logical/arithmetic negation
-    Unary { op: UnaryOp, expr: ExprRef<'ast>, span: Span },
     // Function call: <callee>(<args>?)
     Call { callee: ExprRef<'ast>, args: ArgListRef<'ast>, span: Span },
+    // logical/arithmetic negation
+    Unary { op: UnaryOp, expr: ExprRef<'ast>, span: Span },
+    Bool(bool, Span), // "true", "false"
 }
 
 /// Represents a block of statements, which can be nested.
@@ -196,10 +196,9 @@ where
 
 impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src, 'ast, I> {
     /// Creates a new [`Parser`] instance.
-    #[inline]
     pub fn new(mut tokens: I, arena: &'ast Arena) -> Self {
         let cur = tokens.next().unwrap_or_default();
-        Parser { tokens, cur, errors: Diagnostics::new(arena), arena }
+        Self { tokens, cur, errors: Diagnostics::new(arena), arena }
     }
 
     #[inline]
@@ -208,7 +207,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         uninit.write(value)
     }
 
-    #[inline]
     fn alloc_str(&self, s: &str) -> &'ast str {
         let arena_string = ArenaString::from_str(self.arena, s);
         unsafe { mem::transmute(arena_string.as_str()) }
@@ -223,7 +221,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
     }
 
     /// Returns the parsed program as a Block reference.
-    #[inline]
     pub fn parse_program(&mut self) -> (BlockRef<'ast>, &Diagnostics<'ast>) {
         let block_ref = self.parse_program_body();
         if self.cur.token != Token::EOF {
@@ -238,7 +235,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         (block_ref, &self.errors)
     }
 
-    #[inline]
     fn parse_program_body(&mut self) -> BlockRef<'ast> {
         let start = self.cur.span.start;
         let mut stmts = Vec::new_in(self.arena);
@@ -378,7 +374,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         }
     }
 
-    #[inline]
     fn parse_function_def(&mut self, start: usize) -> Option<StmtRef<'ast>> {
         let do_span = self.cur.span;
         self.bump(); // consume `do`
@@ -549,7 +544,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         }))
     }
 
-    #[inline]
     fn parse_return(&mut self, start: usize) -> Option<StmtRef<'ast>> {
         self.bump(); // consume `return`
         let expr = match &self.cur.token {
@@ -567,7 +561,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         Some(self.alloc(Stmt::Return { expr, span: Range::from(start..end) }))
     }
 
-    #[inline]
     fn parse_assignment(&mut self, start: usize) -> Option<StmtRef<'ast>> {
         let make_span = self.cur.span;
         self.bump(); // consume `make`
@@ -618,7 +611,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         Some(self.alloc(Stmt::Assign { var, expr, span: Range::from(start..end) }))
     }
 
-    #[inline]
     fn parse_if(&mut self, start: usize) -> Option<StmtRef<'ast>> {
         let if_span = self.cur.span;
         self.bump(); // consume `if to say`
@@ -739,7 +731,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         Some(self.alloc(Stmt::If { cond, then_b, else_b, span: Range::from(start..end) }))
     }
 
-    #[inline]
     fn parse_loop(&mut self, start: usize) -> Option<StmtRef<'ast>> {
         let jasi_span = self.cur.span;
         self.bump(); // consume `jasi`
@@ -993,7 +984,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         lhs
     }
 
-    #[inline]
     fn parse_string_literal(&mut self, content: ArenaCow<'ast, 'src>, span: Span) -> ExprRef<'ast> {
         let bytes = content.as_bytes();
         let len = bytes.len();
@@ -1023,7 +1013,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         self.alloc(Expr::String { parts: StringParts::Interpolated(s), span })
     }
 
-    #[inline]
     fn parse_template_segments(
         &self,
         template: &'src str,

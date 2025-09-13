@@ -62,8 +62,8 @@ impl From<BuiltinReturnType> for VarType {
 #[derive(Debug)]
 struct FunctionSig<'ast> {
     name: &'ast str,
-    name_span: &'ast Span,
     param_names: &'ast [&'ast str],
+    name_span: &'ast Span,
     has_return: bool,
     return_type: Option<VarType>,
 }
@@ -90,9 +90,8 @@ pub struct Resolver<'ast> {
 
 impl<'ast> Resolver<'ast> {
     /// Creates a new [`Resolver`] instance.
-    #[inline]
     pub fn new(arena: &'ast Arena) -> Self {
-        Resolver {
+        Self {
             variable_scopes: Vec::new_in(arena),
             function_scopes: Vec::new_in(arena),
             current_function: None,
@@ -102,7 +101,6 @@ impl<'ast> Resolver<'ast> {
     }
 
     /// Resolves the given AST root node.
-    #[inline]
     pub fn resolve(&mut self, root: BlockRef<'ast>) {
         // Enter the first (global) scope
         self.variable_scopes.push(Vec::new_in(self.arena));
@@ -158,7 +156,6 @@ impl<'ast> Resolver<'ast> {
         self.function_scopes.pop();
     }
 
-    #[inline]
     fn check_stmt(&mut self, stmt: StmtRef<'ast>) {
         match stmt {
             // Handle "make variable get expression" statements
@@ -297,7 +294,6 @@ impl<'ast> Resolver<'ast> {
         None
     }
 
-    #[inline]
     fn check_function_def(
         &mut self,
         name: &'ast str,
@@ -474,7 +470,6 @@ impl<'ast> Resolver<'ast> {
         }
     }
 
-    #[inline]
     fn check_return_stmt(&mut self, expr: Option<ExprRef<'ast>>, span: &'ast Span) {
         // Check if we're inside a function
         if self.current_function.is_none() {
@@ -485,7 +480,7 @@ impl<'ast> Resolver<'ast> {
                 SemanticError::UnreachableCode.as_str(),
                 vec![Label {
                     span: *span,
-                    message: ArenaCow::Borrowed("You no fit use `return` outside function"),
+                    message: ArenaCow::Borrowed("You no fit `return` outside function"),
                 }],
             );
         } else {
