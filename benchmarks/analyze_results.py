@@ -164,9 +164,6 @@ def create_performance_comparison_chart(df: pd.DataFrame):
 
     plt.tight_layout()
     plt.savefig(CHARTS_DIR / "performance_comparison.png", dpi=300, bbox_inches="tight")
-    plt.savefig(
-        CHARTS_DIR / "performance_comparison.svg", format="svg", bbox_inches="tight"
-    )
     print(f"✓ Saved performance comparison chart to {CHARTS_DIR}")
 
 
@@ -250,9 +247,6 @@ def create_relative_performance_chart(df: pd.DataFrame):
 
     plt.tight_layout()
     plt.savefig(CHARTS_DIR / "relative_performance.png", dpi=300, bbox_inches="tight")
-    plt.savefig(
-        CHARTS_DIR / "relative_performance.svg", format="svg", bbox_inches="tight"
-    )
     print(f"✓ Saved relative performance chart to {CHARTS_DIR}")
 
 
