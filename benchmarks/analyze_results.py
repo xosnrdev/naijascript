@@ -429,7 +429,7 @@ def generate_summary_report(df: pd.DataFrame) -> str:
     report.append("")
     report.append("**Hardware**: Apple M2 processor")
     report.append("")
-    report.append("**Software**: NaijaScript 0.11.3, Node.js v24.4.1, Python 3.13.3")
+    report.append("**Software**: NaijaScript 0.11.4, Node.js v24.4.1, Python 3.13.3")
     report.append("")
     report.append(
         "**Methodology**: See [METHODOLOGY.md](../METHODOLOGY.md) for details."

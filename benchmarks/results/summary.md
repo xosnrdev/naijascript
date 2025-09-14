@@ -80,6 +80,6 @@ _Times are from hyperfine with 12 measurements each. Lower is better._
 
 **Hardware**: Apple M2 processor
 
-**Software**: NaijaScript 0.11.3, Node.js v24.4.1, Python 3.13.3
+**Software**: NaijaScript 0.11.4, Node.js v24.4.1, Python 3.13.3
 
 **Methodology**: See [METHODOLOGY.md](../METHODOLOGY.md) for details.
