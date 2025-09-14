@@ -45,9 +45,9 @@ A scripting language interpreter inspired by the expressive linguistics of Naija
 
 NaijaScript performance has been rigorously benchmarked against JavaScript (Node.js) and Python using academic methodology.
 
-![Performance Comparison](./benchmarks/results/charts/performance_comparison.svg)
+![Performance Comparison](./benchmarks/results/charts/performance_comparison.png)
 
-![Relative Performance](./benchmarks/results/charts/relative_performance.svg)
+![Relative Performance](./benchmarks/results/charts/relative_performance.png)
 
 See [`benchmarks/`](./benchmarks/) for complete analysis and methodology.
 
