@@ -1,0 +1,18 @@
+# String interpolation - NaijaScript
+# Tests arena allocation and template processing
+
+do generate_message(name, age, score) start
+    return "Hello {name}, you are {age} years old and scored {score} points!"
+end
+
+# Generate many interpolated strings
+make i get 0
+make total_length get 0
+
+jasi (i small pass 50000) start
+    make msg get generate_message("Alice", i, i times 2)
+    total_length get total_length add len(msg)
+    i get i add 1
+end
+
+shout(total_length)

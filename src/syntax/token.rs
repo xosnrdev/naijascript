@@ -96,7 +96,8 @@ impl<'arena, 'input> std::fmt::Display for Token<'arena, 'input> {
 }
 
 impl<'arena, 'input> Token<'arena, 'input> {
-    pub fn is_reserved_keyword(&self) -> bool {
+    #[inline]
+    pub const fn is_reserved_keyword(&self) -> bool {
         matches!(
             self,
             Token::Make

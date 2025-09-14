@@ -1,0 +1,12 @@
+# String concatenation - NaijaScript
+# Tests arena string allocation vs GC
+
+make result get ""
+make i get 0
+
+jasi (i small pass 10000) start
+    result get result add "item" add to_string(i) add "|"
+    i get i add 1
+end
+
+shout(len(result))
