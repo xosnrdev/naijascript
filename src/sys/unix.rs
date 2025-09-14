@@ -103,7 +103,7 @@ impl Stdin for UnixStdin {
             let hay = unsafe { slice::from_raw_parts(base, len) };
             let pos = memchr(b'\n', hay, len - n);
             if pos < len {
-                len = pos + 1;
+                len = pos;
                 break;
             }
         }
