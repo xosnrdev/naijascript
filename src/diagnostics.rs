@@ -311,7 +311,7 @@ impl<'arena> Diagnostics<'arena> {
         let mut offset = 0;
         while offset < len {
             // find either '\n' or ('\r' for windows)
-            let idx = memchr2(b'r', b'\n', haystack, offset);
+            let idx = memchr2(b'\r', b'\n', haystack, offset);
             if idx == len {
                 break;
             }
