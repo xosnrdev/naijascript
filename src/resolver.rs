@@ -159,15 +159,15 @@ impl<'ast> Resolver<'ast> {
     fn check_stmt(&mut self, stmt: StmtRef<'ast>) {
         match stmt {
             // Handle "make variable get expression" statements
-            Stmt::Assign { var, expr, span } => {
+            Stmt::Assign { var, var_span, expr, .. } => {
                 if Builtin::from_name(var).is_some() {
                     self.errors.emit(
-                        *span,
+                        *var_span,
                         Severity::Error,
                         "semantic",
                         SemanticError::ReservedKeyword.as_str(),
                         vec![Label {
-                            span: *span,
+                            span: *var_span,
                             message: ArenaCow::Owned(arena_format!(
                                 &self.arena,
                                 "`{var}` na reserved keyword",
@@ -185,7 +185,7 @@ impl<'ast> Resolver<'ast> {
                     .find(|(name, ..)| name == var)
                 {
                     self.errors.emit(
-                        *span,
+                        *var_span,
                         Severity::Error,
                         "semantic",
                         SemanticError::DuplicateIdentifier.as_str(),
@@ -198,7 +198,7 @@ impl<'ast> Resolver<'ast> {
                                 )),
                             },
                             Label {
-                                span: *span,
+                                span: *var_span,
                                 message: ArenaCow::Borrowed("You try declare am again for here"),
                             },
                         ],
@@ -210,22 +210,22 @@ impl<'ast> Resolver<'ast> {
                     self.variable_scopes
                         .last_mut()
                         .expect("scope stack should never be empty")
-                        .push((var, var_type, span));
+                        .push((var, var_type, var_span));
                 }
                 // Always check the expression, even if variable was duplicate
                 // This catches more errors in one pass
                 self.check_expr(expr);
             }
             // Handle variable reassignment: <variable> get <expression>
-            Stmt::AssignExisting { var, expr, span } => {
+            Stmt::AssignExisting { var, var_span, expr, .. } => {
                 if !self.lookup_var(var) {
                     self.errors.emit(
-                        *span,
+                        *var_span,
                         Severity::Error,
                         "semantic",
                         SemanticError::AssignmentToUndeclared.as_str(),
                         vec![Label {
-                            span: *span,
+                            span: *var_span,
                             message: ArenaCow::Borrowed("Dis variable no dey scope"),
                         }],
                     );
