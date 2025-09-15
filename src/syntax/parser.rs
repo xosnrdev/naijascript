@@ -79,12 +79,14 @@ pub enum Stmt<'ast> {
     // "make x get 5"
     Assign {
         var: &'ast str,
+        var_span: Span,
         expr: ExprRef<'ast>,
         span: Span,
     },
     // "x get 5"
     AssignExisting {
         var: &'ast str,
+        var_span: Span,
         expr: ExprRef<'ast>,
         span: Span,
     },
@@ -333,6 +335,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     let end = self.cur.span.end;
                     Some(self.alloc(Stmt::AssignExisting {
                         var,
+                        var_span,
                         expr,
                         span: Range::from(start..end),
                     }))
@@ -608,7 +611,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         };
 
         let end = self.cur.span.end;
-        Some(self.alloc(Stmt::Assign { var, expr, span: Range::from(start..end) }))
+        Some(self.alloc(Stmt::Assign { var, var_span, expr, span: Range::from(start..end) }))
     }
 
     fn parse_if(&mut self, start: usize) -> Option<StmtRef<'ast>> {
