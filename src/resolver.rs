@@ -39,21 +39,21 @@ impl AsStr for SemanticError {
     }
 }
 
-// Represents the variable types in NaijaScript
+// Represents the value types in NaijaScript
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-enum VarType {
+enum ValueType {
     Number,
     String,
     Bool,
     Dynamic,
 }
 
-impl From<BuiltinReturnType> for VarType {
+impl From<BuiltinReturnType> for ValueType {
     fn from(builtin_type: BuiltinReturnType) -> Self {
         match builtin_type {
-            BuiltinReturnType::Number => VarType::Number,
-            BuiltinReturnType::String => VarType::String,
-            BuiltinReturnType::Bool => VarType::Bool,
+            BuiltinReturnType::Number => ValueType::Number,
+            BuiltinReturnType::String => ValueType::String,
+            BuiltinReturnType::Bool => ValueType::Bool,
         }
     }
 }
@@ -65,7 +65,7 @@ struct FunctionSig<'ast> {
     param_names: &'ast [&'ast str],
     name_span: &'ast Span,
     has_return: bool,
-    return_type: Option<VarType>,
+    return_type: Option<ValueType>,
 }
 
 /// An arena-backed semantic analyzer.
@@ -73,7 +73,7 @@ struct FunctionSig<'ast> {
 /// FWIW, this is a work in progress and may change as the language evolves.
 pub struct Resolver<'ast> {
     // Stack of variable symbol tables for block-scoped variables
-    variable_scopes: Vec<Vec<(&'ast str, VarType, &'ast Span), &'ast Arena>, &'ast Arena>,
+    variable_scopes: Vec<Vec<(&'ast str, ValueType, &'ast Span), &'ast Arena>, &'ast Arena>,
 
     // Stack of function symbol tables for block-scoped functions
     function_scopes: Vec<Vec<FunctionSig<'ast>, &'ast Arena>, &'ast Arena>,
@@ -159,15 +159,15 @@ impl<'ast> Resolver<'ast> {
     fn check_stmt(&mut self, stmt: StmtRef<'ast>) {
         match stmt {
             // Handle "make variable get expression" statements
-            Stmt::Assign { var, expr, span } => {
+            Stmt::Assign { var, var_span, expr, .. } => {
                 if Builtin::from_name(var).is_some() {
                     self.errors.emit(
-                        *span,
+                        *var_span,
                         Severity::Error,
                         "semantic",
                         SemanticError::ReservedKeyword.as_str(),
                         vec![Label {
-                            span: *span,
+                            span: *var_span,
                             message: ArenaCow::Owned(arena_format!(
                                 &self.arena,
                                 "`{var}` na reserved keyword",
@@ -185,7 +185,7 @@ impl<'ast> Resolver<'ast> {
                     .find(|(name, ..)| name == var)
                 {
                     self.errors.emit(
-                        *span,
+                        *var_span,
                         Severity::Error,
                         "semantic",
                         SemanticError::DuplicateIdentifier.as_str(),
@@ -198,7 +198,7 @@ impl<'ast> Resolver<'ast> {
                                 )),
                             },
                             Label {
-                                span: *span,
+                                span: *var_span,
                                 message: ArenaCow::Borrowed("You try declare am again for here"),
                             },
                         ],
@@ -206,26 +206,26 @@ impl<'ast> Resolver<'ast> {
                 } else {
                     // Let's figure out the type of this variable from the expression,
                     // then add it to our symbol table so future code knows it's declared.
-                    let var_type = self.infer_expr_type(expr).unwrap_or(VarType::Dynamic);
+                    let var_type = self.infer_expr_type(expr).unwrap_or(ValueType::Dynamic);
                     self.variable_scopes
                         .last_mut()
                         .expect("scope stack should never be empty")
-                        .push((var, var_type, span));
+                        .push((var, var_type, var_span));
                 }
                 // Always check the expression, even if variable was duplicate
                 // This catches more errors in one pass
                 self.check_expr(expr);
             }
             // Handle variable reassignment: <variable> get <expression>
-            Stmt::AssignExisting { var, expr, span } => {
+            Stmt::AssignExisting { var, var_span, expr, .. } => {
                 if !self.lookup_var(var) {
                     self.errors.emit(
-                        *span,
+                        *var_span,
                         Severity::Error,
                         "semantic",
                         SemanticError::AssignmentToUndeclared.as_str(),
                         vec![Label {
-                            span: *span,
+                            span: *var_span,
                             message: ArenaCow::Borrowed("Dis variable no dey scope"),
                         }],
                     );
@@ -384,17 +384,17 @@ impl<'ast> Resolver<'ast> {
         // Add parameters as variables with dynamic typing
         // Parameters can accept any type and their usage will be validated at runtime
         for param_name in params.params {
-            self.variable_scopes.last_mut().unwrap().push((param_name, VarType::Dynamic, span));
+            self.variable_scopes.last_mut().unwrap().push((param_name, ValueType::Dynamic, span));
         }
 
         // We collect return types and spans from the function body, skipping nested functions.
         let mut return_types = Vec::new_in(self.arena);
         self.collect_return_types(body, &mut return_types);
 
-        let unique_types: HashSet<VarType> = return_types.iter().map(|(t, ..)| *t).collect();
-        if unique_types.len() > 1 && !unique_types.contains(&VarType::Dynamic) {
+        let unique_types: HashSet<ValueType> = return_types.iter().map(|(t, ..)| *t).collect();
+        if unique_types.len() > 1 && !unique_types.contains(&ValueType::Dynamic) {
             for (return_type, return_span) in &return_types {
-                if *return_type != VarType::Dynamic {
+                if *return_type != ValueType::Dynamic {
                     self.errors.emit(
                         **return_span,
                         Severity::Warning,
@@ -419,7 +419,7 @@ impl<'ast> Resolver<'ast> {
             func_sig.return_type = if unique_types.len() == 1 {
                 Some(*unique_types.iter().next().unwrap())
             } else {
-                Some(VarType::Dynamic)
+                Some(ValueType::Dynamic)
             };
         }
 
@@ -440,15 +440,15 @@ impl<'ast> Resolver<'ast> {
     fn collect_return_types(
         &self,
         block: BlockRef<'ast>,
-        types: &mut Vec<(VarType, &'ast Span), &'ast Arena>,
+        types: &mut Vec<(ValueType, &'ast Span), &'ast Arena>,
     ) {
         for &stmt in block.stmts {
             match stmt {
                 Stmt::Return { expr, span } => {
                     let var_type = if let Some(expr) = expr {
-                        self.infer_expr_type(expr).unwrap_or(VarType::Dynamic)
+                        self.infer_expr_type(expr).unwrap_or(ValueType::Dynamic)
                     } else {
-                        VarType::Dynamic
+                        ValueType::Dynamic
                     };
                     types.push((var_type, span));
                 }
@@ -487,7 +487,7 @@ impl<'ast> Resolver<'ast> {
             let return_type = if let Some(expr_id) = expr {
                 self.infer_expr_type(expr_id)
             } else {
-                Some(VarType::Dynamic)
+                Some(ValueType::Dynamic)
             };
 
             if let Some(current_func_name) = self.current_function {
@@ -505,8 +505,8 @@ impl<'ast> Resolver<'ast> {
                     {
                         // Check if return types are consistent
                         if existing_type != new_type
-                            && existing_type != VarType::Dynamic
-                            && new_type != VarType::Dynamic
+                            && existing_type != ValueType::Dynamic
+                            && new_type != ValueType::Dynamic
                         {
                             self.errors.emit(
                                 *span,
@@ -520,7 +520,7 @@ impl<'ast> Resolver<'ast> {
                                     ),
                                 }],
                             );
-                            func_sig.return_type = Some(VarType::Dynamic);
+                            func_sig.return_type = Some(ValueType::Dynamic);
                         }
                     }
                 }
@@ -537,7 +537,7 @@ impl<'ast> Resolver<'ast> {
     fn check_boolean_expr(&mut self, expr: ExprRef<'ast>) {
         let expr_type = self.infer_expr_type(expr);
         if let Some(t) = expr_type
-            && !matches!(t, VarType::Bool | VarType::Dynamic)
+            && !matches!(t, ValueType::Bool | ValueType::Dynamic)
         {
             let span = match expr {
                 Expr::Number(.., span) => *span,
@@ -612,7 +612,7 @@ impl<'ast> Resolver<'ast> {
                 let r = self.infer_expr_type(rhs);
                 match op {
                     BinaryOp::Add => match (l, r) {
-                        (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
+                        (Some(ValueType::Bool), ..) | (.., Some(ValueType::Bool)) => {
                             self.errors.emit(
                                 *span,
                                 Severity::Error,
@@ -624,23 +624,23 @@ impl<'ast> Resolver<'ast> {
                                 }],
                             );
                         }
-                        (Some(VarType::String), ..)
-                        | (.., Some(VarType::String))
-                        | (Some(VarType::Dynamic), ..)
-                        | (.., Some(VarType::Dynamic))
-                        | (Some(VarType::Number), Some(VarType::Number)) => {}
+                        (Some(ValueType::String), ..)
+                        | (.., Some(ValueType::String))
+                        | (Some(ValueType::Dynamic), ..)
+                        | (.., Some(ValueType::Dynamic))
+                        | (Some(ValueType::Number), Some(ValueType::Number)) => {}
                         _ => {}
                     },
                     BinaryOp::Minus | BinaryOp::Times | BinaryOp::Divide | BinaryOp::Mod => {
                         match (l, r) {
-                            (Some(VarType::Number), Some(VarType::Number)) => {}
-                            (Some(VarType::Dynamic), Some(VarType::Number))
-                            | (Some(VarType::Number), Some(VarType::Dynamic))
-                            | (Some(VarType::Dynamic), Some(VarType::Dynamic)) => {}
-                            (Some(VarType::Dynamic), Some(VarType::String))
-                            | (Some(VarType::String), Some(VarType::Dynamic))
-                            | (Some(VarType::Dynamic), Some(VarType::Bool))
-                            | (Some(VarType::Bool), Some(VarType::Dynamic)) => {
+                            (Some(ValueType::Number), Some(ValueType::Number)) => {}
+                            (Some(ValueType::Dynamic), Some(ValueType::Number))
+                            | (Some(ValueType::Number), Some(ValueType::Dynamic))
+                            | (Some(ValueType::Dynamic), Some(ValueType::Dynamic)) => {}
+                            (Some(ValueType::Dynamic), Some(ValueType::String))
+                            | (Some(ValueType::String), Some(ValueType::Dynamic))
+                            | (Some(ValueType::Dynamic), Some(ValueType::Bool))
+                            | (Some(ValueType::Bool), Some(ValueType::Dynamic)) => {
                                 self.errors.emit(
                                     *span,
                                     Severity::Error,
@@ -654,7 +654,7 @@ impl<'ast> Resolver<'ast> {
                                     }],
                                 );
                             }
-                            (Some(VarType::String), Some(VarType::String)) => {
+                            (Some(ValueType::String), Some(ValueType::String)) => {
                                 self.errors.emit(
                                     *span,
                                     Severity::Error,
@@ -668,8 +668,8 @@ impl<'ast> Resolver<'ast> {
                                     }],
                                 );
                             }
-                            (Some(VarType::String), Some(VarType::Number))
-                            | (Some(VarType::Number), Some(VarType::String)) => {
+                            (Some(ValueType::String), Some(ValueType::Number))
+                            | (Some(ValueType::Number), Some(ValueType::String)) => {
                                 self.errors.emit(
                                     *span,
                                     Severity::Error,
@@ -683,7 +683,7 @@ impl<'ast> Resolver<'ast> {
                                     }],
                                 );
                             }
-                            (Some(VarType::Bool), ..) | (.., Some(VarType::Bool)) => {
+                            (Some(ValueType::Bool), ..) | (.., Some(ValueType::Bool)) => {
                                 self.errors.emit(
                                     *span,
                                     Severity::Error,
@@ -701,10 +701,10 @@ impl<'ast> Resolver<'ast> {
                         }
                     }
                     BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => match (l, r) {
-                        (Some(VarType::Number), Some(VarType::Number)) => {}
-                        (Some(VarType::String), Some(VarType::String)) => {}
-                        (Some(VarType::Bool), Some(VarType::Bool)) => {}
-                        (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
+                        (Some(ValueType::Number), Some(ValueType::Number)) => {}
+                        (Some(ValueType::String), Some(ValueType::String)) => {}
+                        (Some(ValueType::Bool), Some(ValueType::Bool)) => {}
+                        (Some(ValueType::Dynamic), ..) | (.., Some(ValueType::Dynamic)) => {}
                         _ => {
                             self.errors.emit(
                                 *span,
@@ -721,8 +721,8 @@ impl<'ast> Resolver<'ast> {
                         }
                     },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
-                        (Some(VarType::Bool), Some(VarType::Bool)) => {}
-                        (Some(VarType::Dynamic), ..) | (.., Some(VarType::Dynamic)) => {}
+                        (Some(ValueType::Bool), Some(ValueType::Bool)) => {}
+                        (Some(ValueType::Dynamic), ..) | (.., Some(ValueType::Dynamic)) => {}
                         _ => {
                             self.errors.emit(
                                 *span,
@@ -746,7 +746,7 @@ impl<'ast> Resolver<'ast> {
                 match op {
                     // Unary not requires a boolean operand or dynamic type
                     UnaryOp::Not => {
-                        if t != Some(VarType::Bool) && t != Some(VarType::Dynamic) {
+                        if t != Some(ValueType::Bool) && t != Some(ValueType::Dynamic) {
                             self.errors.emit(
                                 *span,
                                 Severity::Error,
@@ -763,7 +763,7 @@ impl<'ast> Resolver<'ast> {
                     }
                     // Unary minus requires a numeric operand or dynamic type
                     UnaryOp::Minus => {
-                        if t != Some(VarType::Number) && t != Some(VarType::Dynamic) {
+                        if t != Some(ValueType::Number) && t != Some(ValueType::Dynamic) {
                             self.errors.emit(
                                 *span,
                                 Severity::Error,
@@ -850,11 +850,11 @@ impl<'ast> Resolver<'ast> {
     }
 
     #[inline]
-    fn infer_expr_type(&self, expr: ExprRef<'ast>) -> Option<VarType> {
+    fn infer_expr_type(&self, expr: ExprRef<'ast>) -> Option<ValueType> {
         match expr {
-            Expr::Number(..) => Some(VarType::Number),
-            Expr::String { .. } => Some(VarType::String),
-            Expr::Bool(..) => Some(VarType::Bool),
+            Expr::Number(..) => Some(ValueType::Number),
+            Expr::String { .. } => Some(ValueType::String),
+            Expr::Bool(..) => Some(ValueType::Bool),
             Expr::Var(v, ..) => {
                 for scope in self.variable_scopes.iter().rev() {
                     if let Some((_, t, ..)) = scope.iter().find(|(name, ..)| *name == *v) {
@@ -868,36 +868,42 @@ impl<'ast> Resolver<'ast> {
                 let r = self.infer_expr_type(rhs)?;
                 match op {
                     BinaryOp::Add => match (l, r) {
-                        (VarType::Bool, ..) | (.., VarType::Bool) => None,
-                        (VarType::String, ..) | (.., VarType::String) => Some(VarType::String),
-                        (VarType::Dynamic, ..) | (.., VarType::Dynamic) => {
-                            if l == VarType::Number || r == VarType::Number {
-                                Some(VarType::Number)
+                        (ValueType::Bool, ..) | (.., ValueType::Bool) => None,
+                        (ValueType::String, ..) | (.., ValueType::String) => {
+                            Some(ValueType::String)
+                        }
+                        (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
+                            if l == ValueType::Number || r == ValueType::Number {
+                                Some(ValueType::Number)
                             } else {
-                                Some(VarType::String)
+                                Some(ValueType::String)
                             }
                         }
-                        (VarType::Number, VarType::Number) => Some(VarType::Number),
+                        (ValueType::Number, ValueType::Number) => Some(ValueType::Number),
                     },
                     BinaryOp::Minus | BinaryOp::Times | BinaryOp::Divide | BinaryOp::Mod => {
                         match (l, r) {
-                            (VarType::Number, VarType::Number) => Some(VarType::Number),
-                            (VarType::Dynamic, ..) | (.., VarType::Dynamic) => {
-                                Some(VarType::Number)
+                            (ValueType::Number, ValueType::Number) => Some(ValueType::Number),
+                            (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
+                                Some(ValueType::Number)
                             }
                             _ => None,
                         }
                     }
                     BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => match (l, r) {
-                        (VarType::Number, VarType::Number) => Some(VarType::Bool),
-                        (VarType::String, VarType::String) => Some(VarType::Bool),
-                        (VarType::Bool, VarType::Bool) => Some(VarType::Bool),
-                        (VarType::Dynamic, ..) | (.., VarType::Dynamic) => Some(VarType::Bool),
+                        (ValueType::Number, ValueType::Number) => Some(ValueType::Bool),
+                        (ValueType::String, ValueType::String) => Some(ValueType::Bool),
+                        (ValueType::Bool, ValueType::Bool) => Some(ValueType::Bool),
+                        (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
+                            Some(ValueType::Bool)
+                        }
                         _ => None,
                     },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
-                        (VarType::Bool, VarType::Bool) => Some(VarType::Bool),
-                        (VarType::Dynamic, ..) | (.., VarType::Dynamic) => Some(VarType::Bool),
+                        (ValueType::Bool, ValueType::Bool) => Some(ValueType::Bool),
+                        (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
+                            Some(ValueType::Bool)
+                        }
                         _ => None,
                     },
                 }
@@ -906,15 +912,15 @@ impl<'ast> Resolver<'ast> {
                 let t = self.infer_expr_type(expr)?;
                 match op {
                     UnaryOp::Not => {
-                        if t == VarType::Bool {
-                            Some(VarType::Bool)
+                        if t == ValueType::Bool {
+                            Some(ValueType::Bool)
                         } else {
                             None
                         }
                     }
                     UnaryOp::Minus => {
-                        if t == VarType::Number {
-                            Some(VarType::Number)
+                        if t == ValueType::Number {
+                            Some(ValueType::Number)
                         } else {
                             None
                         }
@@ -924,9 +930,9 @@ impl<'ast> Resolver<'ast> {
             Expr::Call { callee, .. } => match callee {
                 Expr::Var(func_name, ..) => {
                     if let Some(builtin) = Builtin::from_name(func_name) {
-                        Some(VarType::from(builtin.return_type()))
+                        Some(ValueType::from(builtin.return_type()))
                     } else if let Some(func_sig) = self.lookup_func(func_name) {
-                        func_sig.return_type.or(Some(VarType::Dynamic))
+                        func_sig.return_type.or(Some(ValueType::Dynamic))
                     } else {
                         None
                     }
