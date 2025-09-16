@@ -57,7 +57,7 @@ fi
 
 # --- Extract Archive ---
 echo "I dey extract $BIN..."
-tar -xzf "${BIN}-${LATEST_TAG}-$TARGET.tar.xz"
+tar -xvf "${BIN}-${LATEST_TAG}-$TARGET.tar.xz"
 chmod +x naijaup
 
 # --- Install ---
