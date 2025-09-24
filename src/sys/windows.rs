@@ -12,8 +12,11 @@ use windows_sys::Win32::System::Console::{
 };
 use windows_sys::Win32::System::Memory;
 use windows_sys::Win32::System::Registry::{
-    HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ, RegCloseKey, RegOpenKeyExW, RegQueryValueExW,
-    RegSetValueExW,
+    HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE, REG_SZ, RegCloseKey, RegDeleteValueW,
+    RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    HWND_BROADCAST, SMTO_ABORTIFHUNG, SMTO_NORMAL, SendMessageTimeoutW, WM_SETTINGCHANGE,
 };
 
 use super::{Stdin, VirtualMemory};
@@ -92,20 +95,57 @@ fn set_path(path: &str) -> io::Result<()> {
         let lpsubkey = lpsubkey.as_ptr();
         let lpvaluename = to_utf16("PATH");
         let lpvaluename = lpvaluename.as_ptr();
-        let lpdata = to_utf16(path);
-        let cbdata = (lpdata.len() * 2) as u32;
-        let lpdata = lpdata.as_ptr() as *const u8;
 
-        // Open the registry key for writing
-        let n = RegOpenKeyExW(HKEY_CURRENT_USER, lpsubkey, 0, KEY_WRITE, &mut hkey);
+        // Open the registry key with rights to set values
+        // https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry-key-security-and-access-rights
+        let n = RegOpenKeyExW(HKEY_CURRENT_USER, lpsubkey, 0, KEY_SET_VALUE, &mut hkey);
         if n != ERROR_SUCCESS {
             return Err(win32_error_to_io_error(n));
         }
 
-        // Set the value
-        let n = RegSetValueExW(hkey, lpvaluename, 0, REG_SZ, lpdata, cbdata);
-        RegCloseKey(hkey);
-        if n == ERROR_SUCCESS { Ok(()) } else { Err(win32_error_to_io_error(n)) }
+        let lparam = lpsubkey as isize;
+        if path.is_empty() {
+            // https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regdeletevaluew
+            let n = RegDeleteValueW(hkey, lpvaluename);
+            RegCloseKey(hkey);
+            if n == ERROR_SUCCESS || n == Foundation::ERROR_FILE_NOT_FOUND {
+                broadcast_env_changed(lparam);
+                Ok(())
+            } else {
+                Err(win32_error_to_io_error(n))
+            }
+        } else {
+            let lpdata = to_utf16(path);
+            let cbdata = (lpdata.len() * 2) as u32;
+            let lpdata = lpdata.as_ptr() as *const u8;
+
+            // Set the value as REG_SZ
+            // https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regsetvalueexw
+            let n = RegSetValueExW(hkey, lpvaluename, 0, REG_SZ, lpdata, cbdata);
+            RegCloseKey(hkey);
+            if n == ERROR_SUCCESS {
+                broadcast_env_changed(lparam);
+                Ok(())
+            } else {
+                Err(win32_error_to_io_error(n))
+            }
+        }
+    }
+}
+
+fn broadcast_env_changed(lparam: isize) {
+    unsafe {
+        let mut lpdwresult = 0usize;
+        // https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-settingchange
+        SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            0,
+            lparam,
+            SMTO_NORMAL | SMTO_ABORTIFHUNG,
+            5000,
+            &mut lpdwresult,
+        );
     }
 }
 
