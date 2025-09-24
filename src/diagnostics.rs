@@ -177,9 +177,7 @@ impl<'arena> Diagnostics<'arena> {
             cross_line_displays.push((line_display, label_underline));
         }
 
-        // Output diagnostic components in specific order to match rustc/clang format:
-        // This ordering helps developers pattern match against familiar error displays
-        // and enables tooling to parse our output using existing parsers
+        // Example output:
         //
         //   error[E001]: Assignment syntax no correct
         //    --> file.ns:5:10
