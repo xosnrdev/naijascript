@@ -15,6 +15,9 @@ use windows_sys::Win32::System::Registry::{
     HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE, REG_SZ, RegCloseKey, RegDeleteValueW,
     RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
 };
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    HWND_BROADCAST, SMTO_ABORTIFHUNG, SMTO_NORMAL, SendMessageTimeoutW, WM_SETTINGCHANGE,
+};
 
 use super::{Stdin, VirtualMemory};
 use crate::KIBI;
@@ -100,11 +103,13 @@ fn set_path(path: &str) -> io::Result<()> {
             return Err(win32_error_to_io_error(n));
         }
 
+        let lparam = lpsubkey as isize;
         if path.is_empty() {
             // https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regdeletevaluew
             let n = RegDeleteValueW(hkey, lpvaluename);
             RegCloseKey(hkey);
             if n == ERROR_SUCCESS || n == Foundation::ERROR_FILE_NOT_FOUND {
+                broadcast_env_changed(lparam);
                 Ok(())
             } else {
                 Err(win32_error_to_io_error(n))
@@ -118,8 +123,29 @@ fn set_path(path: &str) -> io::Result<()> {
             // https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regsetvalueexw
             let n = RegSetValueExW(hkey, lpvaluename, 0, REG_SZ, lpdata, cbdata);
             RegCloseKey(hkey);
-            if n == ERROR_SUCCESS { Ok(()) } else { Err(win32_error_to_io_error(n)) }
+            if n == ERROR_SUCCESS {
+                broadcast_env_changed(lparam);
+                Ok(())
+            } else {
+                Err(win32_error_to_io_error(n))
+            }
         }
+    }
+}
+
+fn broadcast_env_changed(lparam: isize) {
+    unsafe {
+        let mut lpdwresult = 0usize;
+        // https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-settingchange
+        SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            0,
+            lparam,
+            SMTO_NORMAL | SMTO_ABORTIFHUNG,
+            5000,
+            &mut lpdwresult,
+        );
     }
 }
 
