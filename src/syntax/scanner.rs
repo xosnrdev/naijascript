@@ -356,6 +356,14 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 self.pos += 1;
                 Some(Token::RParen)
             }
+            b'[' => {
+                self.pos += 1;
+                Some(Token::LBracket)
+            }
+            b']' => {
+                self.pos += 1;
+                Some(Token::RBracket)
+            }
             b',' => {
                 self.pos += 1;
                 Some(Token::Comma)

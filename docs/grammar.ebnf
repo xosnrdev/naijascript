@@ -61,7 +61,10 @@ factor          = "not" factor
                 | variable
                 | number
                 | string
-                | boolean ;
+                | boolean
+                | array ;
+
+array           = "[" [ expression { "," expression } [ "," ] ] "]" ;
 
 boolean         = "true" | "false" ;
 

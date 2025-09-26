@@ -1,0 +1,3 @@
+make value get [1, 2, 3, "foo", "baz", true, false]
+shout(value)
+shout(typeof(value))

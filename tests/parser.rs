@@ -81,6 +81,30 @@ fn test_parse_parenthesized_expression() {
 }
 
 #[test]
+fn test_parse_array_literal_empty() {
+    let src = "make nums get []";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_array_literal_trailing_comma() {
+    let src = "make nums get [1, 2, 3,]";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_array_literal_nested() {
+    let src = "make grid get [[1], [2, 3]]";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_array_literal_error_missing_bracket() {
+    let src = "make nums get [1, 2";
+    assert_parse!(src, SyntaxError::ExpectedRBracket);
+}
+
+#[test]
 fn test_parse_condition_na() {
     let src = "if to say (x na 1) start end";
     assert_parse!(src);

@@ -130,6 +130,8 @@ pub enum Expr<'ast> {
     Binary { op: BinaryOp, lhs: ExprRef<'ast>, rhs: ExprRef<'ast>, span: Span },
     // Function call: <callee>(<args>?)
     Call { callee: ExprRef<'ast>, args: ArgListRef<'ast>, span: Span },
+    // Array literal: [expr, expr, ...]
+    Array { elements: &'ast [ExprRef<'ast>], span: Span },
     // logical/arithmetic negation
     Unary { op: UnaryOp, expr: ExprRef<'ast>, span: Span },
     Bool(bool, Span), // "true", "false"
@@ -150,6 +152,7 @@ pub enum SyntaxError {
     ExpectedGetAfterIdentifier,
     ExpectedLParen,
     ExpectedRParen,
+    ExpectedRBracket,
     ExpectedStartBlock,
     UnterminatedBlock,
     ExpectedComparisonOperator,
@@ -166,6 +169,7 @@ impl AsStr for SyntaxError {
             SyntaxError::ExpectedGetAfterIdentifier => "Missing `get` after identifier",
             SyntaxError::ExpectedLParen => "Missing left parenthesis",
             SyntaxError::ExpectedRParen => "Missing right parenthesis",
+            SyntaxError::ExpectedRBracket => "Missing right bracket",
             SyntaxError::ExpectedStartBlock => "Missing start block",
             SyntaxError::UnterminatedBlock => "Missing end block",
             SyntaxError::ExpectedComparisonOperator => "Missing comparison operator",
@@ -871,6 +875,45 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 }
                 expr
             }
+            Token::LBracket => {
+                self.bump(); // consume `[`
+                let mut elements = Vec::new_in(self.arena);
+                if !matches!(self.cur.token, Token::RBracket) {
+                    loop {
+                        let element = self.parse_expression(0);
+                        elements.push(element);
+                        if let Token::Comma = self.cur.token {
+                            self.bump(); // consume ','
+                            if matches!(self.cur.token, Token::RBracket) {
+                                break; // skip trailing comma
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                let end = if let Token::RBracket = self.cur.token {
+                    let end = self.cur.span.end;
+                    self.bump(); // consume ']'
+                    end
+                } else {
+                    self.errors.emit(
+                        self.cur.span,
+                        Severity::Error,
+                        "syntax",
+                        SyntaxError::ExpectedRBracket.as_str(),
+                        vec![Label {
+                            span: self.cur.span,
+                            message: ArenaCow::Borrowed("I dey expect `]` to close array"),
+                        }],
+                    );
+                    self.cur.span.end
+                };
+
+                let elements = self.arena.vec_into_slice(elements);
+                self.alloc(Expr::Array { elements, span: Range::from(start..end) })
+            }
             _ => {
                 self.errors.emit(
                     self.cur.span,
@@ -913,6 +956,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             Expr::Binary { span, .. } => span.start,
             Expr::Unary { span, .. } => span.start,
             Expr::Call { span, .. } => span.start,
+            Expr::Array { span, .. } => span.start,
         };
 
         // Pratt parselet for function calls and binary operators

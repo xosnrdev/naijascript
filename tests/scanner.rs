@@ -65,6 +65,12 @@ fn test_scan_punctuation() {
     assert_tokens!(src, &[Token::LParen, Token::RParen]);
 }
 
+#[test]
+fn test_scan_brackets() {
+    let src = "[ ]";
+    assert_tokens!(src, &[Token::LBracket, Token::RBracket]);
+}
+
 //------------------------------------------------------------------------
 // IDENTIFIERS
 //------------------------------------------------------------------------
