@@ -30,7 +30,7 @@ tar = "0.4.44"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 xz2 = "0.1.7"
-zip = { version = "4.0.0", default-features = false, features = ["deflate"] }
+zip = { version = "5.1.1", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 ansi-to-html = "0.2.2"
