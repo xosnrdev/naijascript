@@ -46,6 +46,8 @@ Literals na the fixed values wey you dey write directly for your code.
 - **Booleans**: Truth values wey be `true` and `false`.
   - `true` - mean say e correct or e happen.
   - `false` - mean say e no correct or e no happen.
+- **Arrays**: Ordered collection of values inside square brackets.
+  - Example: `[1, 2, 3]`, `["naija", "4ever",]`, `[make_it(), other_value]`
 
 ### 2.4. Operators
 
@@ -65,7 +67,8 @@ Literals na the fixed values wey you dey write directly for your code.
 
 ### 2.5. Punctuation
 
-- `(` and `)`: Used for grouping expressions and in `shout`, `if to say`, and `jasi` statements.
+- `(` and `)`: For grouping expressions. 
+- `[` and `]`: For array literals.
 
 ### 2.6. Whitespace and Comments
 
@@ -83,11 +86,12 @@ This section dey cover the rules wey dey checked before your code run.
 
 ### 4.1. Type System
 
-NaijaScript get three main data types:
+NaijaScript get four main data types:
 
 - **Number**: Represents numeric values (e.g., `10`, `99.9`). All numbers na floating-point numbers.
 - **String**: Represents text (e.g., `"Naija"`).
 - **Boolean**: Represents truth values wey fit be `true` or `false`.
+- **Array**: Represents ordered collection of values.
 
 Type inference dey automatic. You no need to declare the type of a variable.
 
@@ -127,6 +131,8 @@ This section dey explain wetin each part of the language dey do when e dey run.
 **Logical**: Expressions wey use `and`, `or`, and `not` dey join or change boolean values. Dem only work if the values na `true` or `false`. If you try use dem with number or string, e go cause a semantic error.
 
 **Function Call**: You fit call a function by writing its name followed by arguments in parentheses. The function go run and return a value wey you fit use for further expressions.
+
+**Array Literals**: Expressions inside square brackets. NaijaScript go evaluate each element from left to right before arranging dem inside the array.
 
 ## 6. Built-in Functions
 

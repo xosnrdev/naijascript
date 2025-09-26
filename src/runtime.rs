@@ -64,6 +64,8 @@ pub enum Value<'arena, 'src> {
     Number(f64),
     /// Standard boolean values
     Bool(bool),
+    /// Array literal values
+    Array(Vec<Value<'arena, 'src>, &'arena Arena>),
 }
 
 impl fmt::Display for Value<'_, '_> {
@@ -72,6 +74,16 @@ impl fmt::Display for Value<'_, '_> {
             Value::Str(s) => write!(f, "{s}"),
             Value::Number(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
+            Value::Array(items) => {
+                write!(f, "[")?;
+                for (idx, item) in items.iter().enumerate() {
+                    if idx > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                write!(f, "]")
+            }
         }
     }
 }
@@ -379,6 +391,14 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     _ => unreachable!("Semantic analysis guarantees valid unary expressions"),
                 }
             }
+            Expr::Array { elements, .. } => {
+                let mut values = Vec::with_capacity_in(elements.len(), self.arena);
+                for &element in *elements {
+                    let value = self.eval_expr(element)?;
+                    values.push(value);
+                }
+                Ok(Value::Array(values))
+            }
             Expr::Call { callee, args, span } => self.eval_function_call(callee, args, span),
         }
     }
@@ -570,6 +590,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     Value::Number(..) => "number",
                     Value::Str(..) => "string",
                     Value::Bool(..) => "boolean",
+                    Value::Array(..) => "array",
                 };
                 Ok(Value::Str(ArenaCow::borrowed(t)))
             }

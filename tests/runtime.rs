@@ -1,3 +1,5 @@
+#![feature(allocator_api)]
+
 use naijascript::KIBI;
 use naijascript::arena::{Arena, ArenaCow, ArenaString};
 use naijascript::diagnostics::AsStr;
@@ -199,6 +201,21 @@ fn logical_not_operator() {
 fn logical_operator_precedence() {
     assert_runtime!("shout(true or false and false)", output: vec![Value::Bool(true)]);
     assert_runtime!("shout((true or false) and false)", output: vec![Value::Bool(false)]);
+}
+
+#[test]
+fn array_output() {
+    let arena = Arena::new(4 * KIBI).unwrap();
+    let mut value = Vec::with_capacity_in(3, &arena);
+    value.extend_from_slice(&[Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)]);
+    assert_runtime!("make nums get [1, 2, 3] shout(nums)", output: vec![Value::Array(value)]);
+}
+
+#[test]
+fn empty_array() {
+    let arena = Arena::new(4 * KIBI).unwrap();
+    let value: Vec<Value, &Arena> = Vec::with_capacity_in(0, &arena);
+    assert_runtime!("make empty get [] shout(empty)", output: vec![Value::Array(value)]);
 }
 
 #[test]

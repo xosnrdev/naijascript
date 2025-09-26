@@ -45,6 +45,7 @@ enum ValueType {
     Number,
     String,
     Bool,
+    Array,
     Dynamic,
 }
 
@@ -547,6 +548,7 @@ impl<'ast> Resolver<'ast> {
                 Expr::Binary { span, .. } => *span,
                 Expr::Unary { span, .. } => *span,
                 Expr::Call { span, .. } => *span,
+                Expr::Array { span, .. } => *span,
             };
             self.errors.emit(
                 span,
@@ -589,6 +591,11 @@ impl<'ast> Resolver<'ast> {
                     }
                 }
             }
+            Expr::Array { elements, .. } => {
+                for element in *elements {
+                    self.check_expr(element);
+                }
+            }
             // Variables need to exist in our symbol table before we can use them
             Expr::Var(v, span) => {
                 if !self.lookup_var(v) {
@@ -612,6 +619,18 @@ impl<'ast> Resolver<'ast> {
                 let r = self.infer_expr_type(rhs);
                 match op {
                     BinaryOp::Add => match (l, r) {
+                        (Some(ValueType::Array), ..) | (.., Some(ValueType::Array)) => {
+                            self.errors.emit(
+                                *span,
+                                Severity::Error,
+                                "semantic",
+                                SemanticError::TypeMismatch.as_str(),
+                                vec![Label {
+                                    span: *span,
+                                    message: ArenaCow::Borrowed("You no fit add array values"),
+                                }],
+                            );
+                        }
                         (Some(ValueType::Bool), ..) | (.., Some(ValueType::Bool)) => {
                             self.errors.emit(
                                 *span,
@@ -640,7 +659,9 @@ impl<'ast> Resolver<'ast> {
                             (Some(ValueType::Dynamic), Some(ValueType::String))
                             | (Some(ValueType::String), Some(ValueType::Dynamic))
                             | (Some(ValueType::Dynamic), Some(ValueType::Bool))
-                            | (Some(ValueType::Bool), Some(ValueType::Dynamic)) => {
+                            | (Some(ValueType::Bool), Some(ValueType::Dynamic))
+                            | (Some(ValueType::Array), ..)
+                            | (.., Some(ValueType::Array)) => {
                                 self.errors.emit(
                                     *span,
                                     Severity::Error,
@@ -855,6 +876,7 @@ impl<'ast> Resolver<'ast> {
             Expr::Number(..) => Some(ValueType::Number),
             Expr::String { .. } => Some(ValueType::String),
             Expr::Bool(..) => Some(ValueType::Bool),
+            Expr::Array { .. } => Some(ValueType::Array),
             Expr::Var(v, ..) => {
                 for scope in self.variable_scopes.iter().rev() {
                     if let Some((_, t, ..)) = scope.iter().find(|(name, ..)| *name == *v) {
@@ -868,6 +890,7 @@ impl<'ast> Resolver<'ast> {
                 let r = self.infer_expr_type(rhs)?;
                 match op {
                     BinaryOp::Add => match (l, r) {
+                        (ValueType::Array, ..) | (.., ValueType::Array) => None,
                         (ValueType::Bool, ..) | (.., ValueType::Bool) => None,
                         (ValueType::String, ..) | (.., ValueType::String) => {
                             Some(ValueType::String)
@@ -887,6 +910,7 @@ impl<'ast> Resolver<'ast> {
                             (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
                                 Some(ValueType::Number)
                             }
+                            (ValueType::Array, ..) | (.., ValueType::Array) => None,
                             _ => None,
                         }
                     }
@@ -897,6 +921,7 @@ impl<'ast> Resolver<'ast> {
                         (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
                             Some(ValueType::Bool)
                         }
+                        (ValueType::Array, ..) | (.., ValueType::Array) => None,
                         _ => None,
                     },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
@@ -904,6 +929,7 @@ impl<'ast> Resolver<'ast> {
                         (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
                             Some(ValueType::Bool)
                         }
+                        (ValueType::Array, ..) | (.., ValueType::Array) => None,
                         _ => None,
                     },
                 }
