@@ -51,7 +51,7 @@ windows-sys = { version = "0.60.2", features = [
 ] }
 
 [dev-dependencies]
-criterion = { version = "0.6.0", features = ["html_reports"] }
+criterion = { version = "0.7.0", features = ["html_reports"] }
 
 [[bench]]
 name = "lib"
