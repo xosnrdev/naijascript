@@ -25,7 +25,7 @@ clap = { version = "4.5.39", features = ["derive"] }
 clap-cargo = { version = "0.15.2", features = ["clap"] }
 dirs = "6.0.0"
 regex-lite = "0.1.6"
-reqwest = { version = "0.12.19", default-features = false, features = ["rustls-tls", "blocking", "json"] }
+reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls", "blocking", "json"] }
 tar = "0.4.44"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
