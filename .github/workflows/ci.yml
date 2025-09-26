@@ -27,7 +27,7 @@ jobs:
         run: git config --global core.autocrlf false
         if: matrix.os == 'windows-latest'
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       # https://github.com/actions/cache/blob/main/examples.md#rust---cargo
       # Depends on `Cargo.lock` --> Has to be after checkout.
       - uses: actions/cache@v4
