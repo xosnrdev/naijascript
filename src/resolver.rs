@@ -65,8 +65,6 @@ struct FunctionSig<'ast> {
     name: &'ast str,
     param_names: &'ast [&'ast str],
     name_span: &'ast Span,
-    has_return: bool,
-    return_type: Option<ValueType>,
 }
 
 /// An arena-backed semantic analyzer.
@@ -365,15 +363,10 @@ impl<'ast> Resolver<'ast> {
         }
 
         // Add function to current function scope
-        self.function_scopes.last_mut().expect("function scope stack should never be empty").push(
-            FunctionSig {
-                name,
-                name_span,
-                param_names: params.params,
-                has_return: false,
-                return_type: None,
-            },
-        );
+        self.function_scopes
+            .last_mut()
+            .expect("function scope stack should never be empty")
+            .push(FunctionSig { name, name_span, param_names: params.params });
 
         // Set current function context for return validation
         let prev_function = self.current_function;
@@ -388,42 +381,6 @@ impl<'ast> Resolver<'ast> {
             self.variable_scopes.last_mut().unwrap().push((param_name, ValueType::Dynamic, span));
         }
 
-        // We collect return types and spans from the function body, skipping nested functions.
-        let mut return_types = Vec::new_in(self.arena);
-        self.collect_return_types(body, &mut return_types);
-
-        let unique_types: HashSet<ValueType> = return_types.iter().map(|(t, ..)| *t).collect();
-        if unique_types.len() > 1 && !unique_types.contains(&ValueType::Dynamic) {
-            for (return_type, return_span) in &return_types {
-                if *return_type != ValueType::Dynamic {
-                    self.errors.emit(
-                        **return_span,
-                        Severity::Warning,
-                        "semantic",
-                        SemanticError::TypeMismatch.as_str(),
-                        vec![Label {
-                            span: **return_span,
-                            message: ArenaCow::Owned(arena_format!(
-                                &self.arena,
-                                "Function `{name}` return types no match",
-                            )),
-                        }],
-                    );
-                }
-            }
-        }
-
-        // We want to set function return type to Dynamic if inconsistent, else to the single type
-        let func_scope = self.function_scopes.last_mut().unwrap();
-        if let Some(func_sig) = func_scope.iter_mut().find(|f| f.name == name) {
-            func_sig.has_return = !return_types.is_empty();
-            func_sig.return_type = if unique_types.len() == 1 {
-                Some(*unique_types.iter().next().unwrap())
-            } else {
-                Some(ValueType::Dynamic)
-            };
-        }
-
         // Check function body using check_block to get dead code detection
         // Note: check_block will create its own scope, but that's fine for function bodies
         self.check_block(body);
@@ -433,42 +390,6 @@ impl<'ast> Resolver<'ast> {
 
         // Restore previous function context
         self.current_function = prev_function;
-    }
-
-    // FWIW, this function recursively collects return types and spans from a block
-    // which [`check_return_stmt`] uses to validate return statements.
-    #[inline]
-    fn collect_return_types(
-        &self,
-        block: BlockRef<'ast>,
-        types: &mut Vec<(ValueType, &'ast Span), &'ast Arena>,
-    ) {
-        for &stmt in block.stmts {
-            match stmt {
-                Stmt::Return { expr, span } => {
-                    let var_type = if let Some(expr) = expr {
-                        self.infer_expr_type(expr).unwrap_or(ValueType::Dynamic)
-                    } else {
-                        ValueType::Dynamic
-                    };
-                    types.push((var_type, span));
-                }
-                Stmt::If { then_b, else_b, .. } => {
-                    self.collect_return_types(then_b, types);
-                    if let Some(else_b) = else_b {
-                        self.collect_return_types(else_b, types);
-                    }
-                }
-                Stmt::Loop { body, .. } => {
-                    self.collect_return_types(body, types);
-                }
-                Stmt::Block { block, .. } => {
-                    self.collect_return_types(block, types);
-                }
-                Stmt::FunctionDef { .. } => {}
-                _ => {}
-            }
-        }
     }
 
     fn check_return_stmt(&mut self, expr: Option<ExprRef<'ast>>, span: &'ast Span) {
@@ -484,48 +405,6 @@ impl<'ast> Resolver<'ast> {
                     message: ArenaCow::Borrowed("You no fit `return` outside function"),
                 }],
             );
-        } else {
-            let return_type = if let Some(expr_id) = expr {
-                self.infer_expr_type(expr_id)
-            } else {
-                Some(ValueType::Dynamic)
-            };
-
-            if let Some(current_func_name) = self.current_function {
-                // Find the function signature in the innermost function scope for mutation
-                if let Some(scope) = self.function_scopes.last_mut()
-                    && let Some(func_sig) = scope.iter_mut().find(|f| f.name == current_func_name)
-                {
-                    func_sig.has_return = true;
-
-                    // Update function return type if we don't have one yet
-                    if func_sig.return_type.is_none() {
-                        func_sig.return_type = return_type;
-                    } else if let (Some(existing_type), Some(new_type)) =
-                        (func_sig.return_type, return_type)
-                    {
-                        // Check if return types are consistent
-                        if existing_type != new_type
-                            && existing_type != ValueType::Dynamic
-                            && new_type != ValueType::Dynamic
-                        {
-                            self.errors.emit(
-                                *span,
-                                Severity::Warning,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
-                                vec![Label {
-                                    span: *span,
-                                    message: ArenaCow::Borrowed(
-                                        "Return types for dis function no match",
-                                    ),
-                                }],
-                            );
-                            func_sig.return_type = Some(ValueType::Dynamic);
-                        }
-                    }
-                }
-            }
         }
 
         // Check return expression if present
@@ -957,8 +836,8 @@ impl<'ast> Resolver<'ast> {
                 Expr::Var(func_name, ..) => {
                     if let Some(builtin) = Builtin::from_name(func_name) {
                         Some(ValueType::from(builtin.return_type()))
-                    } else if let Some(func_sig) = self.lookup_func(func_name) {
-                        func_sig.return_type.or(Some(ValueType::Dynamic))
+                    } else if self.lookup_func(func_name).is_some() {
+                        Some(ValueType::Dynamic)
                     } else {
                         None
                     }

@@ -213,21 +213,6 @@ fn test_function_return_type_mul_mismatch() {
 }
 
 #[test]
-fn test_inconsistent_return_type() {
-    assert_resolve!(
-        r#"
-        do foo() start
-            if to say (true) start
-                return 1
-            end
-            return "two"
-        end
-        "#,
-        SemanticError::TypeMismatch
-    );
-}
-
-#[test]
 fn test_unary_minus_with_string() {
     assert_resolve!(r#"make x get minus "hello""#, SemanticError::TypeMismatch);
 }
