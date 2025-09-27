@@ -8,4 +8,7 @@
 # = Huge reduction in binary size by removing all that.
 [unstable]
 build-std = ["std", "panic_abort"]
-build-std-features = ["panic_immediate_abort", "optimize_for_size"]
+build-std-features = ["optimize_for_size"]
+
+[build-std-features]
+rustflags = ["-Zunstable-options", "-Cpanic=immediate-abort"]
