@@ -489,7 +489,7 @@ impl<'ast> Resolver<'ast> {
                         SemanticError::TypeMismatch.as_str(),
                         vec![Label {
                             span: *span,
-                            message: ArenaCow::Borrowed("Dis type no be array"),
+                            message: ArenaCow::Borrowed("Type of value no be array"),
                         }],
                     );
                 }
@@ -503,7 +503,7 @@ impl<'ast> Resolver<'ast> {
                         SemanticError::TypeMismatch.as_str(),
                         vec![Label {
                             span: *index_span,
-                            message: ArenaCow::Borrowed("Dis type no be number"),
+                            message: ArenaCow::Borrowed("Type of array index no be number"),
                         }],
                     );
                 }
