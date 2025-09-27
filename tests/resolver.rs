@@ -213,12 +213,12 @@ fn test_function_return_type_mul_mismatch() {
 }
 
 #[test]
-fn test_non_array_index() {
+fn test_non_array_type_index() {
     assert_resolve!("make val get 1[0]", SemanticError::TypeMismatch);
 }
 
 #[test]
-fn test_array_index_not_number() {
+fn test_array_index_type_not_number() {
     assert_resolve!("make nums get [1, 2] make val get nums[true]", SemanticError::TypeMismatch);
 }
 
