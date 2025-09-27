@@ -10,8 +10,6 @@ license = "MIT"
 readme = false
 publish = false
 
-default-run = "naija"
-
 # These wasm-opt flags help avoid build errors when compiling with wasm-pack.
 # For more details, see: https://github.com/rustwasm/wasm-pack/issues/1441
 [package.metadata.wasm-pack.profile.release]
@@ -20,17 +18,13 @@ wasm-opt = ["--enable-bulk-memory", "--enable-nontrapping-float-to-int"]
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "naija"
+path = "src/main.rs"
+
 [dependencies]
 clap = { version = "4.5.39", features = ["derive"] }
 clap-cargo = { version = "0.17.1", features = ["clap"] }
-dirs = "6.0.0"
-regex-lite = "0.1.6"
-reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls", "blocking", "json"] }
-tar = "0.4.44"
-
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-xz2 = "0.1.7"
-zip = { version = "5.1.1", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 ansi-to-html = "0.2.2"
@@ -43,11 +37,9 @@ libc = "0.2.175"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.1", features = [
 	"Win32_System_Memory",
-	"Win32_System_Registry",
 	"Win32_System_Console",
 	"Win32_Storage_FileSystem",
 	"Win32_System_IO",
-	"Win32_UI_WindowsAndMessaging",
 ] }
 
 [dev-dependencies]

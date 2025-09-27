@@ -1,5 +1,3 @@
-//! The command line interface for NaijaScript interpreter.
-
 use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
@@ -14,18 +12,18 @@ use naijascript::syntax::parser::Parser;
 use naijascript::syntax::scanner::Lexer;
 use naijascript::syntax::token::SpannedToken;
 
-// Command line arguments for the NaijaScript interpreter.
 #[derive(Debug, ClapParser)]
 #[command(
-    about = "Scripting language wey you fit use learn, run things, and catch cruise.",
+    bin_name = "naija",
+    about = "The NaijaScript Interpreter",
     version,
     styles = CLAP_STYLING,
     arg_required_else_help = true
 )]
 struct Cli {
-    /// Script file wey you wan run, e.g. naija script.ns
+    /// Script to run
     script: Option<String>,
-    /// Code wey you wan run sharp sharp, e.g. naija --eval "shout("hello world")"
+    /// Evaluate code from the command line
     #[arg(short, long)]
     eval: Option<String>,
 }
@@ -35,9 +33,6 @@ const SCRATCH_ARENA_CAPACITY: usize = 1 * GIBI;
 #[cfg(target_pointer_width = "64")]
 const SCRATCH_ARENA_CAPACITY: usize = 4 * GIBI;
 
-// Entry point for the NaijaScript CLI.
-//
-// Parses command line arguments and dispatches to the appropriate mode (eval, script, stdin).
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -55,7 +50,6 @@ fn main() -> ExitCode {
     }
 }
 
-// Run source code from a &str, with full diagnostics and semantic analysis.
 fn run_source(filename: &str, src: &str, arena: &Arena) -> ExitCode {
     let mut lexer = Lexer::new(src, arena);
     let tokens: Vec<SpannedToken> = (&mut lexer).collect();
@@ -97,7 +91,6 @@ fn run_source(filename: &str, src: &str, arena: &Arena) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-// Runs a script file from disk.
 fn run_file(script: &str, arena: &Arena) -> ExitCode {
     let stem = script.split_once('.').map_or(script, |(s, _)| s);
     if !(script.ends_with(".ns") || script.ends_with(".naija")) {
@@ -118,7 +111,6 @@ fn run_file(script: &str, arena: &Arena) -> ExitCode {
     run_source(script, &source, arena)
 }
 
-// Reads code from standard input and runs it as a script.
 fn run_stdin(arena: &Arena) -> ExitCode {
     let mut buffer = String::new();
     if io::stdin().read_to_string(&mut buffer).is_err() {
