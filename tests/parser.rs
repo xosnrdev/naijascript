@@ -105,6 +105,24 @@ fn test_parse_array_literal_error_missing_bracket() {
 }
 
 #[test]
+fn test_parse_array_index_expr() {
+    let src = "make first get nums[0]";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_nested_array_index_expr() {
+    let src = "make val get matrix[1][2]";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_array_index_missing_rbracket() {
+    let src = "make first get nums[0";
+    assert_parse!(src, SyntaxError::ExpectedRBracket);
+}
+
+#[test]
 fn test_parse_condition_na() {
     let src = "if to say (x na 1) start end";
     assert_parse!(src);

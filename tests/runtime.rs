@@ -219,6 +219,35 @@ fn empty_array() {
 }
 
 #[test]
+fn array_index() {
+    assert_runtime!("make nums get [10, 20, 30] shout(nums[1])", output: vec![Value::Number(20.0)]);
+}
+
+#[test]
+fn nested_array_index() {
+    assert_runtime!(
+        "make matrix get [[1, 2], [3, 6]] shout(matrix[1][1])",
+        output: vec![Value::Number(6.0)]
+    );
+}
+
+#[test]
+fn array_index_out_of_bounds() {
+    assert_runtime!(
+        "make nums get [1, 2] shout(nums[5])",
+        error: RuntimeErrorKind::IndexOutOfBounds
+    );
+}
+
+#[test]
+fn array_index_not_whole_number() {
+    assert_runtime!(
+        "make nums get [1, 2] shout(nums[1.5])",
+        error: RuntimeErrorKind::InvalidIndex
+    );
+}
+
+#[test]
 fn logical_not_precedence() {
     assert_runtime!("shout(not true or true)", output: vec![Value::Bool(true)]);
     assert_runtime!("shout(not (true or true))", output: vec![Value::Bool(false)]);

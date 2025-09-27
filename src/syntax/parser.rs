@@ -130,6 +130,8 @@ pub enum Expr<'ast> {
     Binary { op: BinaryOp, lhs: ExprRef<'ast>, rhs: ExprRef<'ast>, span: Span },
     // Function call: <callee>(<args>?)
     Call { callee: ExprRef<'ast>, args: ArgListRef<'ast>, span: Span },
+    // Array indexing: expr[expr]
+    Index { array: ExprRef<'ast>, index: ExprRef<'ast>, span: Span },
     // Array literal: [expr, expr, ...]
     Array { elements: &'ast [ExprRef<'ast>], span: Span },
     // logical/arithmetic negation
@@ -956,6 +958,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             Expr::Binary { span, .. } => span.start,
             Expr::Unary { span, .. } => span.start,
             Expr::Call { span, .. } => span.start,
+            Expr::Index { span, .. } => span.start,
             Expr::Array { span, .. } => span.start,
         };
 
@@ -1001,6 +1004,35 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     callee: lhs,
                     args,
                     span: Range::from(call_start..end),
+                });
+                continue;
+            }
+
+            if let Token::LBracket = self.cur.token {
+                self.bump(); // consume '['
+                let index_expr = self.parse_expression(0);
+                let end = if let Token::RBracket = self.cur.token {
+                    let end = self.cur.span.end;
+                    self.bump(); // consume ']'
+                    end
+                } else {
+                    self.errors.emit(
+                        self.cur.span,
+                        Severity::Error,
+                        "syntax",
+                        SyntaxError::ExpectedRBracket.as_str(),
+                        vec![Label {
+                            span: self.cur.span,
+                            message: ArenaCow::Borrowed("I dey expect `]` to close array index"),
+                        }],
+                    );
+                    self.cur.span.end
+                };
+
+                lhs = self.alloc(Expr::Index {
+                    array: lhs,
+                    index: index_expr,
+                    span: Range::from(start..end),
                 });
                 continue;
             }

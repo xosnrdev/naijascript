@@ -213,6 +213,16 @@ fn test_function_return_type_mul_mismatch() {
 }
 
 #[test]
+fn test_non_array_index() {
+    assert_resolve!("make val get 1[0]", SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_array_index_not_number() {
+    assert_resolve!("make nums get [1, 2] make val get nums[true]", SemanticError::TypeMismatch);
+}
+
+#[test]
 fn test_unary_minus_with_string() {
     assert_resolve!(r#"make x get minus "hello""#, SemanticError::TypeMismatch);
 }

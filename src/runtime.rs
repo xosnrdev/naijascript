@@ -24,6 +24,10 @@ pub enum RuntimeErrorKind {
     DivisionByZero,
     /// Call stack overflow to prevent infinite recursion from crashing the host
     StackOverflow,
+    /// Index outside the bounds of an array
+    IndexOutOfBounds,
+    /// Index with a non-integer/invalid value
+    InvalidIndex,
 }
 
 impl AsStr for RuntimeErrorKind {
@@ -32,6 +36,8 @@ impl AsStr for RuntimeErrorKind {
             RuntimeErrorKind::Io(..) => "I/O error",
             RuntimeErrorKind::DivisionByZero => "Division by zero",
             RuntimeErrorKind::StackOverflow => "Stack overflow",
+            RuntimeErrorKind::IndexOutOfBounds => "Index out of bounds",
+            RuntimeErrorKind::InvalidIndex => "Invalid index",
         }
     }
 }
@@ -164,6 +170,14 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     RuntimeErrorKind::Io(msg) => {
                         vec![Label { span: err.span, message: ArenaCow::Borrowed(msg) }]
                     }
+                    RuntimeErrorKind::IndexOutOfBounds => vec![Label {
+                        span: err.span,
+                        message: ArenaCow::Borrowed("Index don pass array length"),
+                    }],
+                    RuntimeErrorKind::InvalidIndex => vec![Label {
+                        span: err.span,
+                        message: ArenaCow::Borrowed("Array index no be whole number"),
+                    }],
                 };
                 self.errors.emit(err.span, Severity::Error, "runtime", err.kind.as_str(), labels);
             }
@@ -398,6 +412,38 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     values.push(value);
                 }
                 Ok(Value::Array(values))
+            }
+            Expr::Index { array, index, span } => {
+                let array_value = self.eval_expr(array)?;
+                let index_value = self.eval_expr(index)?;
+                let items = match &array_value {
+                    Value::Array(items) => items,
+                    _ => unreachable!("Semantic analysis guarantees only arrays can be indexed"),
+                };
+
+                let index_number = match index_value {
+                    Value::Number(n) => n,
+                    _ => {
+                        return Err(RuntimeError {
+                            kind: RuntimeErrorKind::InvalidIndex,
+                            span: *span,
+                        });
+                    }
+                };
+
+                if !index_number.is_finite() || index_number.fract() != 0.0 {
+                    return Err(RuntimeError { kind: RuntimeErrorKind::InvalidIndex, span: *span });
+                }
+
+                let idx = index_number as isize;
+                if idx < 0 || idx >= items.len() as isize {
+                    return Err(RuntimeError {
+                        kind: RuntimeErrorKind::IndexOutOfBounds,
+                        span: *span,
+                    });
+                }
+
+                Ok(items[idx as usize].clone())
             }
             Expr::Call { callee, args, span } => self.eval_function_call(callee, args, span),
         }
