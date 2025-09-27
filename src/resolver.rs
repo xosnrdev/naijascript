@@ -427,6 +427,7 @@ impl<'ast> Resolver<'ast> {
                 Expr::Binary { span, .. } => *span,
                 Expr::Unary { span, .. } => *span,
                 Expr::Call { span, .. } => *span,
+                Expr::Index { span, .. } => *span,
                 Expr::Array { span, .. } => *span,
             };
             self.errors.emit(
@@ -473,6 +474,38 @@ impl<'ast> Resolver<'ast> {
             Expr::Array { elements, .. } => {
                 for element in *elements {
                     self.check_expr(element);
+                }
+            }
+            Expr::Index { array, index, index_span, span } => {
+                self.check_expr(array);
+                self.check_expr(index);
+
+                let array_ty = self.infer_expr_type(array);
+                if array_ty != Some(ValueType::Array) && array_ty != Some(ValueType::Dynamic) {
+                    self.errors.emit(
+                        *span,
+                        Severity::Error,
+                        "semantic",
+                        SemanticError::TypeMismatch.as_str(),
+                        vec![Label {
+                            span: *span,
+                            message: ArenaCow::Borrowed("Type of value no be array"),
+                        }],
+                    );
+                }
+
+                let index_ty = self.infer_expr_type(index);
+                if index_ty != Some(ValueType::Number) && index_ty != Some(ValueType::Dynamic) {
+                    self.errors.emit(
+                        *index_span,
+                        Severity::Error,
+                        "semantic",
+                        SemanticError::TypeMismatch.as_str(),
+                        vec![Label {
+                            span: *index_span,
+                            message: ArenaCow::Borrowed("Type of array index no be number"),
+                        }],
+                    );
                 }
             }
             // Variables need to exist in our symbol table before we can use them
@@ -756,6 +789,7 @@ impl<'ast> Resolver<'ast> {
             Expr::String { .. } => Some(ValueType::String),
             Expr::Bool(..) => Some(ValueType::Bool),
             Expr::Array { .. } => Some(ValueType::Array),
+            Expr::Index { .. } => Some(ValueType::Dynamic),
             Expr::Var(v, ..) => {
                 for scope in self.variable_scopes.iter().rev() {
                     if let Some((_, t, ..)) = scope.iter().find(|(name, ..)| *name == *v) {
