@@ -413,7 +413,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 }
                 Ok(Value::Array(values))
             }
-            Expr::Index { array, index, span } => {
+            Expr::Index { array, index, index_span, .. } => {
                 let array_value = self.eval_expr(array)?;
                 let index_value = self.eval_expr(index)?;
                 let items = match &array_value {
@@ -426,20 +426,23 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     _ => {
                         return Err(RuntimeError {
                             kind: RuntimeErrorKind::InvalidIndex,
-                            span: *span,
+                            span: *index_span,
                         });
                     }
                 };
 
                 if !index_number.is_finite() || index_number.fract() != 0.0 {
-                    return Err(RuntimeError { kind: RuntimeErrorKind::InvalidIndex, span: *span });
+                    return Err(RuntimeError {
+                        kind: RuntimeErrorKind::InvalidIndex,
+                        span: *index_span,
+                    });
                 }
 
                 let idx = index_number as isize;
                 if idx < 0 || idx >= items.len() as isize {
                     return Err(RuntimeError {
                         kind: RuntimeErrorKind::IndexOutOfBounds,
-                        span: *span,
+                        span: *index_span,
                     });
                 }
 

@@ -123,6 +123,8 @@ pub enum Stmt<'ast> {
 /// Represents an expression in NaijaScript.
 #[derive(Debug)]
 pub enum Expr<'ast> {
+    // Array indexing: expr[expr]
+    Index { array: ExprRef<'ast>, index: ExprRef<'ast>, index_span: Span, span: Span },
     String { parts: StringParts<'ast>, span: Span }, // "hello" or "hello {name}"
     Number(&'ast str, Span),                         // 42, 3.14, etc.
     Var(&'ast str, Span),                            // variable references
@@ -130,8 +132,6 @@ pub enum Expr<'ast> {
     Binary { op: BinaryOp, lhs: ExprRef<'ast>, rhs: ExprRef<'ast>, span: Span },
     // Function call: <callee>(<args>?)
     Call { callee: ExprRef<'ast>, args: ArgListRef<'ast>, span: Span },
-    // Array indexing: expr[expr]
-    Index { array: ExprRef<'ast>, index: ExprRef<'ast>, span: Span },
     // Array literal: [expr, expr, ...]
     Array { elements: &'ast [ExprRef<'ast>], span: Span },
     // logical/arithmetic negation
@@ -1009,6 +1009,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             }
 
             if let Token::LBracket = self.cur.token {
+                let bracket_start = self.cur.span.start;
                 self.bump(); // consume '['
                 let index_expr = self.parse_expression(0);
                 let end = if let Token::RBracket = self.cur.token {
@@ -1032,6 +1033,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 lhs = self.alloc(Expr::Index {
                     array: lhs,
                     index: index_expr,
+                    index_span: Range::from(bracket_start..end),
                     span: Range::from(start..end),
                 });
                 continue;

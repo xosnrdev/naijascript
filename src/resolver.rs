@@ -476,7 +476,7 @@ impl<'ast> Resolver<'ast> {
                     self.check_expr(element);
                 }
             }
-            Expr::Index { array, index, span } => {
+            Expr::Index { array, index, index_span, span } => {
                 self.check_expr(array);
                 self.check_expr(index);
 
@@ -497,12 +497,12 @@ impl<'ast> Resolver<'ast> {
                 let index_ty = self.infer_expr_type(index);
                 if index_ty != Some(ValueType::Number) && index_ty != Some(ValueType::Dynamic) {
                     self.errors.emit(
-                        *span,
+                        *index_span,
                         Severity::Error,
                         "semantic",
                         SemanticError::TypeMismatch.as_str(),
                         vec![Label {
-                            span: *span,
+                            span: *index_span,
                             message: ArenaCow::Borrowed("Dis type no be number"),
                         }],
                     );
