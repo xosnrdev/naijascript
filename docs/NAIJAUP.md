@@ -1,151 +1,150 @@
-# Naijaup - The Toolchain Manager
+# Naijaup – The Toolchain Manager
 
-Na the official tool wey you go use manage NaijaScript Interpreter.
+`naijaup` is the official utility for installing and managing NaijaScript interpreters.
 
-## How to Install Am
+## Installation
 
-### How to Install with Script (We Recommend Dis One)
+### Recommended Script Installation
 
-- **For Linux/macOS:**
-  1. Open your terminal.
+- **Linux or macOS**
+  1. Open a terminal window.
   2. Run:
      ```sh
      curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.sh | sh
      ```
-- **For Windows (PowerShell):**
-  1. Open PowerShell.
+- **Windows (PowerShell)**
+  1. Launch PowerShell.
   2. Run:
      ```powershell
      powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.ps1 | iex"
      ```
 
-This command go install `naijaup` for your computer inside `$HOME/.local/bin` (for Linux/macOS) or `%USERPROFILE%\.naijaup\bin` (for Windows).
+The installer places `naijaup` in `$HOME/.local/bin` (Linux/macOS) or `%USERPROFILE%\.naijaup\bin` (Windows).
 
-## How to Use Am
+## Using Naijaup
 
-Run `naijaup --help` make you see everything wey you fit do.
+Run `naijaup --help` to review every available command.
 
-### Things Wey You Go Dey Do
+### Core Tasks
 
-#### 1. How to Install NaijaScript Version
+#### 1. Install a NaijaScript Version
 
-- To install the latest version, run:
+- Install the latest release:
   ```sh
   naijaup install latest
   ```
-- To install another version (e.g., 1.2.3), run:
+- Install a specific version (for example, `1.2.3`):
   ```sh
   naijaup install 1.2.3
   ```
 
-#### 2. See All the Versions Wey You Don Install
+#### 2. List Installed Versions
 
-- To see all the versions wey you don install, run:
+- Display all locally installed interpreters:
   ```sh
   naijaup list
   ```
 
-#### 3. Choose Your Default Version
+#### 3. Choose the Default Version
 
-- To choose the version wey you wan dey use everytime, run:
+- Set the interpreter used by default:
   ```sh
   naijaup default <version>
-  # For example:
+  # Example
   naijaup default latest
   ```
 
-#### 4. See All the Versions Wey Dey Online
+#### 4. Discover Available Versions
 
-- To see all the versions wey you fit download, run:
+- View every release hosted online:
   ```sh
   naijaup available
   ```
 
-#### 5. How to Comot Version
+#### 5. Uninstall a Version
 
-- To comot any version, run:
+- Remove an installed interpreter:
   ```sh
   naijaup uninstall <version>
   ```
 
-#### 6. Run Script with the Version Wey You Choose
+#### 6. Run a Script with a Chosen Version
 
-- To run your script with any version wey you like, run:
+- Execute a script using any installed interpreter:
   ```sh
   naijaup run <script.ns> [args...]
   ```
 
-#### 7. How to Update `naijaup`
+#### 7. Update Naijaup
 
-- To update `naijaup` to the latest version, run:
+- Upgrade the toolchain manager itself:
   ```sh
   naijaup self update
   ```
 
-#### 8. How to Comot `naijaup` and Everything
+#### 8. Uninstall Naijaup
 
-- To comot `naijaup` and all NaijaScript data from your system, run:
+- Remove `naijaup` and all installed interpreters:
   ```sh
   naijaup self uninstall --yes
   ```
 
-## How E Take Arrange Things
+## How Naijaup Manages Versions
 
-- **Default Version:**
-  - You fit set your default version with `naijaup default <version>`.
-  - We dey save the default inside `~/.naijaup/config.toml`.
-- **Project Version:**
-  - If you wan use another version for your project, just put `.naijascript-toolchain` file inside your project folder.
-- **Symlinks:**
-  - For Linux/macOS, we dey create shortcut to the `naija` program inside `~/.local/bin/naija`.
-  - For Windows, the shortcut dey inside `%USERPROFILE%\.naijaup\bin\naija.exe`.
-  - Make sure say these folders dey your `PATH`.
+- **Default Version**
+  - Configure the default interpreter using `naijaup default <version>`.
+  - The selection is stored in `~/.naijaup/config.toml`.
+- **Per-Project Version**
+  - Place a `.naijascript-toolchain` file in a project directory to override the default.
+- **Symlinks**
+  - On Linux/macOS, a `naija` symlink is created in `~/.local/bin/naija`.
+  - On Windows, the shim lives in `%USERPROFILE%\.naijaup\bin\naija.exe`.
+  - Ensure these directories appear in your `PATH`.
 
-## If Wahala Happen (Troubleshooting)
+## Troubleshooting
 
-- **Command No Dey:**
-  - Add the folder where you install am to your `PATH`.
-  - Restart your terminal after you install am.
-  - If the wahala still dey, abeg [open issue for us for GitHub](https://github.com/xosnrdev/naijascript/issues).
-- **Permission Wahala:**
-  - For Unix, you fit change the permission for the folder where you install am.
-- **Shortcut No Wan Create (for Windows):**
-  - Run your terminal as administrator, or add the folder to your `PATH` by yourself.
-- **Network Wahala:**
-  - Make sure say you get internet to download from GitHub.
-- **Manual Installation:**
-  - Go the [Releases page](https://github.com/xosnrdev/naijascript/releases/latest) to download am by yourself.
+- **`naijaup` command not found**
+  - Add the installer directory to your `PATH` and restart the terminal session.
+  - Still blocked? [Open an issue on GitHub](https://github.com/xosnrdev/naijascript/issues).
+- **Permission errors on Unix-like systems**
+  - Adjust file permissions for the installation directory or rerun the installer with elevated rights.
+- **Windows shim is missing**
+  - Run the terminal as Administrator, or manually add `%USERPROFILE%\.naijaup\bin` to your `PATH`.
+- **Network timeouts or download failures**
+  - Confirm you have a stable internet connection; the installer fetches artifacts from GitHub.
+- **Manual installation**
+  - Download binaries from the [latest release](https://github.com/xosnrdev/naijascript/releases/latest) and follow the included instructions.
 
-## All the Commands
+## Command Reference
 
 ### `install <version>`
 
-E go install the NaijaScript version wey you choose.
+Install the specified NaijaScript interpreter version.
 
 ### `list`
 
-E go show you all the versions wey you don install.
+Show every version currently installed.
 
 ### `default <version>`
 
-E go set the version wey you go dey use everytime.
+Set the interpreter invoked by default.
 
 ### `available`
 
-E go show you all the versions wey you fit download.
+List all versions published upstream.
 
 ### `uninstall <version>`
 
-E go comot the version wey you choose from your system.
+Remove the chosen interpreter from your system.
 
 ### `run <script> [args...]`
 
-E go run your script with the version wey you choose.
+Execute a script with a specific interpreter version.
 
 ### `self update`
 
-E go update `naijaup` to the latest version.
+Update `naijaup` to the newest release.
 
 ### `self uninstall --yes`
 
-E go comot `naijaup` and all NaijaScript data (you must gree to am).
+Uninstall `naijaup` and delete all NaijaScript data (confirmation required).

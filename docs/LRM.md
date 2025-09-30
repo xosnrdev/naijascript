@@ -2,31 +2,31 @@
 
 ## 1. Introduction
 
-Welcome to the official Language Reference Manual for NaijaScript. This document na the authoritative source for everything about the NaijaScript language. E go explain the full syntax, how variables and types dey work, and wetin each command dey do when you run your code.
+Welcome to the official Language Reference Manual for NaijaScript. This document is the authoritative source for NaijaScript syntax, semantics, and runtime behavior. It explains how programs are structured, how types and values behave, and what each command does when executed.
 
-NaijaScript dey designed to make programming feel natural and accessible for Pidgin English speakers. Our goal na to create a language wey dey simple to learn, expressive, and culturally relevant.
+NaijaScript is designed to feel natural to speakers of Nigerian Pidgin while remaining approachable to anyone learning to program. The language favors clarity, cultural relevance, and a progressive path for experimentation.
 
 ## 2. Lexical Structure
 
-This section dey describe how NaijaScript code dey break down into individual tokens.
+This section describes how NaijaScript code is tokenized.
 
 ### 2.1. Identifiers
 
-Identifiers na the names you give to your variables. Dem fit contain letters (a-z, A-Z), numbers (0-9), and underscore (\_), but dem must to start with a letter or underscore.
+Identifiers name variables, functions, and other bindings. They may contain letters (a–z, A–Z), digits (0–9), and underscores (`_`), but must start with a letter or underscore.
 
-Example: `myVar`, `age`, `totalAmount`, `my_var`, `_hiddenValue`
+Examples: `myVar`, `age`, `totalAmount`, `my_var`, `_hiddenValue`
 
 ### 2.2. Keywords
 
-Keywords na special words wey get meaning for NaijaScript. You no fit use them as variable names.
+Keywords carry special meaning in NaijaScript and cannot be used as identifiers.
 
 - `make`: Declare a new variable.
 - `get`: Assign a value to a variable.
-- `if to say`: Conditional `if` statement.
-- `if not so`: Conditional `else` statement.
-- `jasi`: Loop construct.
-- `start`: Beginning of a code block.
-- `end`: End of a code block.
+- `if to say`: Conditional `if` keyword.
+- `if not so`: Conditional `else` keyword.
+- `jasi`: Loop keyword.
+- `start`: Begin a block.
+- `end`: End a block.
 - `do`: Define a function.
 - `return`: Return a value from a function.
 - `add`, `minus`, `times`, `divide`, `mod`: Arithmetic operators.
@@ -35,158 +35,137 @@ Keywords na special words wey get meaning for NaijaScript. You no fit use them a
 
 ### 2.3. Literals
 
-Literals na the fixed values wey you dey write directly for your code.
+Literals represent fixed values written directly in source code.
 
-- **Numbers**: NaijaScript dey support floating-point numbers.
-  - Example: `10`, `3.142`, `0.5`
-- **Strings**: Sequence of characters inside double quotes (`"..."`) or single quotes (`'...'`). Supported escapes: `\\`, `\"`, `\'`, `\n`, `\t`, `\r`.
-  - Example: `"Hello, World!"`, `'Naija no dey carry last'`, `'foo\nbar'`
-- **String Interpolation**: Strings fit contain variables as placeholders using braces `"{variable}"` syntax.
+- **Numbers**: NaijaScript supports floating-point literals.
+  - Examples: `10`, `3.142`, `0.5`
+- **Strings**: Character sequences enclosed in double quotes (`"..."`) or single quotes (`'...'`). Supported escape sequences: `\\`, `\"`, `\'`, `\n`, `\t`, `\r`.
+  - Examples: `"Hello, World!"`, `'Naija no dey carry last'`, `'foo\nbar'`
+- **String Interpolation**: Strings can interpolate values within braces.
   - Example: `make name get "World" shout("Hello {name}")`
-- **Booleans**: Truth values wey be `true` and `false`.
-  - `true` - mean say e correct or e happen.
-  - `false` - mean say e no correct or e no happen.
-- **Arrays**: Ordered collection of values inside square brackets.
-  - Example: `[1, 2, 3]`, `["naija", "4ever",]`, `[make_it(), other_value]`
+- **Booleans**: The keywords `true` and `false` represent truth values.
+- **Arrays**: Ordered collections enclosed in square brackets.
+  - Examples: `[1, 2, 3]`, `["naija", "4ever",]`, `[make_it(), other_value]`
 
 ### 2.4. Operators
 
-- **Arithmetic**: `add` (+), `minus` (-), `times` (\*), `divide` (/), `mod` (%)
+- **Arithmetic**: `add` (+), `minus` (–), `times` (×), `divide` (/), `mod` (%)
 - **Comparison**: `na` (==), `pass` (>), `small pass` (<)
-- **Logical**: `and` (logical AND), `or` (logical OR), `not` (logical NOT)
+- **Logical**: `and`, `or`, `not`
 - **Unary**: `not` (logical negation), `minus` (arithmetic negation)
 
-**Operator Precedence (from highest to lowest):**
+**Operator precedence (highest to lowest):**
 
-1. `not`, `minus` (unary operators)
+1. Unary `not`, unary `minus`
 2. `times`, `divide`, `mod`
-3. `add`, `minus` (binary operators)
+3. Binary `add`, binary `minus`
 4. `na`, `pass`, `small pass`
 5. `and`
 6. `or`
 
 ### 2.5. Punctuation
 
-- `(` and `)`: For grouping expressions. 
-- `[` and `]`: For array literals.
+- `(` and `)`: Group expressions.
+- `[` and `]`: Delimit array literals.
 
 ### 2.6. Whitespace and Comments
 
-Whitespace (like space, tab, or new line) na wetin you fit use to separate code make e clear. NaijaScript no dey worry about how many space or new line you put.
+Whitespace (spaces, tabs, newlines) separates tokens and improves readability. NaijaScript ignores extra whitespace.
 
-If you wan write comment, just put `#` for anywhere for the line. Anything wey dey after `#` till the end of that line na comment, the interpreter no go run am. You fit put comment anywhere for your code, e no go affect how your program work.
+Comments begin with `#` and run to the end of the line. The interpreter discards comment text during execution.
 
 ## 3. Grammar and Syntax
 
-NaijaScript syntax dey defined with a formal grammar using Extended Backus-Naur Form (EBNF). You fit check the full grammar for this [link](https://raw.githubusercontent.com/xosnrdev/naijascript/master/docs/grammar.ebnf).
+The full grammar is defined in Extended Backus–Naur Form (EBNF). Reference the living grammar file here: [docs/grammar.ebnf](https://raw.githubusercontent.com/xosnrdev/naijascript/master/docs/grammar.ebnf).
 
 ## 4. Static Semantics
 
-This section dey cover the rules wey dey checked before your code run.
+Static semantics describe checks performed before execution.
 
 ### 4.1. Type System
 
-NaijaScript get four main data types:
+NaijaScript exposes four primary runtime types:
 
-- **Number**: Represents numeric values (e.g., `10`, `99.9`). All numbers na floating-point numbers.
-- **String**: Represents text (e.g., `"Naija"`).
-- **Boolean**: Represents truth values wey fit be `true` or `false`.
-- **Array**: Represents ordered collection of values.
+- **Number**: 64-bit floating-point values (`10`, `99.9`).
+- **String**: Text data (`"Naija"`).
+- **Boolean**: Truth values (`true`, `false`).
+- **Array**: Ordered collections of values.
 
-Type inference dey automatic. You no need to declare the type of a variable.
+Types are inferred automatically. You do not declare types explicitly.
 
 ### 4.2. Name Binding and Scoping
 
-- **Declaration**: You must declare a variable with the `make` keyword before you use am.
-  - `make myVar get 10`
-- **Redeclaration**: You no fit declare a variable wey you don already declare for the same block.
-- **Scope**: Any variable or function wey you declare inside a `start ... end` block go only dey visible inside that block and any nested block. This help prevent accidental variable or function shadowing or leakage, and na the same way modern programming languages dey behave. After the block ends, the function or variable no go dey visible outside the block again.
+- **Declaration**: Declare variables with `make`.
+  - Example: `make myVar get 10`
+- **Redeclaration**: Redeclaring a name within the same block emits a semantic error.
+- **Scope**: Bindings introduced inside `start ... end` remain visible only within that block and its children. Once control leaves the block, the bindings go out of scope. This mirrors modern language scoping rules and prevents accidental leakage.
 
 ## 5. Dynamic Semantics
 
-This section dey explain wetin each part of the language dey do when e dey run.
+Dynamic semantics capture runtime behavior.
 
 ### 5.1. Statements
 
-- **`make <variable> get <expression>`**: This one go create a new variable and give am the value of the expression.
-- **`<variable> get <expression>`**: This one go change the value of a variable wey you don already create.
-- **`if to say (<condition>) <block>`**: If the condition na true, the code inside the `start`...`end` block go run. The condition fit be simple comparison or complex compound condition using `and`, `or`, and `not` operators.
-- **`if to say (<condition>) <block> if not so <block>`**: If the condition na true, the first block go run. Otherwise, the second block go run.
-- **`jasi (<condition>) <block>`**: The code inside the block go run repeatedly as long as the condition dey true. Like `if to say`, the condition fit be compound expression with multiple logical operators.
-- **`start ... end`**: You fit use block anywhere as a statement. Any variable you declare inside the block go only dey visible inside that block and any nested block.
-- **`do <name>(<parameters>) <block>`**: Define a function with the given name and parameters. The function body dey inside the block.
-- **`return <expression>`**: Return a value from a function. If no expression provided, function go return 0. Only valid inside function definitions.
-- **`<expression>`**: You fit use any expression as a statement. This dey useful for function calls wey you wan execute for their side effects.
+- **`make <variable> get <expression>`**: Declare a variable and initialize it with the expression value.
+- **`<variable> get <expression>`**: Assign a new value to an existing variable.
+- **`if to say (<condition>) <block>`**: Execute the block when the condition evaluates to `true`. Conditions may combine comparisons with `and`, `or`, and `not`.
+- **`if to say (<condition>) <block> if not so <block>`**: Execute the first block when the condition is `true`; otherwise run the second block.
+- **`jasi (<condition>) <block>`**: Loop while the condition remains `true`. Conditions can contain compound logical expressions.
+- **`start ... end`**: Introduce a new block scope. Variables declared within the block expire when the block exits.
+- **`do <name>(<parameters>) <block>`**: Define a function with the specified parameters and body.
+- **`return <expression>`**: Exit a function and optionally provide a value. Without an expression, the runtime returns `0`.
+- **Expression statement**: Evaluate an expression for its side effects (common for function calls).
 
 ### 5.2. Expressions
 
-**Addition and Concatenation (`add`)**: You fit use the `add` operator to join or add any combination of string, number, or dynamic types. The only thing wey no dey allowed be boolean: if any side be boolean, e go cause semantic error before your code run. For example, you fit do `2 add 3`, `"foo" add "bar"`, `2 add "bar"`, or join dynamic values, but `true add 5` or `"foo" add false` no go work.
+- **Addition and concatenation (`add`)**: Combines numbers or strings. Booleans cannot participate and cause a semantic error during analysis. Examples: `2 add 3`, `"foo" add "bar"`, `2 add "bar"` are valid; `true add 5` is rejected.
+- **Arithmetic operators (`minus`, `times`, `divide`, `mod`)**: Require numeric operands. Mixing strings or booleans triggers a semantic error even when dynamic values are involved.
+- **Dynamic operands**: Operations involving dynamic values succeed unless type rules are proven invalid (for example, boolean addition or string multiplication).
+- **Comparisons** (`na`, `pass`, `small pass`): Compare operands and return a boolean.
+- **Logical operators** (`and`, `or`, `not`): Operate exclusively on boolean values.
+- **Function calls**: Invoke a function name followed by its arguments in parentheses and evaluate to the function’s return value.
+- **Array literals**: Evaluate each element from left to right before creating the array.
 
-**Arithmetic Operators (`minus`, `times`, `divide`, `mod`)**: These operators fit only work if both sides be number, or dynamic wey go be number at runtime. If you try use string or boolean with any arithmetic operator (even if the other side na dynamic), e go cause semantic error before your code run.
+## 6. Built-In Functions
 
-**Dynamic Types**: If any operand be dynamic, the operation go pass unless one side be boolean (for `add`) or string/boolean (for arithmetic). The analyzer only block operation if e fit prove say the types no go work.
+NaijaScript exposes several built-ins that are always available.
 
-**Comparison**: Expressions with `na`, `pass`, and `small pass` go compare two values and return a boolean result (true or false) for use in conditions.
+### 6.1. Input/Output
 
-**Logical**: Expressions wey use `and`, `or`, and `not` dey join or change boolean values. Dem only work if the values na `true` or `false`. If you try use dem with number or string, e go cause a semantic error.
+- **`shout(expression)`**: Print the evaluated value to standard output.
+- **`read_line()`**: Read a line from standard input and return it as a string.
 
-**Function Call**: You fit call a function by writing its name followed by arguments in parentheses. The function go run and return a value wey you fit use for further expressions.
+### 6.2. Mathematics
 
-**Array Literals**: Expressions inside square brackets. NaijaScript go evaluate each element from left to right before arranging dem inside the array.
+Each math function accepts a number and returns a number:
 
-## 6. Built-in Functions
+- **`abs(number)`**: Absolute value.
+- **`sqrt(number)`**: Square root computed via Newton’s method. Negative inputs yield `NaN`.
+- **`floor(number)`**: Round down toward negative infinity.
+- **`ceil(number)`**: Round up toward positive infinity.
+- **`round(number)`**: Round to the nearest integer. Halfway cases round away from zero.
 
-NaijaScript provides several built-in functions wey dey globally available:
+### 6.3. Strings
 
-### 6.1. Output Functions
+String helpers are Unicode-aware and handle multibyte characters:
 
-- **`shout(expression)`**: Print the value of the expression to the console.
+- **`len(string)`**: Count Unicode scalar values.
+- **`slice(string, start, end)`**: Extract a substring from `start` (inclusive) to `end` (exclusive). Indices are zero-based and support negative offsets from the end.
+- **`upper(string)`** / **`lower(string)`**: Convert case.
+- **`find(string, needle)`**: Return the index of the first occurrence of `needle` or `-1` if absent.
+- **`replace(string, needle, replacement)`**: Replace all occurrences of `needle` with `replacement`.
+- **`trim(string)`**: Strip leading and trailing whitespace.
 
-- **`read_line()`**: Read a line of input from standard input (stdin).
+### 6.4. Type Conversion
 
-### 6.2. Mathematical Functions
+- **`to_string(value)`**: Convert any supported value to its string representation.
+- **`to_number(string)`**: Parse a string into a number. Invalid input yields `NaN`.
 
-All mathematical functions take one number argument and return a number result:
+### 6.5. Type Introspection
 
-- **`abs(number)`**: Return the absolute value of a number. Remove the negative sign if the number na negative, otherwise return the number as e be.
-
-- **`sqrt(number)`**: Calculate the square root of a number using Newton's method algorithm. If you give am negative number, e go return NaN (Not a Number).
-
-- **`floor(number)`**: Round down a number to the nearest integer (toward negative infinity).
-
-- **`ceil(number)`**: Round up a number to the nearest integer (toward positive infinity).
-
-- **`round(number)`**: Round a number to the nearest integer. For .5 values, e go round away from zero.
-
-### 6.3. String Functions
-
-All string functions are Unicode-aware and work with international characters, emojis, and symbols:
-
-- **`len(string)`**: Return the number of Unicode characters in a string.
-
-- **`slice(string, start, end)`**: Extract a portion of a string from the start index to the end index (not including the end). The indices are 0-based and support negative values to count from the end of the string.
-
-- **`upper(string)`**: Convert all alphabetic characters in a string to uppercase.
-
-- **`lower(string)`**: Convert all alphabetic characters in a string to lowercase.
-
-- **`find(string, needle)`**: Search for the first occurrence of `needle` substring within `string` and return the position (0-based index) where it starts. If the substring is not found, return -1.
-
-- **`replace(string, needle, replacement)`**: Replace all occurrences of `needle` substring in `string` with `replacement` and return the new string.
-
-- **`trim(string)`**: Remove whitespace characters from both the beginning and end of a string.
-
-### 6.4 Type Conversion Functions
-
-- **`to_string(value)`**: Convert any value of [supported types](#41-type-system) to its string representation.
-
-- **`to_number(string)`**: Convert a string to a number. If the string is not a valid number, return NaN (Not a Number).
-
-### 6.5 Type Checking Functions
-
-- **`typeof(value)`**: Return the type of the value as a string. See [Type System](#41-type-system) for supported types.
+- **`typeof(value)`**: Return the runtime type name (`"number"`, `"string"`, `"bool"`, `"array"`).
 
 ## 7. Implementation-Defined Behavior
 
-- **Number Precision**: All numbers na 64-bit floating-point numbers (IEEE 754 standard).
-- **Error Reporting**: When error happen, the interpreter go stop execution and print a message for Pidgin English wey go explain the problem and show the line and column number where the error occur.
+- **Numeric representation**: All numbers are 64-bit IEEE 754 floating-point values.
+- **Diagnostics**: On error, the interpreter halts, prints a Pidgin-styled diagnostic message, and includes line and column context.
