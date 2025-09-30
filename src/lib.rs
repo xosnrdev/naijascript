@@ -7,6 +7,7 @@
 #[macro_use]
 pub mod arena;
 pub mod builtins;
+pub mod cmd;
 pub mod diagnostics;
 pub mod resolver;
 pub mod runtime;

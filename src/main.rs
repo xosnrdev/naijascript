@@ -1,32 +1,9 @@
-use std::fs;
-use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
 
-use clap::Parser as ClapParser;
-use clap_cargo::style::CLAP_STYLING;
-use naijascript::GIBI;
-use naijascript::arena::{self, Arena, scratch_arena};
-use naijascript::resolver::Resolver;
-use naijascript::runtime::Runtime;
-use naijascript::syntax::parser::Parser;
-use naijascript::syntax::scanner::Lexer;
-use naijascript::syntax::token::SpannedToken;
-
-#[derive(Debug, ClapParser)]
-#[command(
-    bin_name = "naija",
-    about = "The NaijaScript Interpreter",
-    version,
-    styles = CLAP_STYLING,
-    arg_required_else_help = true
-)]
-struct Cli {
-    /// Script to run
-    script: Option<String>,
-    /// Evaluate code from the command line
-    #[arg(short, long)]
-    eval: Option<String>,
-}
+use clap::Parser;
+use naijascript::arena::{self, scratch_arena};
+use naijascript::cmd::Cli;
+use naijascript::{GIBI, print_error};
 
 #[cfg(target_pointer_width = "32")]
 const SCRATCH_ARENA_CAPACITY: usize = 1 * GIBI;
@@ -36,92 +13,10 @@ const SCRATCH_ARENA_CAPACITY: usize = 4 * GIBI;
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
-    arena::init(SCRATCH_ARENA_CAPACITY).unwrap();
+    if let Err(err) = arena::init(SCRATCH_ARENA_CAPACITY) {
+        print_error!("Failed to initialize arena: {err}");
+        return ExitCode::FAILURE;
+    }
     let arena = scratch_arena(None);
-
-    if let Some(code) = cli.eval {
-        run_source("<eval>", &code, &arena)
-    } else if let Some(script) = cli.script {
-        if script == "-" { run_stdin(&arena) } else { run_file(&script, &arena) }
-    } else if !io::stdin().is_terminal() {
-        run_stdin(&arena)
-    } else {
-        ExitCode::FAILURE
-    }
-}
-
-fn run_source(filename: &str, src: &str, arena: &Arena) -> ExitCode {
-    let mut lexer = Lexer::new(src, arena);
-    let tokens: Vec<SpannedToken> = (&mut lexer).collect();
-    if !lexer.errors.diagnostics.is_empty() {
-        lexer.errors.report(src, filename);
-        return ExitCode::FAILURE;
-    }
-
-    let mut parser = Parser::new(tokens.into_iter(), arena);
-    let (root, err) = parser.parse_program();
-    if !err.diagnostics.is_empty() {
-        err.report(src, filename);
-        return ExitCode::FAILURE;
-    }
-
-    let mut resolver = Resolver::new(arena);
-    resolver.resolve(root);
-    if resolver.errors.has_errors() {
-        resolver.errors.report(src, filename);
-        return ExitCode::FAILURE;
-    }
-    if !resolver.errors.diagnostics.is_empty() {
-        resolver.errors.report(src, filename);
-    }
-
-    let mut runtime = Runtime::new(arena);
-    let err = runtime.run(root);
-    if err.has_errors() {
-        err.report(src, filename);
-        return ExitCode::FAILURE;
-    }
-    if !err.diagnostics.is_empty() {
-        err.report(src, filename);
-    }
-    for value in &runtime.output {
-        println!("{value}")
-    }
-
-    ExitCode::SUCCESS
-}
-
-fn run_file(script: &str, arena: &Arena) -> ExitCode {
-    let stem = script.split_once('.').map_or(script, |(s, _)| s);
-    if !(script.ends_with(".ns") || script.ends_with(".naija")) {
-        eprintln!(
-            "E be like say your script no end with .ns or .naija\n -> You pass {script}\n -> Abeg rename am to {stem}.ns or {stem}.naija",
-        );
-        return ExitCode::FAILURE;
-    }
-    let source = match fs::read_to_string(script) {
-        Ok(s) => s,
-        Err(_) => {
-            eprintln!(
-                "E be like say I no fit read file `{script}`\n-> Maybe file no dey or permission block am\n -> Check say the file dey and you get read rights"
-            );
-            return ExitCode::FAILURE;
-        }
-    };
-    run_source(script, &source, arena)
-}
-
-fn run_stdin(arena: &Arena) -> ExitCode {
-    let mut buffer = String::new();
-    if io::stdin().read_to_string(&mut buffer).is_err() {
-        eprintln!("E be like say I no fit read from stdin\n -> Check wetin you pipe");
-        return ExitCode::FAILURE;
-    }
-    run_source("<stdin>", &buffer, arena)
-}
-
-#[test]
-fn verify_cli() {
-    use clap::CommandFactory;
-    Cli::command().debug_assert();
+    cli.run(&arena)
 }
