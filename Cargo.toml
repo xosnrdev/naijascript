@@ -24,7 +24,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5.48", features = ["derive"] }
-clap-cargo = { version = "0.17.1", features = ["clap"] }
+clap-cargo = { version = "0.18.0", features = ["clap"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 ansi-to-html = "0.2.2"
