@@ -110,13 +110,12 @@ fn extract_tag_names(tag: &str, value: &serde_json::Value) -> Vec<String> {
     let ext = archive_ext();
     let target = format!("{arch}-{os}");
     let asset = format!("{ASSET_PREFIX}-{tag}-{target}.{ext}");
-    let tag = tag.strip_prefix('v').unwrap_or(tag);
     value["assets"]
         .as_array()
         .into_iter()
         .flatten()
         .any(|v| v["browser_download_url"].as_str().is_some_and(|u| u.ends_with(&asset)))
-        .then(|| tag.to_owned())
+        .then(|| tag.strip_prefix('v').unwrap_or(tag).to_owned())
         .into_iter()
         .collect()
 }
