@@ -326,10 +326,10 @@ fn extract_bin(
         .tempfile_in(parent)
         .map_err(report_error!("Failed to create temporary file"))?;
     {
-        let mut handle = temp.as_file_mut();
-        io::copy(&mut entry, &mut handle)
+        let mut file = temp.as_file_mut();
+        io::copy(&mut entry, &mut file)
             .map_err(report_error!("Failed to write binary to temporary file"))?;
-        handle.sync_all().map_err(report_error!("Failed to flush binary to disk"))?;
+        file.sync_all().map_err(report_error!("Failed to flush binary to disk"))?;
     }
 
     let temp_path = temp.into_temp_path();
