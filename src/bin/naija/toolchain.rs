@@ -78,9 +78,6 @@ pub fn install(versions: &[String]) -> Result<(), String> {
 
 fn resolve_version<'a>(version: &'a str) -> Result<Cow<'a, str>, String> {
     print_info!("Resolving version '{version}'...");
-    if version.trim().is_empty() {
-        return Err("Version cannot be empty".to_string());
-    }
     if version.to_lowercase() == "latest" {
         let version = fetch_latest_version()?;
         Ok(Cow::Owned(version))
