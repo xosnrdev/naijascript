@@ -249,7 +249,6 @@ fn download_and_install(version: &str, version_dir: &Path) -> Result<(), String>
     extract_bin_from_archive(bytes, bin_name, &out_path, ext)
 }
 
-#[cfg(unix)]
 fn extract_bin_from_archive(
     bytes: &[u8],
     bin_name: &str,
@@ -257,11 +256,26 @@ fn extract_bin_from_archive(
     ext: &str,
 ) -> Result<(), String> {
     print_info!("Extracting binary from archive...");
+    let parent = out_path.parent().ok_or("Invalid output path")?;
+    let cursor = Cursor::new(bytes);
+    #[cfg(unix)]
+    extract_bin(bin_name, out_path, ext, parent, cursor)?;
+    #[cfg(windows)]
+    extract_bin(bin_name, out_path, ext, parent, cursor)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn extract_bin(
+    bin_name: &str,
+    out_path: &Path,
+    ext: &str,
+    parent: &Path,
+    cursor: Cursor<&[u8]>,
+) -> Result<(), String> {
     if ext != "tar.xz" {
         return Err(format!("Unsupported archive format '{ext}' for Unix installation"));
     }
-    let parent = out_path.parent().ok_or("Invalid output path")?;
-    let cursor = Cursor::new(bytes);
     let decoder = XzDecoder::new(cursor);
     let mut archive = Archive::new(decoder);
     let mut entries = archive.entries().map_err(report_error!("Failed to read archive entries"))?;
@@ -295,18 +309,16 @@ fn extract_bin_from_archive(
 }
 
 #[cfg(windows)]
-fn extract_bin_from_archive(
-    bytes: &[u8],
+fn extract_bin(
     bin_name: &str,
     out_path: &Path,
     ext: &str,
+    parent: &Path,
+    cursor: Cursor<&[u8]>,
 ) -> Result<(), String> {
-    print_info!("Extracting binary from archive...");
     if ext != "zip" {
         return Err(format!("Unsupported archive format '{ext}' for Windows installation"));
     }
-    let parent = out_path.parent().ok_or("Invalid output path")?;
-    let cursor = Cursor::new(bytes);
     let mut archive =
         ZipArchive::new(cursor).map_err(report_error!("Failed to read ZIP archive"))?;
     let mut entry =
