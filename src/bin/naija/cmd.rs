@@ -4,18 +4,17 @@ use std::process::ExitCode;
 
 use clap::{ArgGroup, Args, Subcommand};
 use clap_cargo::style::CLAP_STYLING;
+use naijascript::resolver::Resolver;
+use naijascript::runtime::Runtime;
+use naijascript::syntax::parser::Parser;
+use naijascript::syntax::scanner::Lexer;
+use naijascript::syntax::token::SpannedToken;
 
 use crate::arena::{Arena, ArenaString};
-use crate::resolver::Resolver;
-use crate::runtime::Runtime;
-use crate::syntax::parser::Parser;
-use crate::syntax::scanner::Lexer;
-use crate::syntax::token::SpannedToken;
 use crate::{print_error, toolchain};
 
 #[derive(Debug, clap::Parser)]
 #[command(
-    bin_name = "naija",
     about = "The NaijaScript Interpreter",
     version,
     styles = CLAP_STYLING,

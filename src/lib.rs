@@ -7,14 +7,12 @@
 #[macro_use]
 pub mod arena;
 pub mod builtins;
-pub mod cmd;
 pub mod diagnostics;
 pub mod resolver;
 pub mod runtime;
 pub mod simd;
 pub mod syntax;
 pub mod sys;
-pub mod toolchain;
 
 pub const KIBI: usize = 1024;
 pub const MEBI: usize = KIBI * KIBI;
@@ -34,7 +32,9 @@ use {
 #[cfg(target_family = "wasm")]
 #[wasm_bindgen]
 pub fn run_source(src: &str, filename: &str) -> String {
-    arena::init(128 * MEBI).unwrap();
+    if let Err(err) = arena::init(1 * GIBI) {
+        return format!("Failed to initialize arena: {err}");
+    }
     let arena = scratch_arena(None);
 
     let mut lexer = Lexer::new(src, &arena);

@@ -1,9 +1,15 @@
+#![feature(allocator_api)]
+
+mod cmd;
+pub mod toolchain;
+
 use std::process::ExitCode;
 
 use clap::Parser;
+use naijascript::GIBI;
 use naijascript::arena::{self, scratch_arena};
-use naijascript::cmd::Cli;
-use naijascript::{GIBI, print_error};
+
+use crate::cmd::Cli;
 
 #[cfg(target_pointer_width = "32")]
 const SCRATCH_ARENA_CAPACITY: usize = 1 * GIBI;
