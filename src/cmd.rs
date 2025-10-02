@@ -1,10 +1,8 @@
-#![allow(unused_macros)]
-
 use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
 
-use clap::{ArgGroup, Subcommand};
+use clap::{ArgGroup, Args, Subcommand};
 use clap_cargo::style::CLAP_STYLING;
 
 use crate::arena::{Arena, ArenaString};
@@ -13,11 +11,12 @@ use crate::runtime::Runtime;
 use crate::syntax::parser::Parser;
 use crate::syntax::scanner::Lexer;
 use crate::syntax::token::SpannedToken;
+use crate::{print_error, toolchain};
 
 #[derive(Debug, clap::Parser)]
 #[command(
     bin_name = "naija",
-    about = "The naijascript interpreter",
+    about = "The NaijaScript Interpreter",
     version,
     styles = CLAP_STYLING,
     group(ArgGroup::new("input")
@@ -37,7 +36,23 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     #[command(name = "self")]
-    Self_ {},
+    Self_ {
+        #[command(subcommand)]
+        command: SelfCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum SelfCommand {
+    /// Download and install one or more versions of the interpreter
+    Install(SelfInstallArgs),
+}
+
+#[derive(Debug, Args)]
+struct SelfInstallArgs {
+    /// One or more versions to install
+    #[arg(value_name = "version", required = true)]
+    versions: Vec<String>,
 }
 
 impl Cli {
@@ -48,6 +63,16 @@ impl Cli {
             if script == "-" { run_stdin(arena) } else { run_file(&script, arena) }
         } else if !io::stdin().is_terminal() {
             run_stdin(arena)
+        } else if let Some(Command::Self_ { command }) = self.command {
+            match command {
+                SelfCommand::Install(args) => match toolchain::install(&args.versions) {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(err) => {
+                        print_error!("{err}");
+                        ExitCode::FAILURE
+                    }
+                },
+            }
         } else {
             ExitCode::FAILURE
         }
@@ -99,7 +124,7 @@ fn run_file(path: &str, arena: &Arena) -> ExitCode {
     match fs::read_to_string(path) {
         Ok(src) => run_source(path, &src, arena),
         Err(err) => {
-            eprintln!("{err}");
+            print_error!("Failed to read file '{path}': {err}");
             ExitCode::FAILURE
         }
     }
@@ -116,7 +141,7 @@ fn run_stdin(arena: &Arena) -> ExitCode {
             Ok(n) => buf.extend_from_slice(&chunk[..n]),
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
             Err(err) => {
-                eprintln!("{err}");
+                print_error!("Failed to read from stdin: {err}");
                 return ExitCode::FAILURE;
             }
         }
@@ -126,7 +151,7 @@ fn run_stdin(arena: &Arena) -> ExitCode {
         Ok(_) => unsafe { ArenaString::from_utf8_unchecked(buf) },
         Err(err) => {
             let err = io::Error::new(io::ErrorKind::InvalidData, err);
-            eprintln!("{err}");
+            print_error!("Failed to read from stdin: {err}");
             return ExitCode::FAILURE;
         }
     };
@@ -138,29 +163,4 @@ fn run_stdin(arena: &Arena) -> ExitCode {
 fn verify_cli() {
     use clap::CommandFactory;
     Cli::command().debug_assert();
-}
-
-macro_rules! print_info {
-    ($($arg:tt)*) => {
-        println!("\x1b[1;34minfo:\x1b[0m {}", format!($($arg)*))
-    }
-}
-
-macro_rules! print_warn {
-    ($($arg:tt)*) => {
-        println!("\x1b[1;33mwarn:\x1b[0m {}", format!($($arg)*))
-    }
-}
-
-macro_rules! print_success {
-    ($($arg:tt)*) => {
-        println!("\x1b[1;32mok:\x1b[0m {}", format!($($arg)*))
-    }
-}
-
-#[macro_export]
-macro_rules! print_error {
-    ($($arg:tt)*) => {
-        eprintln!("\x1b[1;31merror:\x1b[0m {}", format!($($arg)*))
-    }
 }

@@ -14,10 +14,11 @@ pub mod runtime;
 pub mod simd;
 pub mod syntax;
 pub mod sys;
+pub mod toolchain;
 
 pub const KIBI: usize = 1024;
-pub const MEBI: usize = 1024 * 1024;
-pub const GIBI: usize = 1024 * 1024 * 1024;
+pub const MEBI: usize = KIBI * KIBI;
+pub const GIBI: usize = MEBI * KIBI;
 
 #[cfg(target_family = "wasm")]
 use {
