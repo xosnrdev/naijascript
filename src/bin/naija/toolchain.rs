@@ -120,7 +120,11 @@ fn extract_tag_names(releases: &[serde_json::Value]) -> Vec<String> {
                 .and_then(|a| a.as_array())
                 .into_iter()
                 .flatten()
-                .any(|v| v["browser_download_url"].as_str().is_some_and(|u| u.ends_with(&asset)))
+                .any(|v| {
+                    v.get("browser_download_url")
+                        .and_then(|u| u.as_str())
+                        .is_some_and(|u| u.ends_with(&asset))
+                })
                 .then(|| tag.strip_prefix('v').unwrap_or(tag).to_owned())
         })
         .collect()
