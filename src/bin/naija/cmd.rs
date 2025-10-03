@@ -50,6 +50,8 @@ enum SelfCommand {
         #[arg(value_name = "version", required = true, value_parser = NonEmptyStringValueParser::new())]
         versions: Vec<String>,
     },
+    /// List installed versions of the interpreter
+    List,
 }
 
 impl Cli {
@@ -62,7 +64,14 @@ impl Cli {
             run_stdin(arena)
         } else if let Some(Command::Self_ { command }) = self.command {
             match command {
-                SelfCommand::Install { versions } => match toolchain::install(&versions) {
+                SelfCommand::Install { versions } => match toolchain::install_version(&versions) {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(err) => {
+                        print_error!("{err}");
+                        ExitCode::FAILURE
+                    }
+                },
+                SelfCommand::List => match toolchain::list_installed_version() {
                     Ok(()) => ExitCode::SUCCESS,
                     Err(err) => {
                         print_error!("{err}");
