@@ -44,14 +44,16 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum SelfCommand {
-    /// Download and install one or more versions of the interpreter
+    /// Download and install one or more versions
     Install {
         /// One or more versions to install
         #[arg(value_name = "version", required = true, value_parser = NonEmptyStringValueParser::new())]
         versions: Vec<String>,
     },
-    /// List installed versions of the interpreter
+    /// List installed versions
     List,
+    /// Fetch available versions online
+    Available,
 }
 
 impl Cli {
@@ -72,6 +74,13 @@ impl Cli {
                     }
                 },
                 SelfCommand::List => match toolchain::list_installed_version() {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(err) => {
+                        print_error!("{err}");
+                        ExitCode::FAILURE
+                    }
+                },
+                SelfCommand::Available => match toolchain::fetch_available_version() {
                     Ok(()) => ExitCode::SUCCESS,
                     Err(err) => {
                         print_error!("{err}");
