@@ -89,34 +89,44 @@ fn resolve_version<'a>(version: &'a str) -> Result<Cow<'a, str>, String> {
 fn fetch_latest_version() -> Result<String, String> {
     print_info!("Fetching latest version...");
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let res = minreq::get(url).send().map_err(report_error!("Failed to fetch latest version"))?;
+    let res = minreq::get(url)
+        .with_header("User-Agent", "naijascript")
+        .send()
+        .map_err(report_error!("Failed to fetch latest version"))?;
     let status = res.status_code;
     if !status.is_success() {
         return Err(format!("Failed to fetch latest version (status code: {status})"));
     }
     let res = res.as_str().map_err(|err| err.to_string())?;
     let value = serde_json::from_str::<serde_json::Value>(res).map_err(|err| err.to_string())?;
-    let tag =
-        value.get("tag_name").and_then(|t| t.as_str()).ok_or("'tag_name' not found in response")?;
-    extract_tag_names(tag, &value)
+    extract_tag_names(&[value])
         .into_iter()
         .next()
         .ok_or("Failed to fetch latest version".to_string())
 }
 
-fn extract_tag_names(tag: &str, value: &serde_json::Value) -> Vec<String> {
+fn extract_tag_names(releases: &[serde_json::Value]) -> Vec<String> {
     print_info!("Extracting tag names...");
     let (os, arch) = get_platform();
     let ext = archive_ext();
     let target = format!("{arch}-{os}");
-    let asset = format!("{ASSET_PREFIX}-{tag}-{target}.{ext}");
-    value["assets"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .any(|v| v["browser_download_url"].as_str().is_some_and(|u| u.ends_with(&asset)))
-        .then(|| tag.strip_prefix('v').unwrap_or(tag).to_owned())
-        .into_iter()
+    releases
+        .iter()
+        .filter_map(|release| {
+            let tag = release.get("tag_name")?.as_str()?;
+            let asset = format!("{ASSET_PREFIX}-{tag}-{target}.{ext}");
+            release
+                .get("assets")
+                .and_then(|a| a.as_array())
+                .into_iter()
+                .flatten()
+                .any(|v| {
+                    v.get("browser_download_url")
+                        .and_then(|u| u.as_str())
+                        .is_some_and(|u| u.ends_with(&asset))
+                })
+                .then(|| tag.strip_prefix('v').unwrap_or(tag).to_owned())
+        })
         .collect()
 }
 
@@ -351,7 +361,33 @@ pub fn list_installed_version() -> Result<(), String> {
     } else {
         print_info!("Installed versions:");
         for version in versions {
-            println!(" - {version}");
+            println!("\n- {version}");
+        }
+    }
+    Ok(())
+}
+
+pub fn fetch_available_version() -> Result<(), String> {
+    print_info!("Fetching available versions...");
+    let url = format!("https://api.github.com/repos/{REPO}/releases");
+    let res = minreq::get(url)
+        .with_header("User-Agent", "naijascript")
+        .send()
+        .map_err(report_error!("Failed to fetch available versions"))?;
+    let status = res.status_code;
+    if !status.is_success() {
+        return Err(format!("Failed to fetch available versions (status code: {status})"));
+    }
+    let res = res.as_str().map_err(|err| err.to_string())?;
+    let value = serde_json::from_str::<serde_json::Value>(res).map_err(|err| err.to_string())?;
+    let releases = value.as_array().ok_or("Expected array of releases")?;
+    let versions = extract_tag_names(releases);
+    if versions.is_empty() {
+        print_info!("No available versions found");
+    } else {
+        print_info!("Available versions:");
+        for version in versions {
+            println!("\n- {version}");
         }
     }
     Ok(())
