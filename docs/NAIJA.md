@@ -1,52 +1,52 @@
-# Naija - The Interpreter CLI
+# Naija – The Interpreter CLI
 
-Na the main command-line tool wey dey run NaijaScript.
+`naija` is the command-line interface for executing NaijaScript programs.
 
-## How to Use Am
+## Getting Started
 
-Run `naija --help` make you see everything wey you fit do.
+Run `naija --help` to view every available flag and subcommand.
 
-### 1. How to Run Your Script File
+### 1. Execute a Script File
 
-To run your NaijaScript file (e must end with `.ns` or `.naija`):
+NaijaScript source files must end with `.ns` or `.naija`.
 
 ```sh
 naija example.ns
 ```
 
-### 2. How to Run Code Straight from Command Line
+### 2. Evaluate Inline Code
 
-To run small code sharp sharp:
+Run a quick expression or block of code directly from the terminal:
 
 ```sh
 naija --eval "make x get 5 shout(x add 2)"
 ```
 
-### 3. How to Send Code from Another Place
+### 3. Pipe Source from Another Command
 
-To run code wey you send from another command or file:
+Send code over standard input using a pipe. Use `-` to indicate stdin.
 
 ```sh
 echo "make x get 5 shout(x add 2)" | naija -
 ```
 
-Or:
+or
 
 ```sh
 cat your_script.ns | naija -
 ```
 
-## All the Command-Line Options
+## Command-Line Options
 
-- `--eval <code>`, `-e <code>`: E go run the code wey you give am inside the quote.
-- `<script>`: The path to the script file wey you wan run.
-- `-h`, `--help`: E go show you help message.
-- `-V`, `--version`: E go show you the version of `naija` wey you get.
+- `--eval <code>`, `-e <code>`: Execute the provided source string.
+- `<script>`: Path to the script file to run.
+- `-h`, `--help`: Display usage information.
+- `-V`, `--version`: Print the current `naija` version.
 
-## Wetin Your Script File Need
+## Script Requirements
 
-- Your script file must end with `.ns` or `.naija`.
-- If you use `-` as the script name, `naija` go read code from standard input.
+- Source files must use the `.ns` or `.naija` extension.
+- Passing `-` as the script name tells `naija` to read from standard input.
 
 ## Examples
 
@@ -58,24 +58,20 @@ make y get 20
 shout(x add y)
 ```
 
-Run am like this:
+Run the script with:
 
 ```sh
 naija sum.ns
 ```
 
-### Example: Run Small Code
+### Example: Evaluate a Single Command
 
 ```sh
 naija --eval "make x get 2 shout(x times 3)"
 ```
 
-## If Wahala Happen (Troubleshooting)
+## Troubleshooting
 
-- **Script No Wan Run:**
-  - Check say your script file end with `.ns` or `.naija`.
-- **Command No Dey:**
-  - Make sure say the `naija` program dey your `PATH`. Check the [naijaup](./NAIJAUP.md) to learn how to set am up.
-  - If the wahala still dey, abeg [open issue for us for GitHub](https://github.com/xosnrdev/naijascript/issues).
-- **Piping No Dey Work:**
-  - Use `naija -` to read from standard input.
+- **The script fails to run.** Confirm the file ends with `.ns` or `.naija`.
+- **The `naija` executable is not found.** Add the installation directory to your `PATH`. Refer to [naijaup](./NAIJAUP.md) for installation details. If the problem persists, [open an issue on GitHub](https://github.com/xosnrdev/naijascript/issues).
+- **Piping input does not work.** Use `naija -` so the interpreter reads from standard input.
