@@ -50,7 +50,7 @@ macro_rules! print_error {
 const REPO: &str = "xosnrdev/naijascript";
 const ASSET_PREFIX: &str = "naija";
 
-pub fn install(versions: &[String]) -> Result<(), String> {
+pub fn install_version(versions: &[String]) -> Result<(), String> {
     for version in versions {
         let version = {
             resolve_version(version)?;
@@ -337,6 +337,22 @@ fn extract_bin(
         && err.kind() != io::ErrorKind::NotFound
     {
         return Err(format!("Failed to cleanup temporary file: {err}"));
+    }
+    Ok(())
+}
+
+pub fn list_installed_version() -> Result<(), String> {
+    let entries =
+        fs::read_dir(versions_dir()).map_err(report_error!("Failed to read versions directory"))?;
+    let versions: Vec<String> =
+        entries.flatten().map(|entry| entry.file_name().to_string_lossy().to_string()).collect();
+    if versions.is_empty() {
+        print_info!("No versions installed");
+    } else {
+        print_info!("Installed versions:");
+        for version in versions {
+            println!(" - {version}");
+        }
     }
     Ok(())
 }

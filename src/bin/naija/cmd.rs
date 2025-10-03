@@ -3,7 +3,7 @@ use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
 
 use clap::builder::NonEmptyStringValueParser;
-use clap::{ArgGroup, Args, Subcommand};
+use clap::{ArgGroup, Subcommand};
 use clap_cargo::style::CLAP_STYLING;
 use naijascript::resolver::Resolver;
 use naijascript::runtime::Runtime;
@@ -45,14 +45,13 @@ enum Command {
 #[derive(Debug, Subcommand)]
 enum SelfCommand {
     /// Download and install one or more versions of the interpreter
-    Install(SelfInstallArgs),
-}
-
-#[derive(Debug, Args)]
-struct SelfInstallArgs {
-    /// One or more versions to install
-    #[arg(value_name = "version", required = true, value_parser = NonEmptyStringValueParser::new())]
-    versions: Vec<String>,
+    Install {
+        /// One or more versions to install
+        #[arg(value_name = "version", required = true, value_parser = NonEmptyStringValueParser::new())]
+        versions: Vec<String>,
+    },
+    /// List installed versions of the interpreter
+    List,
 }
 
 impl Cli {
@@ -65,7 +64,14 @@ impl Cli {
             run_stdin(arena)
         } else if let Some(Command::Self_ { command }) = self.command {
             match command {
-                SelfCommand::Install(args) => match toolchain::install(&args.versions) {
+                SelfCommand::Install { versions } => match toolchain::install_version(&versions) {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(err) => {
+                        print_error!("{err}");
+                        ExitCode::FAILURE
+                    }
+                },
+                SelfCommand::List => match toolchain::list_installed_version() {
                     Ok(()) => ExitCode::SUCCESS,
                     Err(err) => {
                         print_error!("{err}");
