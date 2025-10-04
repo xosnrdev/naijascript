@@ -1,11 +1,12 @@
 //! Toolchain management abstractions.
 
 use std::borrow::Cow;
-use std::io::Cursor;
+use std::io::{self, BufRead, Cursor, Write};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::{env, fs, io};
+use std::process::{Command, Stdio};
+use std::{env, fs};
 
 use sha2::{Digest, Sha256};
 #[cfg(unix)]
@@ -56,14 +57,14 @@ pub fn install_version(versions: &[String]) -> Result<(), String> {
             resolve_version(version)?;
             normalize_version(version)
         };
-        let dir = version_dir(version);
+        let dir = version_dir(&version);
         if dir.exists() {
             print_warn!("Version '{version}' is already installed");
             continue;
         } else {
             print_info!("Installing version '{version}'...");
             create_dir(&dir)?;
-            match download_and_install(version, &dir) {
+            match download_and_install(&version, &dir) {
                 Ok(()) => print_success!("Installation successful"),
                 Err(err) => {
                     let _ = remove_path(&dir);
@@ -99,35 +100,29 @@ fn fetch_latest_version() -> Result<String, String> {
     }
     let res = res.as_str().map_err(|err| err.to_string())?;
     let value = serde_json::from_str::<serde_json::Value>(res).map_err(|err| err.to_string())?;
-    extract_tag_names(&[value])
-        .into_iter()
-        .next()
-        .ok_or("Failed to fetch latest version".to_string())
+    extract_tag_names(&[value]).next().ok_or_else(|| "Failed to fetch latest version".to_string())
 }
 
-fn extract_tag_names(releases: &[serde_json::Value]) -> Vec<String> {
+fn extract_tag_names(releases: &[serde_json::Value]) -> impl Iterator<Item = String> {
     print_info!("Extracting tag names...");
     let (os, arch) = get_platform();
     let ext = archive_ext();
     let target = format!("{arch}-{os}");
-    releases
-        .iter()
-        .filter_map(|release| {
-            let tag = release.get("tag_name")?.as_str()?;
-            let asset = format!("{ASSET_PREFIX}-{tag}-{target}.{ext}");
-            release
-                .get("assets")
-                .and_then(|a| a.as_array())
-                .into_iter()
-                .flatten()
-                .any(|v| {
-                    v.get("browser_download_url")
-                        .and_then(|u| u.as_str())
-                        .is_some_and(|u| u.ends_with(&asset))
-                })
-                .then(|| tag.strip_prefix('v').unwrap_or(tag).to_owned())
-        })
-        .collect()
+    releases.iter().filter_map(move |release| {
+        let tag = release.get("tag_name")?.as_str()?;
+        let asset = format!("{ASSET_PREFIX}-{tag}-{target}.{ext}");
+        release
+            .get("assets")
+            .and_then(|a| a.as_array())
+            .into_iter()
+            .flatten()
+            .any(|v| {
+                v.get("browser_download_url")
+                    .and_then(|u| u.as_str())
+                    .is_some_and(|u| u.ends_with(&asset))
+            })
+            .then(|| tag.strip_prefix('v').unwrap_or(tag).to_owned())
+    })
 }
 
 fn get_platform() -> (&'static str, &'static str) {
@@ -154,8 +149,8 @@ fn archive_ext() -> &'static str {
     if cfg!(windows) { "zip" } else { "tar.xz" }
 }
 
-fn normalize_version(version: &str) -> &str {
-    version.strip_prefix(['v', 'V']).unwrap_or(version)
+fn normalize_version(version: &str) -> String {
+    version.strip_prefix(['v', 'V']).unwrap_or(version).to_owned()
 }
 
 fn version_dir(version: &str) -> PathBuf {
@@ -163,7 +158,11 @@ fn version_dir(version: &str) -> PathBuf {
 }
 
 fn versions_dir() -> PathBuf {
-    home_dir().join(".naijascript/versions")
+    naijascript_dir().join("versions")
+}
+
+fn naijascript_dir() -> PathBuf {
+    home_dir().join(".naijascript")
 }
 
 fn home_dir() -> PathBuf {
@@ -381,7 +380,7 @@ pub fn fetch_available_version() -> Result<(), String> {
     let res = res.as_str().map_err(|err| err.to_string())?;
     let value = serde_json::from_str::<serde_json::Value>(res).map_err(|err| err.to_string())?;
     let releases = value.as_array().ok_or("Expected array of releases")?;
-    let versions = extract_tag_names(releases);
+    let versions: Vec<String> = extract_tag_names(releases).collect();
     if versions.is_empty() {
         print_info!("No available versions found");
     } else {
@@ -393,9 +392,61 @@ pub fn fetch_available_version() -> Result<(), String> {
     Ok(())
 }
 
+pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
+    if all {
+        return uninstall_all();
+    }
+    for version in versions {
+        print_info!("Uninstalling version '{version}'...");
+        let version = normalize_version(version);
+        let path = version_dir(&version);
+        if !path.exists() {
+            print_warn!("Version '{version}' is not installed");
+            continue;
+        }
+        if get_toolchain_version().as_deref().is_some_and(|v| v == version) {
+            print_warn!(
+                "Version '{version}' is currently set as default. Please change the default version before uninstalling."
+            );
+            continue;
+        }
+        remove_path(&path)?;
+        print_success!("Uninstallation successful");
+    }
+    Ok(())
+}
+
 fn bin_name() -> &'static str {
     if cfg!(windows) { "naija.exe" } else { "naija" }
 }
+
+fn config_file() -> PathBuf {
+    naijascript_dir().join("config.toml")
+}
+
+fn get_toolchain_version() -> Option<String> {
+    read_file_trimmed(Path::new(".naijascript-toolchain")).map_or_else(
+        || {
+            read_file_trimmed(&config_file()).and_then(|c| {
+                c.lines().find_map(|line| {
+                    line.strip_prefix("default = ").and_then(|suffix| {
+                        (!suffix.trim_matches(['"', '\'', ' ']).trim().is_empty())
+                            .then(|| normalize_version(suffix))
+                    })
+                })
+            })
+        },
+        |version| Some(normalize_version(&version)),
+    )
+}
+
+fn read_file_trimmed(path: &Path) -> Option<String> {
+    fs::read_to_string(path).ok().and_then(|s| {
+        let s = s.trim();
+        (!s.is_empty()).then(|| s.to_owned())
+    })
+}
+
 trait StatusCodeExt {
     fn is_success(&self) -> bool;
 }
@@ -404,4 +455,136 @@ impl StatusCodeExt for i32 {
     fn is_success(&self) -> bool {
         (200..300).contains(self)
     }
+}
+
+fn uninstall_all() -> Result<(), String> {
+    let root_dir = naijascript_dir();
+
+    if !try_confirm_uninstall(&root_dir)? {
+        return Ok(());
+    }
+
+    let versions_dir = versions_dir();
+    let default_version_dir = get_toolchain_version().map(|version| versions_dir.join(&version));
+
+    try_purge_stale_versions(default_version_dir.as_deref(), &root_dir, &versions_dir)?;
+
+    let script_path = try_build_uninstall_script(&root_dir)?;
+
+    print_info!("Uninstalling default version...");
+    let spawn_result = {
+        #[cfg(unix)]
+        {
+            Command::new("sh")
+                .arg(&script_path)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+        }
+        #[cfg(windows)]
+        {
+            Command::new("cmd")
+                .arg("/C")
+                .arg(&script_path)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+        }
+    };
+
+    match spawn_result {
+        Ok(_) => {
+            print_info!("Launching uninstall script. Exiting...");
+            std::process::exit(0)
+        }
+        Err(err) => {
+            let _ = fs::remove_file(&script_path);
+            Err(format!("Failed to uninstall default version: {err}"))
+        }
+    }
+}
+
+fn try_confirm_uninstall(root_dir: &Path) -> Result<bool, String> {
+    print_warn!("This will remove all installed versions in '{}'", root_dir.display());
+    print_warn!("Type 'y' or 'yes' to continue");
+    print!("> ");
+    io::stdout().flush().map_err(report_error!("Failed to flush confirmation prompt"))?;
+    io::stdin().lock().lines().next().transpose().map_or_else(
+        |err| Err(format!("Failed to read confirmation input: {err}")),
+        |line| {
+            Ok(line.is_some_and(|line| {
+                let yes = matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes");
+                if !yes {
+                    print_info!("Uninstall aborted by user");
+                }
+                yes
+            }))
+        },
+    )
+}
+
+fn try_purge_stale_versions(
+    default_version_dir: Option<&Path>,
+    root_dir: &Path,
+    versions_dir: &Path,
+) -> Result<(), String> {
+    print_info!("Purging stale versions...");
+    default_version_dir.map_or(Ok(()), |dir| {
+        let staging_dir = Builder::new()
+            .prefix(".naijascript-staging-")
+            .tempdir_in(root_dir)
+            .map_err(report_error!("Failed to create staging directory"))?;
+
+        fs::read_dir(versions_dir).map_or_else(
+            |err| Err(format!("Failed to read version directory: {err}")),
+            |entries| {
+                for entry in entries {
+                    let entry =
+                        entry.map_err(report_error!("Failed to read versions directory entry"))?;
+                    let entry_path = entry.path();
+                    let ft = entry
+                        .file_type()
+                        .map_err(report_error!("Failed to inspect versions entry"))?;
+                    if entry_path == *dir || !ft.is_dir() {
+                        continue;
+                    }
+                    let dest = staging_dir.path().join(entry.file_name());
+                    fs::rename(&entry_path, &dest)
+                        .map_err(report_error!("Failed to replace versions directory"))?;
+                }
+                staging_dir.close().map_err(report_error!("Failed to delete staged versions"))
+            },
+        )
+    })
+}
+
+fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
+    let mut script = Builder::new()
+        .prefix("naija-uninstall-")
+        .suffix(if cfg!(windows) { ".bat" } else { ".sh" })
+        .tempfile_in(env::temp_dir())
+        .map_err(report_error!("Failed to create uninstall script"))?;
+
+    #[cfg(unix)]
+    {
+        writeln!(script, "#!/bin/sh\nsleep 2\nrm -rf \"{}\"\nrm -f \"$0\"", root_dir.display())
+            .map_err(report_error!("Failed to write uninstall script"))?;
+        fs::set_permissions(script.path(), fs::Permissions::from_mode(0o700))
+            .map_err(report_error!("Failed to set uninstall script executable"))?;
+    }
+
+    #[cfg(windows)]
+    {
+        writeln!(
+            script,
+            "@echo off\ntimeout /t 2 /nobreak >nul\nrmdir /s /q \"{}\"\ndel \"%~f0\"",
+            root_dir.display()
+        )
+        .map_err(report_error!("Failed to write uninstall script"))?;
+    }
+
+    script.as_file().sync_all().map_err(report_error!("Failed to persist uninstall script"))?;
+    script.into_temp_path().keep().map_err(report_error!("Failed to persist uninstall script"))
 }
