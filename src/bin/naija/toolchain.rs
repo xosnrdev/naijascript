@@ -187,7 +187,7 @@ fn remove_path(path: &Path) -> Result<(), String> {
             if err.kind() == io::ErrorKind::NotFound {
                 return Ok(());
             } else {
-                return Err(format!("Failed to check existing path: {err}"));
+                return Err(report_error!("Failed to check existing path")(err));
             }
         }
     };
@@ -196,12 +196,12 @@ fn remove_path(path: &Path) -> Result<(), String> {
         if let Err(err) = fs::remove_dir_all(path)
             && err.kind() != io::ErrorKind::NotFound
         {
-            return Err(format!("Failed to remove existing directory: {err}"));
+            return Err(report_error!("Failed to remove existing directory")(err));
         }
     } else if let Err(err) = fs::remove_file(path)
         && err.kind() != io::ErrorKind::NotFound
     {
-        return Err(format!("Failed to remove existing file: {err}"));
+        return Err(report_error!("Failed to remove existing file")(err));
     }
     Ok(())
 }
@@ -308,7 +308,7 @@ fn extract_bin(
     if let Err(err) = temp_path.close()
         && err.kind() != io::ErrorKind::NotFound
     {
-        return Err(format!("Failed to cleanup temporary file: {err}"));
+        return Err(report_error!("Failed to cleanup temporary file")(err));
     }
     Ok(())
 }
@@ -345,7 +345,7 @@ fn extract_bin(
     if let Err(err) = temp_path.close()
         && err.kind() != io::ErrorKind::NotFound
     {
-        return Err(format!("Failed to cleanup temporary file: {err}"));
+        return Err(report_error!("Failed to cleanup temporary file")(err));
     }
     Ok(())
 }
@@ -501,7 +501,7 @@ fn uninstall_all() -> Result<(), String> {
         }
         Err(err) => {
             let _ = fs::remove_file(&script_path);
-            Err(format!("Failed to uninstall default version: {err}"))
+            Err(report_error!("Failed to uninstall default version")(err))
         }
     }
 }
@@ -649,8 +649,19 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
 
     #[cfg(windows)]
     {
-        os::windows::fs::symlink_file(bin_path, &temp_path_buf)
-            .map_err(report_error!("Failed to create symlink to version"))?;
+        os::windows::fs::symlink_file(bin_path, &temp_path_buf).map_err(|err| {
+            if err.raw_os_error() == Some(1314) {
+                return Err(
+                    r#"Failed to create symlink: Windows denied the request (OS error 1314).
+
+                You can fix this by either: 
+                1. Enabling Developer Mode in Windows Settings, or 
+                2. Re-running this command from an elevated (Administrator) terminal."#
+                        .to_string(),
+                );
+            }
+            return Err(report_error!("Failed to create symlink to version")(err));
+        })?;
     }
 
     if let Err(err) = fs::rename(&temp_path_buf, &link) {
@@ -660,7 +671,7 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
                 .map_err(report_error!("Failed to replace existing symlink"))?;
         }
         let _ = fs::remove_file(&temp_path_buf);
-        return Err(format!("Failed to replace symlink: {err}"));
+        return Err(report_error!("Failed to replace symlink")(err));
     }
 
     Ok(())
