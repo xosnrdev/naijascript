@@ -538,7 +538,13 @@ fn try_purge_stale_versions(
             .map_err(report_error!("Failed to create staging directory"))?;
 
         fs::read_dir(versions_dir).map_or_else(
-            |err| Err(report_error!("Failed to read version directory")(err)),
+            |err| {
+                if err.kind() != io::ErrorKind::NotFound {
+                    Err(report_error!("Failed to read version directory")(err))
+                } else {
+                    Ok(())
+                }
+            },
             |entries| {
                 for entry in entries {
                     let entry =
@@ -603,10 +609,6 @@ pub fn set_default_version(version: &str) -> Result<(), String> {
         let version = resolve_version(version)?;
         normalize_version(&version)
     };
-    let version_path = version_dir(&version);
-    if !version_path.exists() {
-        return Err(format!("Version '{version}' is not installed"));
-    }
     if get_toolchain_version().as_deref().is_some_and(|v| v == version) {
         print_warn!("Version '{version}' is already set as default.");
         return Ok(());
@@ -616,7 +618,7 @@ pub fn set_default_version(version: &str) -> Result<(), String> {
     create_dir(config_path.parent().ok_or("Invalid config path")?)?;
     fs::write(&config_path, format!("default = \"{version}\"\n"))
         .map_err(report_error!("Failed to write config file"))?;
-    let bin_path = version_path.join(bin_name());
+    let bin_path = version_dir(&version).join(bin_name());
     try_symlink_bin_path(&bin_path).inspect_err(|_err| {
         let _ = fs::remove_file(&config_path);
     })?;
