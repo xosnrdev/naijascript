@@ -2,8 +2,8 @@ use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
 
+use clap::Subcommand;
 use clap::builder::NonEmptyStringValueParser;
-use clap::{ArgGroup, Subcommand};
 use clap_cargo::style::CLAP_STYLING;
 use naijascript::resolver::Resolver;
 use naijascript::runtime::Runtime;
@@ -19,15 +19,13 @@ use crate::{print_error, toolchain};
     about = "The NaijaScript Interpreter",
     version,
     styles = CLAP_STYLING,
-    group(ArgGroup::new("input")
-        .args(&["script", "eval"])),
     arg_required_else_help = true
 )]
 pub struct Cli {
     /// Script to run
     script: Option<String>,
     /// Evaluate code from the command line
-    #[arg(short, long)]
+    #[arg(short, long, conflicts_with = "script")]
     eval: Option<String>,
     #[command(subcommand)]
     command: Option<Command>,
@@ -54,6 +52,16 @@ enum SelfCommand {
     List,
     /// Fetch available versions online
     Available,
+    /// Uninstall one or more versions
+    #[command(arg_required_else_help = true)]
+    Uninstall {
+        /// One or more versions to uninstall
+        #[arg(value_name = "version", value_parser = NonEmptyStringValueParser::new())]
+        versions: Vec<String>,
+        /// Uninstall all versions
+        #[arg(long, conflicts_with = "versions")]
+        all: bool,
+    },
 }
 
 impl Cli {
@@ -66,27 +74,14 @@ impl Cli {
             run_stdin(arena)
         } else if let Some(Command::Self_ { command }) = self.command {
             match command {
-                SelfCommand::Install { versions } => match toolchain::install_version(&versions) {
-                    Ok(()) => ExitCode::SUCCESS,
-                    Err(err) => {
-                        print_error!("{err}");
-                        ExitCode::FAILURE
-                    }
-                },
-                SelfCommand::List => match toolchain::list_installed_version() {
-                    Ok(()) => ExitCode::SUCCESS,
-                    Err(err) => {
-                        print_error!("{err}");
-                        ExitCode::FAILURE
-                    }
-                },
-                SelfCommand::Available => match toolchain::fetch_available_version() {
-                    Ok(()) => ExitCode::SUCCESS,
-                    Err(err) => {
-                        print_error!("{err}");
-                        ExitCode::FAILURE
-                    }
-                },
+                SelfCommand::Install { versions } => {
+                    report_result(toolchain::install_version(&versions))
+                }
+                SelfCommand::List => report_result(toolchain::list_installed_version()),
+                SelfCommand::Available => report_result(toolchain::fetch_available_version()),
+                SelfCommand::Uninstall { versions, all } => {
+                    report_result(toolchain::uninstall_version(&versions, all))
+                }
             }
         } else {
             ExitCode::FAILURE
@@ -172,6 +167,16 @@ fn run_stdin(arena: &Arena) -> ExitCode {
     };
 
     run_source("<stdin>", &src, arena)
+}
+
+fn report_result(result: Result<(), String>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            print_error!("{err}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 #[test]
