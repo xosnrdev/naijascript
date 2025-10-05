@@ -651,16 +651,14 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
     {
         os::windows::fs::symlink_file(bin_path, &temp_path_buf).map_err(|err| {
             if err.raw_os_error() == Some(1314) {
-                return Err(
-                    r#"Failed to create symlink: Windows denied the request (OS error 1314).
+                return r#"Failed to create symlink: Windows denied the request (OS error 1314).
 
                 You can fix this by either: 
                 1. Enabling Developer Mode in Windows Settings, or 
                 2. Re-running this command from an elevated (Administrator) terminal."#
-                        .to_string(),
-                );
+                    .to_string();
             }
-            return Err(report_error!("Failed to create symlink to version")(err));
+            report_error!("Failed to create symlink to version")(err)
         })?;
     }
 
