@@ -430,8 +430,8 @@ fn get_toolchain_version() -> Option<String> {
             read_file_trimmed(&config_file()).and_then(|c| {
                 c.lines().find_map(|line| {
                     line.strip_prefix("default = ").and_then(|suffix| {
-                        (!suffix.trim_matches(['"', '\'', ' ']).trim().is_empty())
-                            .then(|| normalize_version(suffix))
+                        let suffix = suffix.trim_matches(['"', '\'', ' ']);
+                        (!suffix.is_empty()).then(|| normalize_version(suffix))
                     })
                 })
             })
