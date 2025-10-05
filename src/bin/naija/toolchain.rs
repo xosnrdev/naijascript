@@ -628,13 +628,7 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
 
     print_info!("Creating symlink to '{}'", bin_path.display());
 
-    let (bin_root, link) = if cfg!(windows) {
-        let link = get_bin_root().join("naija.exe");
-        (get_bin_root(), link)
-    } else {
-        let link = get_bin_root().join("naija");
-        (get_bin_root(), link)
-    };
+    let (bin_root, link) = (get_bin_root(), get_bin_root().join(bin_name()));
 
     create_dir(&bin_root)?;
 
