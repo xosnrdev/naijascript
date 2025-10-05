@@ -60,13 +60,13 @@ pub fn install_version(versions: &[String]) -> Result<(), String> {
         };
         let dir = version_dir(&version);
         if dir.exists() {
-            print_warn!("Version '{version}' is already installed");
+            print_warn!("Version '{version}' already exists, skipping installation.");
             continue;
         } else {
             print_info!("Installing version '{version}'...");
             create_dir(&dir)?;
             match download_and_install(&version, &dir) {
-                Ok(()) => print_success!("Installation successful"),
+                Ok(()) => print_success!("Installation complete."),
                 Err(err) => {
                     let _ = remove_path(&dir);
                     return Err(err);
@@ -401,7 +401,7 @@ pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
         let version = normalize_version(version);
         let path = version_dir(&version);
         if !path.exists() {
-            print_warn!("Version '{version}' is not installed");
+            print_warn!("Version '{version}' does not exist, skipping uninstallation.");
             continue;
         }
         if get_toolchain_version().as_deref().is_some_and(|v| v == version) {
@@ -411,7 +411,7 @@ pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
             continue;
         }
         remove_path(&path)?;
-        print_success!("Uninstallation successful");
+        print_success!("Uninstallation complete.");
     }
     Ok(())
 }
@@ -608,7 +608,7 @@ pub fn set_default_version(version: &str) -> Result<(), String> {
         return Err(format!("Version '{version}' is not installed"));
     }
     if get_toolchain_version().as_deref().is_some_and(|v| v == version) {
-        print_warn!("Version '{version}' is already set as default");
+        print_warn!("Version '{version}' is already set as default.");
         return Ok(());
     }
     print_info!("Setting default version to '{version}'...");
