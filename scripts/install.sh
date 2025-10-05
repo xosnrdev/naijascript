@@ -24,6 +24,7 @@ INSTALL_DIR=".naijascript"
 BIN_ROOT="$HOME/$INSTALL_DIR/bin"
 BIN_PATH="$BIN_ROOT/$BIN"
 CONFIG_FILE="$HOME/$INSTALL_DIR/config.toml"
+REPO="xosnrdev/naijascript"
 
 info "Checking environment..."
 if [ -x "$BIN_PATH" ]; then
@@ -54,7 +55,6 @@ case "$OS" in
 esac
 
 info "Fetching the latest version..."
-REPO="xosnrdev/naijascript"
 LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | cut -d '"' -f4)
 if [ -z "$LATEST_TAG" ]; then
   error "Failed to fetch latest version. Please check your network or try again later."
@@ -124,7 +124,6 @@ case ":$PATH:" in
       info "Updating your '$PROFILE' file..."
       {
         echo ""
-        echo "# Path to NaijaScript interpreter"
         echo "export PATH=\"$BIN_ROOT:\$PATH\""
       } >> "$PROFILE"
       
