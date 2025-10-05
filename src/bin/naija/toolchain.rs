@@ -627,6 +627,7 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
         |file| Ok(file.into_temp_path()),
     )?;
 
+    // We only need the path for the symlink, not the temporary FD
     let temp_path_buf = temp_path.to_path_buf();
     temp_path.close().map_err(report_error!("Failed to reserve temporary symlink location"))?;
 
