@@ -1,94 +1,176 @@
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# --- Platform/Arch Detection ---
-$os = $env:OS
-$arch = $env:PROCESSOR_ARCHITECTURE
-
-switch ($os) {
-  'Windows_NT' {
-    switch ($arch) {
-      'AMD64' { $target = 'x86_64-pc-windows-msvc' }
-      # FIXME: Workout true ARM64 support target
-      # For now, we use x86_64 for ARM64 Windows 
-      'ARM64' { $target = 'x86_64-pc-windows-msvc' }
-      default { Write-Error 'Dis machine architecture no get support. We expect x86_64 or aarch64.'; exit 1 }
-    }
-  }
-  default { Write-Error 'Dis operating system no get support. Use Windows.'; exit 1 }
+function Write-Info {
+  param([string]$Message)
+  Write-Host 'info:' -ForegroundColor Blue -NoNewline
+  Write-Host " $Message"
 }
 
-$bin = "naijaup"
-$repo = "xosnrdev/naijaup"
+function Write-Success {
+  param([string]$Message)
+  Write-Host 'ok:' -ForegroundColor Green -NoNewline
+  Write-Host " $Message"
+}
 
-# --- Fetch Latest Version ---
+function Write-Warn {
+  param([string]$Message)
+  Write-Host 'warn:' -ForegroundColor Yellow -NoNewline
+  Write-Host " $Message"
+}
+
+function Write-Error {
+  param([string]$Message)
+  Write-Host 'error:' -ForegroundColor Red -NoNewline
+  Write-Host " $Message"
+  throw (New-Object System.Exception($Message))
+}
+
+$binName = 'naija'
+$binExecutable = "${binName}.exe"
+$installDirName = '.naijascript'
+$installRoot = Join-Path $env:USERPROFILE $installDirName
+$binRoot = Join-Path $installRoot 'bin'
+$binPath = Join-Path $binRoot $binExecutable
+$configFile = Join-Path $installRoot 'config.toml'
+$repo = 'xosnrdev/naijascript'
+
+Write-Info 'Checking environment...'
+if (Test-Path -Path $binPath) {
+  Write-Warn "NaijaScript interpreter already exists at: $binPath"
+  exit 0
+}
+
+Write-Info 'Detecting OS...'
+if ($env:OS -ne 'Windows_NT') {
+  Write-Error "Your operating system ('$($env:OS)') is not supported. This script runs on Windows."
+}
+
+$arch = $env:PROCESSOR_ARCHITECTURE
+switch ($arch) {
+  'AMD64' { $target = 'x86_64-pc-windows-msvc' }
+  'ARM64' { $target = 'aarch64-pc-windows-msvc' }
+  default { Write-Error "Your architecture ('$arch') is not supported. This script requires x86_64 or aarch64." }
+}
+
+Write-Info 'Fetching the latest version...'
 try {
   $latest = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest"
-  $tag = $latest.tag_name
+  $latestTag = $latest.tag_name
 }
 catch {
-  Write-Error "I no fit fetch latest version. Check your network and try again."; exit 1
+  Write-Error 'Failed to fetch latest version. Please check your network or try again later.'
 }
 
-$assetUrl = "https://github.com/$repo/releases/download/$tag/${bin}-${tag}-$target.zip"
-$shaUrl = "https://github.com/$repo/releases/download/$tag/${bin}-${tag}-$target.sha256"
+$assetName = "${binName}-${latestTag}-${target}.zip"
+$assetUrl = "https://github.com/$repo/releases/download/$latestTag/$assetName"
+$shaUrl = "https://github.com/$repo/releases/download/$latestTag/${binName}-${latestTag}-${target}.sha256"
 
-# --- Create a unique temp directory ---
-$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
-New-Item -ItemType Directory -Path $tmp | Out-Null
-Set-Location $tmp
+$tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+New-Item -ItemType Directory -Path $tmpDir | Out-Null
+$previousLocation = Get-Location
 
-# --- Download Binary and Checksum ---
-Write-Host "Downloading binary and checksum..."
-
-Invoke-WebRequest -Uri $assetUrl -OutFile "${bin}-${tag}-$target.zip"
-Invoke-WebRequest -Uri $shaUrl -OutFile "${bin}-${tag}-$target.sha256"
-
-
-# --- Verify Checksum of Archive ---
-Write-Host "Verifying checksum..."
-$expected = (Get-Content "${bin}-${tag}-$target.sha256").Split(' ')[0]
-$actual = (Get-FileHash "${bin}-${tag}-$target.zip" -Algorithm SHA256).Hash.ToLower()
-if ($expected -ne $actual) {
-  Write-Error "Checksum no match. Aborting installation."; exit 1
-}
-
-# --- Extract Archive ---
-Write-Host "Extracting archive..."
-Expand-Archive "${bin}-${tag}-$target.zip" -DestinationPath .
-
-# --- Install ---
-Write-Host "Installing binary..."
-$installDir = "$env:USERPROFILE\.naijascript\bin"
-if (!(Test-Path $installDir)) { New-Item -ItemType Directory -Path $installDir | Out-Null }
-Move-Item naijaup.exe "$installDir\naijaup.exe" -Force
-
-# --- Self-Test ---
-Write-Host "Testing installation..."
 try {
-  & "$installDir\naijaup.exe" --version | Out-Null
-  Write-Host "Installation successful."
-}
-catch {
-  Write-Error "Self-check fail. Confirm PATH setup or run the installer again."; exit 1
-}
+  Set-Location $tmpDir
 
-# --- Ensure $installDir is in User PATH permanently ---
-$path = [System.Environment]::GetEnvironmentVariable("Path", "User")
-$paths = $path -split ';'
-if ($paths -notcontains $installDir) {
-  $newPath = if ($path -and $path.Trim() -ne "") { $path + ";" + $installDir } else { $installDir }
-  [System.Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-  Write-Host "PATH no contain $installDir. I don add am to your user PATH."
-  Write-Host "Restart your shell."
-}
-else {
-  Write-Host "$installDir already dey your user PATH."
-}
+  Write-Info "Downloading files for version $latestTag..."
+  Invoke-WebRequest -Uri $assetUrl -OutFile $assetName
+  Invoke-WebRequest -Uri $shaUrl -OutFile "${binName}-${latestTag}-${target}.sha256"
 
-Write-Host "Installation don complete."
-Write-Host "Run 'naijaup install latest' to pull the newest Interpreter."
+  Write-Info 'Verifying checksum...'
+  $expected = (Get-Content "${binName}-${latestTag}-${target}.sha256" | Select-Object -First 1).Split(' ')[0].Trim()
+  $actual = (Get-FileHash $assetName -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($expected -ne $actual) {
+    Write-Error 'Checksum verification failed. The file may be corrupt.'
+  }
 
-# --- Cleanup ---
-Write-Host "Cleaning up..."
-Set-Location $env:USERPROFILE
-Remove-Item -Recurse -Force $tmp
+  Write-Info 'Installing binary...'
+  Expand-Archive $assetName -DestinationPath . -Force
+
+  $extractedBinary = Get-ChildItem -Recurse -Filter $binExecutable | Select-Object -First 1
+  if (-not $extractedBinary) {
+    Write-Error "Downloaded archive did not contain $binExecutable."
+  }
+
+  if (-not (Test-Path -Path $binRoot)) {
+    New-Item -ItemType Directory -Path $binRoot | Out-Null
+  }
+
+  $tmpBin = Join-Path $binRoot "${binExecutable}.tmp"
+  Copy-Item -LiteralPath $extractedBinary.FullName -Destination $tmpBin -Force
+
+  Write-Info 'Testing installation...'
+  try {
+    & $tmpBin --version | Out-Null
+  }
+  catch {
+    if (Test-Path -Path $tmpBin) {
+      Remove-Item -Path $tmpBin -Force
+    }
+    Write-Error 'The installed binary failed to run. It may be incompatible with your system.'
+  }
+
+  Move-Item -LiteralPath $tmpBin -Destination $binPath -Force
+
+  $configVersion = $latestTag
+  if ($configVersion.StartsWith('v', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $configVersion = $configVersion.Substring(1)
+  }
+
+  Write-Info "Setting default version to '$configVersion'..."
+  $configDir = Split-Path -Path $configFile -Parent
+  if (-not (Test-Path -Path $configDir)) {
+    New-Item -ItemType Directory -Path $configDir | Out-Null
+  }
+  Set-Content -Path $configFile -Value "default = \"$configVersion\"`n" -Encoding UTF8
+
+  Write-Info 'Configuring shell environment...'
+  $userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+  $pathEntries = if ([string]::IsNullOrWhiteSpace($userPath)) { @() } else { $userPath.Split(';') }
+
+  if ($pathEntries -contains $binRoot) {
+    # Already present, nothing to do.
+  }
+  else {
+    Write-Warn 'The installation directory needs to be added to your shell''s PATH.'
+
+    $profilePath = $PROFILE
+    if ([string]::IsNullOrWhiteSpace($profilePath)) {
+      $profilePath = Join-Path $env:USERPROFILE 'Documents\PowerShell\Microsoft.PowerShell_profile.ps1'
+    }
+
+    if (-not (Test-Path -Path $profilePath)) {
+      $profileDir = Split-Path -Path $profilePath -Parent
+      if (-not (Test-Path -Path $profileDir)) {
+        New-Item -ItemType Directory -Path $profileDir | Out-Null
+      }
+      New-Item -ItemType File -Path $profilePath | Out-Null
+    }
+
+    Write-Info "Updating your '$profilePath' file..."
+    $profileSnippet = @"
+
+`$env:Path = "$binRoot;`$env:Path"
+
+"@
+    Add-Content -Path $profilePath -Value $profileSnippet
+
+    $newPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $binRoot } else { "$binRoot;$userPath" }
+    [System.Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+
+    Write-Host ''
+    Write-Success 'Your user environment has been updated.'
+    Write-Info 'To start using the interpreter, open a new terminal or run the following command:'
+    Write-Host "  . \"$profilePath\""
+  }
+
+  Write-Host ''
+  Write-Success 'Installation complete.'
+}
+finally {
+  Set-Location -Path $previousLocation
+  if (Test-Path -Path $tmpDir) {
+    Write-Info 'Cleaning up temporary files...'
+    Remove-Item -Path $tmpDir -Recurse -Force
+  }
+}
