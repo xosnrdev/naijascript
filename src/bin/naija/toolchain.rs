@@ -6,7 +6,7 @@ use std::io::{self, BufRead, Cursor, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::{env, fs};
+use std::{env, fs, os};
 
 use sha2::{Digest, Sha256};
 #[cfg(unix)]
@@ -289,28 +289,23 @@ fn extract_bin(
         .ok_or_else(|| format!("Binary '{bin_name}' not found in archive"))?
         .map_err(report_error!("Failed to read archive entry"))?;
     let mode = entry.header().mode().unwrap_or(0o755);
-    let mut temp = Builder::new()
-        .prefix(".naija-")
+    let mut temp_file = Builder::new()
+        .prefix(".naija-install-")
         .tempfile_in(parent)
         .map_err(report_error!("Failed to create temporary file"))?;
     {
-        let file = temp.as_file_mut();
+        let file = temp_file.as_file_mut();
         io::copy(&mut entry, file)
             .map_err(report_error!("Failed to write binary to temporary file"))?;
         file.sync_all().map_err(report_error!("Failed to flush binary to disk"))?;
     }
     {
-        fs::set_permissions(temp.path(), fs::Permissions::from_mode(mode))
+        fs::set_permissions(temp_file.path(), fs::Permissions::from_mode(mode))
             .map_err(report_error!("Failed to set binary permissions"))?;
     }
-    let temp_path = temp.into_temp_path();
+    let temp_path = temp_file.into_temp_path();
     fs::rename(&temp_path, out_path).map_err(report_error!("Failed to replace binary"))?;
-    if let Err(err) = temp_path.close()
-        && err.kind() != io::ErrorKind::NotFound
-    {
-        return Err(format!("Failed to cleanup temporary file: {err}"));
-    }
-    Ok(())
+    temp_path.close().map_err(report_error!("Failed to cleanup temporary file"))
 }
 
 #[cfg(windows)]
@@ -329,25 +324,20 @@ fn extract_bin(
     let mut entry =
         archive.by_name(bin_name).map_err(report_error!("Failed to read archive entry"))?;
 
-    let mut temp = Builder::new()
+    let mut temp_file = Builder::new()
         .prefix(".naija-")
         .tempfile_in(parent)
         .map_err(report_error!("Failed to create temporary file"))?;
     {
-        let mut file = temp.as_file_mut();
+        let mut file = temp_file.as_file_mut();
         io::copy(&mut entry, &mut file)
             .map_err(report_error!("Failed to write binary to temporary file"))?;
         file.sync_all().map_err(report_error!("Failed to flush binary to disk"))?;
     }
 
-    let temp_path = temp.into_temp_path();
+    let temp_path = temp_file.into_temp_path();
     fs::rename(&temp_path, out_path).map_err(report_error!("Failed to replace binary"))?;
-    if let Err(err) = temp_path.close()
-        && err.kind() != io::ErrorKind::NotFound
-    {
-        return Err(format!("Failed to cleanup temporary file: {err}"));
-    }
-    Ok(())
+    temp_path.close().map_err(report_error!("Failed to cleanup temporary file"))
 }
 
 pub fn list_installed_version() -> Result<(), String> {
@@ -587,4 +577,78 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
 
     script.as_file().sync_all().map_err(report_error!("Failed to persist uninstall script"))?;
     script.into_temp_path().keep().map_err(report_error!("Failed to persist uninstall script"))
+}
+
+pub fn set_default_version(version: &str) -> Result<(), String> {
+    let version = {
+        resolve_version(version)?;
+        normalize_version(version)
+    };
+    let version_path = version_dir(&version);
+    if !version_path.exists() {
+        return Err(format!("Version '{version}' is not installed"));
+    }
+    if get_toolchain_version().as_deref().is_some_and(|v| v == version) {
+        print_warn!("Version '{version}' is already set as default");
+        return Ok(());
+    }
+    print_info!("Setting default version to '{version}'...");
+    let config_path = config_file();
+    create_dir(config_path.parent().ok_or("Invalid config path")?)?;
+    fs::write(&config_path, format!("default = \"{version}\"\n"))
+        .map_err(report_error!("Failed to write config file"))?;
+    let bin_path = version_path.join(bin_name());
+    try_symlink_bin_path(&bin_path)?;
+    print_success!("Default version set to '{version}'");
+    Ok(())
+}
+
+fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
+    if !bin_path.exists() {
+        return Err(format!("Binary path '{}' does not exist", bin_path.display()));
+    }
+
+    print_info!("Creating symlink to '{}'", bin_path.display());
+
+    let (bin_root, link) = if cfg!(windows) {
+        let bin_root = naijascript_dir().join("bin");
+        let link = bin_root.join("naija.exe");
+        (bin_root, link)
+    } else {
+        let bin_root = home_dir().join(".local/bin");
+        let link = bin_root.join("naija");
+        (bin_root, link)
+    };
+
+    create_dir(&bin_root)?;
+
+    let temp_path = Builder::new().prefix(".naija-symlink-").tempfile_in(&bin_root).map_or_else(
+        |err| Err(format!("Failed to reserve temporary symlink location: {err}")),
+        |file| Ok(file.into_temp_path()),
+    )?;
+
+    let temp_path_buf = temp_path.to_path_buf();
+    temp_path.close().map_err(report_error!("Failed to reserve temporary symlink location"))?;
+
+    #[cfg(unix)]
+    os::unix::fs::symlink(bin_path, &temp_path_buf)
+        .map_err(report_error!("Failed to create symlink to version"))?;
+
+    #[cfg(windows)]
+    {
+        os::windows::fs::symlink_file(bin_path, &temp_path_buf)
+            .map_err(report_error!("Failed to create symlink to version"))?;
+    }
+
+    if let Err(err) = fs::rename(&temp_path_buf, &link) {
+        if err.kind() == io::ErrorKind::AlreadyExists {
+            let _ = fs::remove_file(&link);
+            fs::rename(&temp_path_buf, &link)
+                .map_err(report_error!("Failed to replace existing symlink"))?;
+        }
+        let _ = fs::remove_file(&temp_path_buf);
+        return Err(format!("Failed to replace symlink: {err}"));
+    }
+
+    Ok(())
 }

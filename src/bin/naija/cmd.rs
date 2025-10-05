@@ -62,6 +62,8 @@ enum SelfCommand {
         #[arg(long, conflicts_with = "versions")]
         all: bool,
     },
+    /// Set the default version
+    Default { version: String },
 }
 
 impl Cli {
@@ -81,6 +83,9 @@ impl Cli {
                 SelfCommand::Available => report_result(toolchain::fetch_available_version()),
                 SelfCommand::Uninstall { versions, all } => {
                     report_result(toolchain::uninstall_version(&versions, all))
+                }
+                SelfCommand::Default { version } => {
+                    report_result(toolchain::set_default_version(&version))
                 }
             }
         } else {
