@@ -325,7 +325,7 @@ fn extract_bin(
         archive.by_name(bin_name).map_err(report_error!("Failed to read archive entry"))?;
 
     let mut temp_file = Builder::new()
-        .prefix(".naija-")
+        .prefix(".naija-install-")
         .tempfile_in(parent)
         .map_err(report_error!("Failed to create temporary file"))?;
     {
