@@ -512,7 +512,7 @@ fn try_confirm_uninstall(root_dir: &Path) -> Result<bool, String> {
     print!("> ");
     io::stdout().flush().map_err(report_error!("Failed to flush confirmation prompt"))?;
     io::stdin().lock().lines().next().transpose().map_or_else(
-        |err| Err(format!("Failed to read confirmation input: {err}")),
+        |err| Err(report_error!("Failed to read confirmation input")(err)),
         |line| {
             Ok(line.is_some_and(|line| {
                 let yes = matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes");
@@ -538,7 +538,7 @@ fn try_purge_stale_versions(
             .map_err(report_error!("Failed to create staging directory"))?;
 
         fs::read_dir(versions_dir).map_or_else(
-            |err| Err(format!("Failed to read version directory: {err}")),
+            |err| Err(report_error!("Failed to read version directory")(err)),
             |entries| {
                 for entry in entries {
                     let entry =
@@ -561,7 +561,8 @@ fn try_purge_stale_versions(
 }
 
 fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
-    let link_path = get_bin_root().join(bin_name()).to_string_lossy().into_owned();
+    let link_path = get_bin_root().join(bin_name());
+    let link_path = link_path.to_string_lossy();
     let mut script = Builder::new()
         .prefix("naija-uninstall-")
         .suffix(if cfg!(windows) { ".bat" } else { ".sh" })
@@ -630,12 +631,13 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
 
     print_info!("Creating symlink to '{}'", bin_path.display());
 
-    let (bin_root, link) = (get_bin_root(), get_bin_root().join(bin_name()));
+    let bin_root = get_bin_root();
+    let link = bin_root.join(bin_name());
 
     create_dir(&bin_root)?;
 
     let temp_path = Builder::new().prefix(".naija-symlink-").tempfile_in(&bin_root).map_or_else(
-        |err| Err(format!("Failed to reserve temporary symlink location: {err}")),
+        |err| Err(report_error!("Failed to reserve temporary symlink location")(err)),
         |file| Ok(file.into_temp_path()),
     )?;
 
@@ -671,10 +673,9 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
         let _ = fs::remove_file(&temp_path_buf);
         return Err(report_error!("Failed to replace symlink")(err));
     }
-
     Ok(())
 }
 
 fn get_bin_root() -> PathBuf {
-    if cfg!(windows) { naijascript_dir().join("bin") } else { home_dir().join(".local/bin") }
+    naijascript_dir().join("bin")
 }
