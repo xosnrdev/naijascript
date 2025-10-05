@@ -1,6 +1,7 @@
 //! Toolchain management abstractions.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::io::{self, BufRead, Cursor, Write};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -52,10 +53,10 @@ const REPO: &str = "xosnrdev/naijascript";
 const ASSET_PREFIX: &str = "naija";
 
 pub fn install_version(versions: &[String]) -> Result<(), String> {
-    for version in versions {
+    for version in versions.iter().collect::<HashSet<_>>() {
         let version = {
-            resolve_version(version)?;
-            normalize_version(version)
+            let version = resolve_version(version)?;
+            normalize_version(&version)
         };
         let dir = version_dir(&version);
         if dir.exists() {
@@ -212,7 +213,6 @@ fn download_and_install(version: &str, version_dir: &Path) -> Result<(), String>
     }
     let version =
         if version.starts_with('v') { version.to_string() } else { format!("v{version}") };
-    let version = normalize_version(&version);
     let ext = archive_ext();
     let target = format!("{arch}-{os}");
     let archive_name = format!("naija-{version}-{target}.{ext}");
@@ -305,7 +305,12 @@ fn extract_bin(
     }
     let temp_path = temp_file.into_temp_path();
     fs::rename(&temp_path, out_path).map_err(report_error!("Failed to replace binary"))?;
-    temp_path.close().map_err(report_error!("Failed to cleanup temporary file"))
+    if let Err(err) = temp_path.close()
+        && err.kind() != io::ErrorKind::NotFound
+    {
+        return Err(format!("Failed to cleanup temporary file: {err}"));
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -337,7 +342,12 @@ fn extract_bin(
 
     let temp_path = temp_file.into_temp_path();
     fs::rename(&temp_path, out_path).map_err(report_error!("Failed to replace binary"))?;
-    temp_path.close().map_err(report_error!("Failed to cleanup temporary file"))
+    if let Err(err) = temp_path.close()
+        && err.kind() != io::ErrorKind::NotFound
+    {
+        return Err(format!("Failed to cleanup temporary file: {err}"));
+    }
+    Ok(())
 }
 
 pub fn list_installed_version() -> Result<(), String> {
@@ -386,7 +396,7 @@ pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
     if all {
         return uninstall_all();
     }
-    for version in versions {
+    for version in versions.iter().collect::<HashSet<_>>() {
         print_info!("Uninstalling version '{version}'...");
         let version = normalize_version(version);
         let path = version_dir(&version);
@@ -551,6 +561,7 @@ fn try_purge_stale_versions(
 }
 
 fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
+    let link_path = get_bin_root().join(bin_name()).to_string_lossy().into_owned();
     let mut script = Builder::new()
         .prefix("naija-uninstall-")
         .suffix(if cfg!(windows) { ".bat" } else { ".sh" })
@@ -559,8 +570,13 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
 
     #[cfg(unix)]
     {
-        writeln!(script, "#!/bin/sh\nsleep 2\nrm -rf \"{}\"\nrm -f \"$0\"", root_dir.display())
-            .map_err(report_error!("Failed to write uninstall script"))?;
+        writeln!(
+            script,
+            "#!/bin/sh\nsleep 2\nrm -rf \"{}\"\nrm -f \"{}\"\nrm -f \"$0\"",
+            root_dir.display(),
+            &link_path
+        )
+        .map_err(report_error!("Failed to write uninstall script"))?;
         fs::set_permissions(script.path(), fs::Permissions::from_mode(0o700))
             .map_err(report_error!("Failed to set uninstall script executable"))?;
     }
@@ -569,8 +585,10 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
     {
         writeln!(
             script,
-            "@echo off\ntimeout /t 2 /nobreak >nul\nrmdir /s /q \"{}\"\ndel \"%~f0\"",
-            root_dir.display()
+            "@echo off\ntimeout /t 2 /nobreak >nul\nrmdir /s /q \"{}\"\nif exist \"{}\" del \"{}\"\ndel \"%~f0\"",
+            root_dir.display(),
+            &link_path,
+            &link_path
         )
         .map_err(report_error!("Failed to write uninstall script"))?;
     }
@@ -581,8 +599,8 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
 
 pub fn set_default_version(version: &str) -> Result<(), String> {
     let version = {
-        resolve_version(version)?;
-        normalize_version(version)
+        let version = resolve_version(version)?;
+        normalize_version(&version)
     };
     let version_path = version_dir(&version);
     if !version_path.exists() {
@@ -611,13 +629,11 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
     print_info!("Creating symlink to '{}'", bin_path.display());
 
     let (bin_root, link) = if cfg!(windows) {
-        let bin_root = naijascript_dir().join("bin");
-        let link = bin_root.join("naija.exe");
-        (bin_root, link)
+        let link = get_bin_root().join("naija.exe");
+        (get_bin_root(), link)
     } else {
-        let bin_root = home_dir().join(".local/bin");
-        let link = bin_root.join("naija");
-        (bin_root, link)
+        let link = get_bin_root().join("naija");
+        (get_bin_root(), link)
     };
 
     create_dir(&bin_root)?;
@@ -652,4 +668,8 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn get_bin_root() -> PathBuf {
+    if cfg!(windows) { naijascript_dir().join("bin") } else { home_dir().join(".local/bin") }
 }
