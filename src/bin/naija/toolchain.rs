@@ -616,7 +616,9 @@ pub fn set_default_version(version: &str) -> Result<(), String> {
     fs::write(&config_path, format!("default = \"{version}\"\n"))
         .map_err(report_error!("Failed to write config file"))?;
     let bin_path = version_path.join(bin_name());
-    try_symlink_bin_path(&bin_path)?;
+    try_symlink_bin_path(&bin_path).inspect_err(|_err| {
+        let _ = fs::remove_file(&config_path);
+    })?;
     print_success!("Default version set to '{version}'");
     Ok(())
 }
