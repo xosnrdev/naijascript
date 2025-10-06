@@ -3,7 +3,10 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - v*
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -69,7 +72,15 @@ jobs:
         shell: pwsh
         run: |
           $BinPath = "target/${{ matrix.target }}/release/${{ matrix.bin_target }}.exe"
-          Compress-Archive -Path $BinPath -DestinationPath "${{ steps.assetinfo.outputs.asset_name }}.zip"
+          $BinDir = Split-Path -Parent $BinPath
+          $BinFile = Split-Path -Leaf $BinPath
+          Push-Location $BinDir
+          try {
+            Compress-Archive -Path $BinFile -DestinationPath "${{ steps.assetinfo.outputs.asset_name }}.zip" -Force
+          }
+          finally {
+            Pop-Location
+          }
 
       - name: Archive binary (Unix/macOS)
         if: matrix.os != 'windows-latest'
