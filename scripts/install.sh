@@ -84,7 +84,7 @@ info "Installing binary..."
 tar -xvf "${BIN}-${LATEST_TAG}-$TARGET.tar.xz"
 mkdir -p "$BIN_ROOT"
 
-TMP_BIN="$BIN_ROOT/$BIN.tmp"
+TMP_BIN=$(mktemp)
 install -m 755 "$BIN" "$TMP_BIN"
 
 info "Testing installation..."

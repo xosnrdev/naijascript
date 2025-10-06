@@ -96,7 +96,8 @@ try {
     New-Item -ItemType Directory -Path $binRoot | Out-Null
   }
 
-  $tmpBin = Join-Path $binRoot "${binExecutable}.tmp"
+  $tmpFile = [System.IO.Path]::GetTempFileName()
+  $tmpBin = Join-Path ([System.IO.Path]::GetDirectoryName($tmpFile)) "${binExecutable}"
   Copy-Item -LiteralPath $extractedBinary.FullName -Destination $tmpBin -Force
 
   Write-Info 'Testing installation...'
