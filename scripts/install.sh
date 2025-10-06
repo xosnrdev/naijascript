@@ -3,137 +3,128 @@
 set -eu
 
 info() {
-  printf '\033[1;34minfo:\033[0m %s\n' "$*"
+	printf '\033[1;34minfo:\033[0m %s\n' "$*"
 }
 
 success() {
-  printf '\033[1;32mok:\033[0m %s\n' "$*"
+	printf '\033[1;32mok:\033[0m %s\n' "$*"
 }
 
 warn() {
-  printf '\033[1;33mwarn:\033[0m %s\n' "$*" >&2
+	printf '\033[1;33mwarn:\033[0m %s\n' "$*" >&2
 }
 
 error() {
-  printf '\033[1;31merror:\033[0m %s\n' "$*" >&2
-  exit 1
+	printf '\033[1;31merror:\033[0m %s\n' "$*" >&2
+	exit 1
 }
 
 BIN="naija"
 INSTALL_DIR=".naijascript"
-BIN_ROOT="$HOME/$INSTALL_DIR/bin"
-BIN_PATH="$BIN_ROOT/$BIN"
-CONFIG_FILE="$HOME/$INSTALL_DIR/config.toml"
+BIN_ROOT="${HOME}/${INSTALL_DIR}/bin"
+BIN_PATH="${BIN_ROOT}/${BIN}"
+CONFIG_FILE="${HOME}/${INSTALL_DIR}/config.toml"
 REPO="xosnrdev/naijascript"
 
 info "Checking environment..."
-if [ -x "$BIN_PATH" ]; then
-  warn "NaijaScript interpreter already exists at: $BIN_PATH"
-  exit 0
+if [ -x "${BIN_PATH}" ]; then
+	warn "NaijaScript interpreter already exists at: ${BIN_PATH}"
+	exit 0
 fi
 
 info "Detecting OS..."
 OS=$(uname | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
-case "$OS" in
-  linux)
-    case "$ARCH" in
-      x86_64|amd64) TARGET="x86_64-unknown-linux-gnu" ;;
-      aarch64|arm64) TARGET="aarch64-unknown-linux-gnu" ;;
-      *) error "Your architecture ('$ARCH') is not supported. This script requires x86_64 or aarch64." ;;
-    esac
-    ;;
-  darwin)
-    case "$ARCH" in
-      x86_64|amd64) TARGET="x86_64-apple-darwin" ;;
-      aarch64|arm64) TARGET="aarch64-apple-darwin" ;;
-      *) error "Your architecture ('$ARCH') is not supported. This script requires x86_64 or aarch64." ;;
-    esac
-    ;;
-  *) error "Your operating system ('$OS') is not supported. This script runs on Linux and macOS." ;;
+case "${OS}" in
+linux)
+	case "${ARCH}" in
+	x86_64 | amd64) TARGET="x86_64-unknown-linux-gnu" ;;
+	aarch64 | arm64) TARGET="aarch64-unknown-linux-gnu" ;;
+	*) error "Your architecture ('${ARCH}') is not supported. This script requires x86_64 or aarch64." ;;
+	esac
+	;;
+darwin)
+	case "${ARCH}" in
+	x86_64 | amd64) TARGET="x86_64-apple-darwin" ;;
+	aarch64 | arm64) TARGET="aarch64-apple-darwin" ;;
+	*) error "Your architecture ('${ARCH}') is not supported. This script requires x86_64 or aarch64." ;;
+	esac
+	;;
+*) error "Your operating system ('${OS}') is not supported. This script runs on Linux and macOS." ;;
 esac
 
 info "Fetching the latest version..."
-LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | cut -d '"' -f4)
-if [ -z "$LATEST_TAG" ]; then
-  error "Failed to fetch latest version. Please check your network or try again later."
+LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | cut -d '"' -f4)
+if [ -z "${LATEST_TAG}" ]; then
+	error "Failed to fetch latest version. Please check your network or try again later."
 fi
 
-ASSET_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/${BIN}-${LATEST_TAG}-$TARGET.tar.xz"
-SHA_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/${BIN}-${LATEST_TAG}-$TARGET.sha256"
+ASSET_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/${BIN}-${LATEST_TAG}-${TARGET}.tar.xz"
+SHA_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/${BIN}-${LATEST_TAG}-${TARGET}.sha256"
 
 TMPDIR=$(mktemp -d)
-trap 'info "Cleaning up temporary files..."; rm -rf "$TMPDIR"' EXIT
-cd "$TMPDIR"
+ORIGINAL_WORKING_DIR=$(pwd)
 
-info "Downloading files for version $LATEST_TAG..."
-curl -fsSLO "$ASSET_URL"
-curl -fsSLO "$SHA_URL"
+cd "${TMPDIR}"
+
+info "Downloading files for version ${LATEST_TAG}..."
+curl -fsSLO "${ASSET_URL}"
+curl -fsSLO "${SHA_URL}"
 
 info "Verifying checksum..."
 if command -v sha256sum >/dev/null 2>&1; then
-  sha256sum -c "${BIN}-${LATEST_TAG}-$TARGET.sha256" || error "Checksum verification failed. The file may be corrupt."
+	sha256sum -c "${BIN}-${LATEST_TAG}-${TARGET}.sha256" || error "Checksum verification failed. The file may be corrupt."
 else
-  ACTUAL=$(shasum -a 256 "${BIN}-${LATEST_TAG}-$TARGET.tar.xz" | awk '{print $1}')
-  EXPECTED=$(cut -d ' ' -f1 "${BIN}-${LATEST_TAG}-$TARGET.sha256")
-  [ "$ACTUAL" = "$EXPECTED" ] || error "Checksum verification failed. The file may be corrupt."
+	ACTUAL=$(shasum -a 256 "${BIN}-${LATEST_TAG}-${TARGET}.tar.xz" | awk '{print $1}')
+	EXPECTED=$(cut -d ' ' -f1 "${BIN}-${LATEST_TAG}-${TARGET}.sha256")
+	[ "${ACTUAL}" = "${EXPECTED}" ] || error "Checksum verification failed. The file may be corrupt."
 fi
 
 info "Installing binary..."
-tar -xvf "${BIN}-${LATEST_TAG}-$TARGET.tar.xz"
-mkdir -p "$BIN_ROOT"
+tar -xvf "${BIN}-${LATEST_TAG}-${TARGET}.tar.xz"
+mkdir -p "${BIN_ROOT}"
 
 TMP_BIN=$(mktemp)
-install -m 755 "$BIN" "$TMP_BIN"
+install -m 755 "${BIN}" "${TMP_BIN}"
 
 info "Testing installation..."
-if ! "$TMP_BIN" --version >/dev/null 2>&1; then
-  rm -f "$TMP_BIN"
-  error "The installed binary failed to run. It may be incompatible with your system."
+if ! "${TMP_BIN}" --version >/dev/null 2>&1; then
+	rm -f "${TMP_BIN}"
+	error "The installed binary failed to run. It may be incompatible with your system."
 fi
 
-# Atomic replacement
-mv "$TMP_BIN" "$BIN_PATH"
+mv "${TMP_BIN}" "${BIN_PATH}"
 
-CONFIG_VERSION="$LATEST_TAG"
-case "$CONFIG_VERSION" in
-  [Vv]*) CONFIG_VERSION="${CONFIG_VERSION#?}" ;;
-esac
-info "Setting default version to '$CONFIG_VERSION'..."
-mkdir -p "$(dirname "$CONFIG_FILE")"
-printf 'default = "%s"\n' "$CONFIG_VERSION" > "$CONFIG_FILE"
+CONFIG_VERSION=${LATEST_TAG#v}
+info "Setting default version to '${CONFIG_VERSION}'..."
+mkdir -p "$(dirname "${CONFIG_FILE}")"
+printf 'default = "%s"\n' "${CONFIG_VERSION}" >"${CONFIG_FILE}"
 
 info "Configuring shell environment..."
-case ":$PATH:" in
-  *:"$BIN_ROOT":*)
-    : # Already in PATH, do nothing.
-    ;;
-  *)
-    warn "The installation directory needs to be added to your shell's PATH."
-    PROFILE=""
-    if [ -n "${ZSH_VERSION-}" ] || [ "$(basename "$SHELL")" = "zsh" ]; then
-      PROFILE="$HOME/.zshrc"
-    elif [ -n "${BASH_VERSION-}" ] || [ "$(basename "$SHELL")" = "bash" ]; then
-      PROFILE="$HOME/.profile"
-    else
-      PROFILE="$HOME/.profile"
-    fi
-    
-    if ! grep -q "export PATH=\"$BIN_ROOT:\$PATH\"" "$PROFILE" 2>/dev/null; then
-      info "Updating your '$PROFILE' file..."
-      {
-        echo ""
-        echo "export PATH=\"$BIN_ROOT:\$PATH\""
-      } >> "$PROFILE"
-      
-      printf "\n"
-      success "Your shell profile has been updated."
-      info "To start using the interpreter, open a new terminal or run the following command:"
-      printf '  \033[1msource "%s"\033[0m\n' "$PROFILE"
-    fi
-    ;;
-esac
+if ! echo ":${PATH}:" | grep -q ":${BIN_ROOT}:"; then
+	PROFILE=""
+	if [ -n "${ZSH_VERSION-}" ] || [ "$(basename "$0")" = "zsh" ]; then
+		PROFILE="${HOME}/.zshrc"
+	elif [ -n "${BASH_VERSION-}" ] || [ "$(basename "$0")" = "bash" ]; then
+		PROFILE="${HOME}/.bashrc"
+	else
+		PROFILE="${HOME}/.profile"
+	fi
+
+	if ! grep -q "export PATH=\"${BIN_ROOT}:\$PATH\"" "${PROFILE}" 2>/dev/null; then
+		printf "\nexport PATH=\"%s:\$PATH\"\n\n" "${BIN_ROOT}" >>"${PROFILE}"
+	fi
+fi
 
 printf "\n"
 success "Installation complete."
+
+cleanup() {
+	info "Cleaning up temporary files..."
+	rm -rf "${TMPDIR}"
+	cd "${ORIGINAL_WORKING_DIR}"
+	exec "${SHELL}" -l
+}
+
+trap cleanup EXIT

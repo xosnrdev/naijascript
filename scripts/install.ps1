@@ -67,8 +67,8 @@ $assetUrl = "https://github.com/$repo/releases/download/$latestTag/$assetName"
 $shaUrl = "https://github.com/$repo/releases/download/$latestTag/${binName}-${latestTag}-${target}.sha256"
 
 $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
-New-Item -ItemType Directory -Path $tmpDir | Out-Null
-$previousLocation = Get-Location
+New-Item -ItemType Directory $tmpDir | Out-Null
+$originalWorkingDir = Get-Location
 
 try {
   Set-Location $tmpDir
@@ -87,18 +87,12 @@ try {
   Write-Info 'Installing binary...'
   Expand-Archive $assetName -DestinationPath . -Force
 
-  $extractedBinary = Get-ChildItem -Recurse -Filter $binExecutable | Select-Object -First 1
-  if (-not $extractedBinary) {
-    Write-Error "Downloaded archive did not contain $binExecutable."
-  }
-
   if (-not (Test-Path -Path $binRoot)) {
     New-Item -ItemType Directory -Path $binRoot | Out-Null
   }
 
-  $tmpFile = [System.IO.Path]::GetTempFileName()
-  $tmpBin = Join-Path ([System.IO.Path]::GetDirectoryName($tmpFile)) "${binExecutable}"
-  Copy-Item -LiteralPath $extractedBinary.FullName -Destination $tmpBin -Force
+  $tmpBin = Join-Path ([System.IO.Path]::GetDirectoryName([System.IO.Path]::GetTempFileName())) "${binExecutable}"
+  Copy-Item -LiteralPath $binExecutable -Destination $tmpBin -Force
 
   Write-Info 'Testing installation...'
   try {
@@ -113,63 +107,39 @@ try {
 
   Move-Item -LiteralPath $tmpBin -Destination $binPath -Force
 
-  $configVersion = $latestTag
-  if ($configVersion.StartsWith('v', [System.StringComparison]::OrdinalIgnoreCase)) {
-    $configVersion = $configVersion.Substring(1)
-  }
+  $configVersion = $latestTag.Substring(1)
 
   Write-Info "Setting default version to '$configVersion'..."
   $configDir = Split-Path -Path $configFile -Parent
   if (-not (Test-Path -Path $configDir)) {
     New-Item -ItemType Directory -Path $configDir | Out-Null
   }
-  Set-Content -Path $configFile -Value "default = \"$configVersion\"`n" -Encoding UTF8
+  "default = $configVersion`n" | Set-Content -Path $configFile -Encoding UTF8
 
-  Write-Info 'Configuring shell environment...'
-  $userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
-  $pathEntries = if ([string]::IsNullOrWhiteSpace($userPath)) { @() } else { $userPath.Split(';') }
+  Write-Info 'Configuring user environment...'
 
-  if ($pathEntries -contains $binRoot) {
-    # Already present, nothing to do.
-  }
-  else {
-    Write-Warn 'The installation directory needs to be added to your shell''s PATH.'
+  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 
-    $profilePath = $PROFILE
-    if ([string]::IsNullOrWhiteSpace($profilePath)) {
-      $profilePath = Join-Path $env:USERPROFILE 'Documents\PowerShell\Microsoft.PowerShell_profile.ps1'
+  if (-not ($userPath.Split(';') -contains $binRoot)) {
+    if (-not (Test-Path $PROFILE)) {
+      $null = New-Item -ItemType File -Force -Path $PROFILE
     }
 
-    if (-not (Test-Path -Path $profilePath)) {
-      $profileDir = Split-Path -Path $profilePath -Parent
-      if (-not (Test-Path -Path $profileDir)) {
-        New-Item -ItemType Directory -Path $profileDir | Out-Null
-      }
-      New-Item -ItemType File -Path $profilePath | Out-Null
+    "`n`$env:Path = `"$binRoot;`$env:Path`"`n" | Add-Content -Path $PROFILE -Encoding UTF8
+
+    $newPath = if ($userPath) { "$binRoot;$userPath" } else { $binRoot }
+    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+
+    if (-not ($env:Path.Split(';') -contains $binRoot)) {
+      $env:Path = "$binRoot;$env:Path"
     }
-
-    Write-Info "Updating your '$profilePath' file..."
-    $profileSnippet = @"
-
-`$env:Path = "$binRoot;`$env:Path"
-
-"@
-    Add-Content -Path $profilePath -Value $profileSnippet
-
-    $newPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $binRoot } else { "$binRoot;$userPath" }
-    [System.Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-
-    Write-Host ''
-    Write-Success 'Your user environment has been updated.'
-    Write-Info 'To start using the interpreter, open a new terminal or run the following command:'
-    Write-Host "  . \"$profilePath\""
   }
 
   Write-Host ''
   Write-Success 'Installation complete.'
 }
 finally {
-  Set-Location -Path $previousLocation
+  Set-Location -Path $originalWorkingDir
   if (Test-Path -Path $tmpDir) {
     Write-Info 'Cleaning up temporary files...'
     Remove-Item -Path $tmpDir -Recurse -Force
