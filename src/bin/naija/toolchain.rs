@@ -36,6 +36,12 @@ macro_rules! print_warn {
     }
 }
 
+macro_rules! print_hint {
+    ($($arg:tt)*) => {
+        println!("\n\x1b[1;36mhint:\x1b[0m {}", format!($($arg)*))
+    };
+}
+
 macro_rules! print_success {
     ($($arg:tt)*) => {
         println!("\x1b[1;32mok:\x1b[0m {}", format!($($arg)*))
@@ -351,18 +357,32 @@ fn extract_bin(
 }
 
 pub fn list_installed_version() -> Result<(), String> {
-    let entries =
-        fs::read_dir(versions_dir()).map_err(report_error!("Failed to read versions directory"))?;
-    let versions: Vec<String> =
-        entries.flatten().map(|entry| entry.file_name().to_string_lossy().to_string()).collect();
+    let mut versions = Vec::new();
+    match fs::read_dir(versions_dir()) {
+        Ok(entries) => {
+            entries
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().to_string())
+                .for_each(|entry| versions.push(entry));
+        }
+        Err(err)
+            if err.kind() == io::ErrorKind::NotFound
+                && let Some(version) = get_toolchain_version() =>
+        {
+            versions.push(version);
+        }
+        Err(err) => return Err(report_error!("Failed to read versions directory")(err)),
+    }
+
     if versions.is_empty() {
         print_info!("No versions installed");
     } else {
-        print_info!("Installed versions:");
+        print_info!("Installed versions:\n");
         for version in versions {
-            println!("\n- {version}");
+            println!("- {version}");
         }
     }
+
     Ok(())
 }
 
@@ -384,9 +404,9 @@ pub fn fetch_available_version() -> Result<(), String> {
     if versions.is_empty() {
         print_info!("No available versions found");
     } else {
-        print_info!("Available versions:");
+        print_info!("Available versions:\n");
         for version in versions {
-            println!("\n- {version}");
+            println!("- {version}");
         }
     }
     Ok(())
@@ -399,18 +419,18 @@ pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
     for version in versions.iter().collect::<HashSet<_>>() {
         print_info!("Uninstalling version '{version}'...");
         let version = normalize_version(version);
-        let path = version_dir(&version);
-        if !path.exists() {
+        let version_dir = version_dir(&version);
+        let is_default_version = get_toolchain_version().as_deref().is_some_and(|v| v == version);
+        if !version_dir.exists() && !is_default_version {
             print_warn!("Version '{version}' does not exist, skipping uninstall.");
             continue;
         }
-        if get_toolchain_version().as_deref().is_some_and(|v| v == version) {
-            print_warn!(
-                "Version '{version}' is currently set as default. Please change the default version before uninstalling."
-            );
+        if is_default_version {
+            print_warn!("Version '{version}' is currently set as default.");
+            print_hint!("Change the default version before uninstalling.");
             continue;
         }
-        remove_path(&path)?;
+        remove_path(&version_dir)?;
         print_success!("Uninstall complete.");
     }
     Ok(())
@@ -498,7 +518,7 @@ fn uninstall_all() -> Result<(), String> {
     match spawn_result {
         Ok(_) => {
             print_success!("Uninstall complete.");
-            print_info!("You may need to restart your terminal for changes to take effect.");
+            print_hint!("You may need to restart your terminal for changes to take effect.");
             std::process::exit(0)
         }
         Err(err) => {

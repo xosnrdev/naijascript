@@ -6,6 +6,10 @@ info() {
 	printf '\033[1;34minfo:\033[0m %s\n' "$*"
 }
 
+hint() {
+	printf '\n\033[1;36mhint:\033[0m %s\n' "$*"
+}
+
 success() {
 	printf '\033[1;32mok:\033[0m %s\n' "$*"
 }
@@ -113,7 +117,7 @@ if ! echo ":${PATH}:" | grep -q ":${BIN_ROOT}:"; then
 	if ! grep -q "export PATH=\"${BIN_ROOT}:\$PATH\"" "${PROFILE}" 2>/dev/null; then
 		printf "\nexport PATH=\"%s:\$PATH\"\n\n" "${BIN_ROOT}" >>"${PROFILE}"
 		info "Added '${BIN_ROOT}' to PATH in '${PROFILE}'."
-		info "Restart your terminal or run 'source ${PROFILE}' to apply the changes."
+		hint "Restart your terminal or run 'source ${PROFILE}' to apply the changes."
 	fi
 fi
 

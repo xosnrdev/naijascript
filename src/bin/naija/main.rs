@@ -1,5 +1,4 @@
-#![feature(allocator_api)]
-
+#![feature(allocator_api, if_let_guard)]
 mod cmd;
 pub mod toolchain;
 
