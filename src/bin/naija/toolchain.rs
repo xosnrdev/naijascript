@@ -351,18 +351,32 @@ fn extract_bin(
 }
 
 pub fn list_installed_version() -> Result<(), String> {
-    let entries =
-        fs::read_dir(versions_dir()).map_err(report_error!("Failed to read versions directory"))?;
-    let versions: Vec<String> =
-        entries.flatten().map(|entry| entry.file_name().to_string_lossy().to_string()).collect();
+    let mut versions = Vec::new();
+    match fs::read_dir(versions_dir()) {
+        Ok(entries) => {
+            entries
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().to_string())
+                .for_each(|entry| versions.push(entry));
+        }
+        Err(err)
+            if err.kind() == io::ErrorKind::NotFound
+                && let Some(version) = get_toolchain_version() =>
+        {
+            versions.push(version);
+        }
+        Err(err) => return Err(report_error!("Failed to read versions directory")(err)),
+    }
+
     if versions.is_empty() {
         print_info!("No versions installed");
     } else {
-        print_info!("Installed versions:");
+        print_info!("Installed versions:\n");
         for version in versions {
-            println!("\n- {version}");
+            println!("- {version}");
         }
     }
+
     Ok(())
 }
 
@@ -384,9 +398,9 @@ pub fn fetch_available_version() -> Result<(), String> {
     if versions.is_empty() {
         print_info!("No available versions found");
     } else {
-        print_info!("Available versions:");
+        print_info!("Available versions:\n");
         for version in versions {
-            println!("\n- {version}");
+            println!("- {version}");
         }
     }
     Ok(())
