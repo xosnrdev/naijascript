@@ -114,7 +114,7 @@ try {
   if (-not (Test-Path -Path $configDir)) {
     New-Item -ItemType Directory -Path $configDir | Out-Null
   }
-  "default = $configVersion`n" | Set-Content -Path $configFile -Encoding UTF8
+  "default = `"$configVersion`"`n" | Set-Content -Path $configFile -Encoding UTF8
 
   Write-Info 'Configuring user environment...'
 
