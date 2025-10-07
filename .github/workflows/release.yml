@@ -15,6 +15,9 @@ env:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
         include:
@@ -56,14 +59,13 @@ jobs:
       - name: Set artifact name
         id: artifact_info
         run: |
-          VERSION=${GITHUB_REF_NAME}
+          VERSION=${{ github.event_name == 'workflow_dispatch' && format('nightly-{0}', github.run_number) || github.ref_name }}
           NAME=${{ matrix.bin_target }}
           TARGET=${{ matrix.target }}
           EXT=tar.xz
           if [ "${{ matrix.os }}" = "windows-latest" ]; then EXT=zip; fi
           ARTIFACT_NAME="$NAME-$VERSION-$TARGET"
           echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-          echo "ext=$EXT" >> $GITHUB_OUTPUT
 
       - name: Archive binary (Windows)
         if: matrix.os == 'windows-latest'
