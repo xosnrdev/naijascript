@@ -64,8 +64,6 @@ ASSET_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/${BIN}-${L
 SHA_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/${BIN}-${LATEST_TAG}-${TARGET}.sha256"
 
 TMPDIR=$(mktemp -d)
-BASE_WORKING_DIR=$(pwd)
-
 cd "${TMPDIR}"
 
 info "Downloading files for version ${LATEST_TAG}..."
@@ -74,15 +72,15 @@ curl -fsSLO "${SHA_URL}"
 
 info "Verifying checksum..."
 if command -v sha256sum >/dev/null 2>&1; then
-	sha256sum -c "${BIN}-${LATEST_TAG}-${TARGET}.sha256" || error "Checksum verification failed. The file may be corrupt."
+	sha256sum -c --quiet "${BIN}-${LATEST_TAG}-${TARGET}.sha256" || error "Checksum verification failed. The file may be corrupt."
 else
-	ACTUAL=$(shasum -a 256 "${BIN}-${LATEST_TAG}-${TARGET}.tar.xz" | awk '{print $1}')
+	ACTUAL=$(shasum -a 256 -q "${BIN}-${LATEST_TAG}-${TARGET}.tar.xz" | awk '{print $1}')
 	EXPECTED=$(cut -d ' ' -f1 "${BIN}-${LATEST_TAG}-${TARGET}.sha256")
 	[ "${ACTUAL}" = "${EXPECTED}" ] || error "Checksum verification failed. The file may be corrupt."
 fi
 
 info "Installing binary..."
-tar -xvf "${BIN}-${LATEST_TAG}-${TARGET}.tar.xz"
+tar -xf "${BIN}-${LATEST_TAG}-${TARGET}.tar.xz"
 mkdir -p "${BIN_ROOT}"
 
 TMP_BIN=$(mktemp)
@@ -114,6 +112,8 @@ if ! echo ":${PATH}:" | grep -q ":${BIN_ROOT}:"; then
 
 	if ! grep -q "export PATH=\"${BIN_ROOT}:\$PATH\"" "${PROFILE}" 2>/dev/null; then
 		printf "\nexport PATH=\"%s:\$PATH\"\n\n" "${BIN_ROOT}" >>"${PROFILE}"
+		info "Added '${BIN_ROOT}' to PATH in '${PROFILE}'."
+		info "Restart your terminal or run 'source ${PROFILE}' to apply the changes."
 	fi
 fi
 
@@ -123,8 +123,6 @@ success "Installation complete."
 cleanup() {
 	info "Cleaning up temporary files..."
 	rm -rf "${TMPDIR}"
-	cd "${BASE_WORKING_DIR}"
-	exec "${SHELL}" -l
 }
 
 trap cleanup EXIT
