@@ -107,8 +107,11 @@ try {
 
   Move-Item -LiteralPath $tmpBin -Destination $binPath -Force
 
-  $configVersion = $latestTag.Substring(1)
-
+  if ($latestTag.startsWith("v")) {
+    $configVersion = $latestTag.Substring(1)
+  } else {
+    $configVersion = $latestTag
+  }
   Write-Info "Setting default version to '$configVersion'..."
   $configDir = Split-Path -Path $configFile -Parent
   if (-not (Test-Path -Path $configDir)) {
