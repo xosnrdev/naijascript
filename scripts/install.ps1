@@ -68,7 +68,7 @@ $shaUrl = "https://github.com/$repo/releases/download/$latestTag/${binName}-${la
 
 $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory $tmpDir | Out-Null
-$originalWorkingDir = Get-Location
+$baseLocation = Get-Location
 
 try {
   Set-Location $tmpDir
@@ -139,7 +139,7 @@ try {
   Write-Success 'Installation complete.'
 }
 finally {
-  Set-Location -Path $originalWorkingDir
+  Set-Location -Path $baseLocation
   if (Test-Path -Path $tmpDir) {
     Write-Info 'Cleaning up temporary files...'
     Remove-Item -Path $tmpDir -Recurse -Force

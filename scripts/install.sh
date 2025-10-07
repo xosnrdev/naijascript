@@ -64,7 +64,7 @@ ASSET_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/${BIN}-${L
 SHA_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/${BIN}-${LATEST_TAG}-${TARGET}.sha256"
 
 TMPDIR=$(mktemp -d)
-ORIGINAL_WORKING_DIR=$(pwd)
+BASE_WORKING_DIR=$(pwd)
 
 cd "${TMPDIR}"
 
@@ -104,9 +104,9 @@ printf 'default = "%s"\n' "${CONFIG_VERSION}" >"${CONFIG_FILE}"
 info "Configuring shell environment..."
 if ! echo ":${PATH}:" | grep -q ":${BIN_ROOT}:"; then
 	PROFILE=""
-	if [ -n "${ZSH_VERSION-}" ] || [ "$(basename "$0")" = "zsh" ]; then
+	if [ -n "${ZSH_VERSION-}" ] || [ "$(basename "${SHELL}")" = "zsh" ]; then
 		PROFILE="${HOME}/.zshrc"
-	elif [ -n "${BASH_VERSION-}" ] || [ "$(basename "$0")" = "bash" ]; then
+	elif [ -n "${BASH_VERSION-}" ] || [ "$(basename "${SHELL}")" = "bash" ]; then
 		PROFILE="${HOME}/.bashrc"
 	else
 		PROFILE="${HOME}/.profile"
@@ -123,7 +123,7 @@ success "Installation complete."
 cleanup() {
 	info "Cleaning up temporary files..."
 	rm -rf "${TMPDIR}"
-	cd "${ORIGINAL_WORKING_DIR}"
+	cd "${BASE_WORKING_DIR}"
 	exec "${SHELL}" -l
 }
 
