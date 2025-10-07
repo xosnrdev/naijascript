@@ -401,7 +401,7 @@ pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
         let version = normalize_version(version);
         let path = version_dir(&version);
         if !path.exists() {
-            print_warn!("Version '{version}' does not exist, skipping uninstallation.");
+            print_warn!("Version '{version}' does not exist, skipping Uninstall.");
             continue;
         }
         if get_toolchain_version().as_deref().is_some_and(|v| v == version) {
@@ -411,7 +411,7 @@ pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
             continue;
         }
         remove_path(&path)?;
-        print_success!("Uninstallation complete.");
+        print_success!("Uninstall complete.");
     }
     Ok(())
 }
@@ -496,7 +496,9 @@ fn uninstall_all() -> Result<(), String> {
 
     match spawn_result {
         Ok(_) => {
-            print_info!("Launching uninstall script. Exiting...");
+            print_success!(
+                "Uninstall complete. Please restart your terminal to apply environment changes."
+            );
             std::process::exit(0)
         }
         Err(err) => {
@@ -567,8 +569,11 @@ fn try_purge_stale_versions(
 }
 
 fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
-    let link_path = get_bin_root().join(bin_name());
+    let bin_root = get_bin_root();
+    let link_path = bin_root.join(bin_name());
     let link_path = link_path.to_string_lossy();
+    let bin_root = bin_root.to_string_lossy();
+    let root_dir = root_dir.to_string_lossy();
     let mut script = Builder::new()
         .prefix("naija-uninstall-")
         .suffix(if cfg!(windows) { ".bat" } else { ".sh" })
@@ -577,27 +582,45 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
 
     #[cfg(unix)]
     {
-        writeln!(
-            script,
-            "#!/bin/sh\nsleep 2\nrm -rf \"{}\"\nrm -f \"{}\"\nrm -f \"$0\"",
-            root_dir.display(),
-            &link_path
-        )
-        .map_err(report_error!("Failed to write uninstall script"))?;
+        let script_contents = format!(
+            "#!/bin/sh\n\
+set -eu\n\
+sleep 2\n\
+BIN_ROOT=\"{bin_root}\"\n\
+PATTERN=\"export PATH=\\\"$BIN_ROOT:\\$PATH\\\"\"\n\
+for PROFILE in \"$HOME/.zshrc\" \"$HOME/.bashrc\" \"$HOME/.profile\"; do\n\
+    if [ -f \"$PROFILE\" ]; then\n\
+        TMP=$(mktemp)\n\
+        grep -F -v \"$PATTERN\" \"$PROFILE\" >\"$TMP\" || true\n\
+        mv \"$TMP\" \"$PROFILE\"\n\
+    fi\n\
+done\n\
+rm -rf \"{root_dir}\"\n\
+rm -f \"{link_path}\"\n\
+rm -f \"$0\"\n"
+        );
+        script
+            .write_all(script_contents.as_bytes())
+            .map_err(report_error!("Failed to write uninstall script"))?;
         fs::set_permissions(script.path(), fs::Permissions::from_mode(0o700))
             .map_err(report_error!("Failed to set uninstall script executable"))?;
     }
 
     #[cfg(windows)]
     {
-        writeln!(
-            script,
-            "@echo off\ntimeout /t 2 /nobreak >nul\nrmdir /s /q \"{}\"\nif exist \"{}\" del \"{}\"\ndel \"%~f0\"",
-            root_dir.display(),
-            &link_path,
-            &link_path
-        )
-        .map_err(report_error!("Failed to write uninstall script"))?;
+        let script_contents = format!(
+            "@echo off\r\n\
+setlocal\r\n\
+timeout /t 2 /nobreak >nul\r\n\
+set \"BIN_ROOT={bin_root}\"\r\n\
+powershell -NoProfile -ExecutionPolicy Bypass -Command \"$binRoot = $env:BIN_ROOT; $profilePath = $PROFILE; if (Test-Path $profilePath) {{ $pattern = [regex]::Escape($binRoot) + ';`$env:Path'; $content = Get-Content $profilePath; $filtered = $content | Where-Object {{ $_ -notmatch $pattern }}; if ($filtered.Count -ne $content.Count) {{ $filtered | Set-Content -Path $profilePath -Encoding UTF8 }} }}; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if ($userPath) {{ $parts = $userPath.Split(';') | Where-Object {{ $_ -and $_.TrimEnd('\\') -ne $binRoot.TrimEnd('\\') }}; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }}\"\r\n\
+rmdir /s /q \"{root_dir}\"\r\n\
+if exist \"{link_path}\" del \"{link_path}\"\r\n\
+del \"%~f0\"\r\n"
+        );
+        script
+            .write_all(script_contents.as_bytes())
+            .map_err(report_error!("Failed to write uninstall script"))?;
     }
 
     script.as_file().sync_all().map_err(report_error!("Failed to persist uninstall script"))?;
