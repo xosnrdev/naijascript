@@ -14,9 +14,6 @@ env:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
     strategy:
       matrix:
         include:
@@ -47,7 +44,7 @@ jobs:
           rustup toolchain install nightly --no-self-update --profile minimal --component rust-src
           rustup target add ${{ matrix.target }}
 
-      - name: Install cross toolchain and sysroot for aarch64-unknown-linux-gnu
+      - name: Install build dependencies for aarch64-unknown-linux-gnu
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
 
@@ -55,59 +52,48 @@ jobs:
         run: |
           cargo build --config .cargo/release.toml --release --target ${{ matrix.target }} --bin ${{ matrix.bin_target }}
 
-      - name: Set asset and archive names
-        id: assetinfo
+      - name: Set artifact name
+        id: artifact_info
         run: |
           VERSION=${GITHUB_REF_NAME}
           NAME=${{ matrix.bin_target }}
           TARGET=${{ matrix.target }}
           EXT=tar.xz
           if [ "${{ matrix.os }}" = "windows-latest" ]; then EXT=zip; fi
-          ASSET_NAME="$NAME-$VERSION-$TARGET"
-          echo "asset_name=$ASSET_NAME" >> $GITHUB_OUTPUT
+          ARTIFACT_NAME="$NAME-$VERSION-$TARGET"
+          echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
           echo "ext=$EXT" >> $GITHUB_OUTPUT
 
       - name: Archive binary (Windows)
         if: matrix.os == 'windows-latest'
-        shell: pwsh
         run: |
-          $BinPath = "target/${{ matrix.target }}/release/${{ matrix.bin_target }}.exe"
-          $BinDir = Split-Path -Parent $BinPath
-          $BinFile = Split-Path -Leaf $BinPath
-          Push-Location $BinDir
-          try {
-            Compress-Archive -Path $BinFile -DestinationPath "${{ steps.assetinfo.outputs.asset_name }}.zip" -Force
-          }
-          finally {
-            Pop-Location
-          }
+          cd target/${{ matrix.target }}/release
+          7z a ../../../${{ steps.artifact_info.outputs.artifact_name }}.zip ${{ matrix.bin_target }}.exe
 
-      - name: Archive binary (Unix/macOS)
+      - name: Archive binary (Unix)
         if: matrix.os != 'windows-latest'
-        run: |
-          BIN_PATH=target/${{ matrix.target }}/release/${{ matrix.bin_target }}
-          tar -cJf ${{ steps.assetinfo.outputs.asset_name }}.tar.xz -C $(dirname "$BIN_PATH") $(basename "$BIN_PATH")
+        run: tar -cJvf ${{ steps.artifact_info.outputs.artifact_name }}.tar.xz -C target/${{ matrix.target }}/release ${{ matrix.bin_target }}
 
       - name: Generate checksum
         id: checksum
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            sha256sum ${{ steps.assetinfo.outputs.asset_name }}.zip > ${{ steps.assetinfo.outputs.asset_name }}.sha256
-            echo "artifacts=${{ steps.assetinfo.outputs.asset_name }}.zip ${{ steps.assetinfo.outputs.asset_name }}.sha256" >> $GITHUB_OUTPUT
+            sha256sum ${{ steps.artifact_info.outputs.artifact_name }}.zip > ${{ steps.artifact_info.outputs.artifact_name }}.sha256
+            echo "artifacts=${{ steps.artifact_info.outputs.artifact_name }}.zip ${{ steps.artifact_info.outputs.artifact_name }}.sha256" >> $GITHUB_OUTPUT
           else
             if command -v sha256sum >/dev/null 2>&1; then
-              sha256sum ${{ steps.assetinfo.outputs.asset_name }}.tar.xz > ${{ steps.assetinfo.outputs.asset_name }}.sha256
+              sha256sum ${{ steps.artifact_info.outputs.artifact_name }}.tar.xz > ${{ steps.artifact_info.outputs.artifact_name }}.sha256
             else
-              shasum -a 256 ${{ steps.assetinfo.outputs.asset_name }}.tar.xz > ${{ steps.assetinfo.outputs.asset_name }}.sha256
+              shasum -a 256 ${{ steps.artifact_info.outputs.artifact_name }}.tar.xz > ${{ steps.artifact_info.outputs.artifact_name }}.sha256
             fi
-            echo "artifacts=${{ steps.assetinfo.outputs.asset_name }}.tar.xz ${{ steps.assetinfo.outputs.asset_name }}.sha256" >> $GITHUB_OUTPUT
+            echo "artifacts=${{ steps.artifact_info.outputs.artifact_name }}.tar.xz ${{ steps.artifact_info.outputs.artifact_name }}.sha256" >> $GITHUB_OUTPUT
           fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.assetinfo.outputs.asset_name }}
-          path: ${{ steps.assetinfo.outputs.asset_name }}.*
+          name: ${{ steps.artifact_info.outputs.artifact_name }}
+          path: ${{ steps.artifact_info.outputs.artifact_name }}.*
 
   release:
     needs: build
