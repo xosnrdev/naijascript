@@ -121,12 +121,6 @@ try {
   $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 
   if (-not ($userPath.Split(';') -contains $binRoot)) {
-    if (-not (Test-Path $PROFILE)) {
-      $null = New-Item -ItemType File -Force -Path $PROFILE
-    }
-
-    "`n`$env:Path = `"$binRoot;`$env:Path`"`n" | Add-Content -Path $PROFILE -Encoding UTF8
-
     $newPath = if ($userPath) { "$binRoot;$userPath" } else { $binRoot }
     [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
 
