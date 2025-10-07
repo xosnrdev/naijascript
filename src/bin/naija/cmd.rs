@@ -33,6 +33,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Manage versions
     #[command(name = "self")]
     Self_ {
         #[command(subcommand)]

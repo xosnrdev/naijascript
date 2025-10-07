@@ -1,6 +1,7 @@
 //! Toolchain management abstractions.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::io::{self, BufRead, Cursor, Write};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -52,20 +53,20 @@ const REPO: &str = "xosnrdev/naijascript";
 const ASSET_PREFIX: &str = "naija";
 
 pub fn install_version(versions: &[String]) -> Result<(), String> {
-    for version in versions {
+    for version in versions.iter().map(|s| s.to_ascii_lowercase()).collect::<HashSet<_>>() {
         let version = {
-            resolve_version(version)?;
-            normalize_version(version)
+            let version = resolve_version(&version)?;
+            normalize_version(&version)
         };
         let dir = version_dir(&version);
-        if dir.exists() {
-            print_warn!("Version '{version}' is already installed");
+        if dir.exists() || get_toolchain_version().as_deref().is_some_and(|v| v == version) {
+            print_warn!("Version '{version}' already exists, skipping install.");
             continue;
         } else {
             print_info!("Installing version '{version}'...");
             create_dir(&dir)?;
             match download_and_install(&version, &dir) {
-                Ok(()) => print_success!("Installation successful"),
+                Ok(()) => print_success!("Installation complete."),
                 Err(err) => {
                     let _ = remove_path(&dir);
                     return Err(err);
@@ -79,7 +80,7 @@ pub fn install_version(versions: &[String]) -> Result<(), String> {
 
 fn resolve_version<'a>(version: &'a str) -> Result<Cow<'a, str>, String> {
     print_info!("Resolving version '{version}'...");
-    if version.to_lowercase() == "latest" {
+    if version.eq_ignore_ascii_case("latest") {
         let version = fetch_latest_version()?;
         Ok(Cow::Owned(version))
     } else {
@@ -186,7 +187,7 @@ fn remove_path(path: &Path) -> Result<(), String> {
             if err.kind() == io::ErrorKind::NotFound {
                 return Ok(());
             } else {
-                return Err(format!("Failed to check existing path: {err}"));
+                return Err(report_error!("Failed to check existing path")(err));
             }
         }
     };
@@ -195,12 +196,12 @@ fn remove_path(path: &Path) -> Result<(), String> {
         if let Err(err) = fs::remove_dir_all(path)
             && err.kind() != io::ErrorKind::NotFound
         {
-            return Err(format!("Failed to remove existing directory: {err}"));
+            return Err(report_error!("Failed to remove existing directory")(err));
         }
     } else if let Err(err) = fs::remove_file(path)
         && err.kind() != io::ErrorKind::NotFound
     {
-        return Err(format!("Failed to remove existing file: {err}"));
+        return Err(report_error!("Failed to remove existing file")(err));
     }
     Ok(())
 }
@@ -212,7 +213,6 @@ fn download_and_install(version: &str, version_dir: &Path) -> Result<(), String>
     }
     let version =
         if version.starts_with('v') { version.to_string() } else { format!("v{version}") };
-    let version = normalize_version(&version);
     let ext = archive_ext();
     let target = format!("{arch}-{os}");
     let archive_name = format!("naija-{version}-{target}.{ext}");
@@ -305,7 +305,12 @@ fn extract_bin(
     }
     let temp_path = temp_file.into_temp_path();
     fs::rename(&temp_path, out_path).map_err(report_error!("Failed to replace binary"))?;
-    temp_path.close().map_err(report_error!("Failed to cleanup temporary file"))
+    if let Err(err) = temp_path.close()
+        && err.kind() != io::ErrorKind::NotFound
+    {
+        return Err(report_error!("Failed to cleanup temporary file")(err));
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -337,7 +342,12 @@ fn extract_bin(
 
     let temp_path = temp_file.into_temp_path();
     fs::rename(&temp_path, out_path).map_err(report_error!("Failed to replace binary"))?;
-    temp_path.close().map_err(report_error!("Failed to cleanup temporary file"))
+    if let Err(err) = temp_path.close()
+        && err.kind() != io::ErrorKind::NotFound
+    {
+        return Err(report_error!("Failed to cleanup temporary file")(err));
+    }
+    Ok(())
 }
 
 pub fn list_installed_version() -> Result<(), String> {
@@ -386,12 +396,12 @@ pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
     if all {
         return uninstall_all();
     }
-    for version in versions {
+    for version in versions.iter().collect::<HashSet<_>>() {
         print_info!("Uninstalling version '{version}'...");
         let version = normalize_version(version);
         let path = version_dir(&version);
         if !path.exists() {
-            print_warn!("Version '{version}' is not installed");
+            print_warn!("Version '{version}' does not exist, skipping uninstall.");
             continue;
         }
         if get_toolchain_version().as_deref().is_some_and(|v| v == version) {
@@ -401,7 +411,7 @@ pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
             continue;
         }
         remove_path(&path)?;
-        print_success!("Uninstallation successful");
+        print_success!("Uninstall complete.");
     }
     Ok(())
 }
@@ -420,8 +430,8 @@ fn get_toolchain_version() -> Option<String> {
             read_file_trimmed(&config_file()).and_then(|c| {
                 c.lines().find_map(|line| {
                     line.strip_prefix("default = ").and_then(|suffix| {
-                        (!suffix.trim_matches(['"', '\'', ' ']).trim().is_empty())
-                            .then(|| normalize_version(suffix))
+                        let suffix = suffix.trim_matches(['"', '\'', ' ']);
+                        (!suffix.is_empty()).then(|| normalize_version(suffix))
                     })
                 })
             })
@@ -431,7 +441,8 @@ fn get_toolchain_version() -> Option<String> {
 }
 
 fn read_file_trimmed(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().and_then(|s| {
+    fs::read(path).ok().and_then(|s| {
+        let s = String::from_utf8_lossy(s.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&s));
         let s = s.trim();
         (!s.is_empty()).then(|| s.to_owned())
     })
@@ -486,12 +497,13 @@ fn uninstall_all() -> Result<(), String> {
 
     match spawn_result {
         Ok(_) => {
-            print_info!("Launching uninstall script. Exiting...");
+            print_success!("Uninstall complete.");
+            print_info!("You may need to restart your terminal for changes to take effect.");
             std::process::exit(0)
         }
         Err(err) => {
             let _ = fs::remove_file(&script_path);
-            Err(format!("Failed to uninstall default version: {err}"))
+            Err(report_error!("Failed to uninstall default version")(err))
         }
     }
 }
@@ -502,7 +514,7 @@ fn try_confirm_uninstall(root_dir: &Path) -> Result<bool, String> {
     print!("> ");
     io::stdout().flush().map_err(report_error!("Failed to flush confirmation prompt"))?;
     io::stdin().lock().lines().next().transpose().map_or_else(
-        |err| Err(format!("Failed to read confirmation input: {err}")),
+        |err| Err(report_error!("Failed to read confirmation input")(err)),
         |line| {
             Ok(line.is_some_and(|line| {
                 let yes = matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes");
@@ -528,7 +540,13 @@ fn try_purge_stale_versions(
             .map_err(report_error!("Failed to create staging directory"))?;
 
         fs::read_dir(versions_dir).map_or_else(
-            |err| Err(format!("Failed to read version directory: {err}")),
+            |err| {
+                if err.kind() != io::ErrorKind::NotFound {
+                    Err(report_error!("Failed to read version directory")(err))
+                } else {
+                    Ok(())
+                }
+            },
             |entries| {
                 for entry in entries {
                     let entry =
@@ -551,6 +569,11 @@ fn try_purge_stale_versions(
 }
 
 fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
+    let bin_root = get_bin_root();
+    let link_path = bin_root.join(bin_name());
+    let link_path = link_path.to_string_lossy();
+    let bin_root = bin_root.to_string_lossy();
+    let root_dir = root_dir.to_string_lossy();
     let mut script = Builder::new()
         .prefix("naija-uninstall-")
         .suffix(if cfg!(windows) { ".bat" } else { ".sh" })
@@ -559,7 +582,25 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
 
     #[cfg(unix)]
     {
-        writeln!(script, "#!/bin/sh\nsleep 2\nrm -rf \"{}\"\nrm -f \"$0\"", root_dir.display())
+        let script_contents = format!(
+            "#!/bin/sh\n\
+set -eu\n\
+sleep 2\n\
+BIN_ROOT=\"{bin_root}\"\n\
+PATTERN=\"export PATH=\\\"$BIN_ROOT:\\$PATH\\\"\"\n\
+for PROFILE in \"$HOME/.zshrc\" \"$HOME/.bashrc\" \"$HOME/.profile\"; do\n\
+    if [ -f \"$PROFILE\" ]; then\n\
+        TMP=$(mktemp)\n\
+        grep -F -v \"$PATTERN\" \"$PROFILE\" >\"$TMP\" || true\n\
+        mv \"$TMP\" \"$PROFILE\"\n\
+    fi\n\
+done\n\
+rm -rf \"{root_dir}\"\n\
+rm -f \"{link_path}\"\n\
+rm -f \"$0\"\n"
+        );
+        script
+            .write_all(script_contents.as_bytes())
             .map_err(report_error!("Failed to write uninstall script"))?;
         fs::set_permissions(script.path(), fs::Permissions::from_mode(0o700))
             .map_err(report_error!("Failed to set uninstall script executable"))?;
@@ -567,12 +608,19 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
 
     #[cfg(windows)]
     {
-        writeln!(
-            script,
-            "@echo off\ntimeout /t 2 /nobreak >nul\nrmdir /s /q \"{}\"\ndel \"%~f0\"",
-            root_dir.display()
-        )
-        .map_err(report_error!("Failed to write uninstall script"))?;
+        let script_contents = format!(
+            "@echo off\r\n\
+setlocal\r\n\
+timeout /t 2 /nobreak >nul\r\n\
+set \"BIN_ROOT={bin_root}\"\r\n\
+powershell -NoProfile -ExecutionPolicy Bypass -Command \"$binRoot = $env:BIN_ROOT; $profilePath = $PROFILE; if (Test-Path $profilePath) {{ $pattern = [regex]::Escape($binRoot) + ';`$env:Path'; $content = Get-Content $profilePath; $filtered = $content | Where-Object {{ $_ -notmatch $pattern }}; if ($filtered.Count -ne $content.Count) {{ $filtered | Set-Content -Path $profilePath -Encoding UTF8 }} }}; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if ($userPath) {{ $parts = $userPath.Split(';') | Where-Object {{ $_ -and $_.TrimEnd('\\') -ne $binRoot.TrimEnd('\\') }}; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }}\"\r\n\
+rmdir /s /q \"{root_dir}\"\r\n\
+if exist \"{link_path}\" del \"{link_path}\"\r\n\
+del \"%~f0\"\r\n"
+        );
+        script
+            .write_all(script_contents.as_bytes())
+            .map_err(report_error!("Failed to write uninstall script"))?;
     }
 
     script.as_file().sync_all().map_err(report_error!("Failed to persist uninstall script"))?;
@@ -581,15 +629,11 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
 
 pub fn set_default_version(version: &str) -> Result<(), String> {
     let version = {
-        resolve_version(version)?;
-        normalize_version(version)
+        let version = resolve_version(version)?;
+        normalize_version(&version)
     };
-    let version_path = version_dir(&version);
-    if !version_path.exists() {
-        return Err(format!("Version '{version}' is not installed"));
-    }
     if get_toolchain_version().as_deref().is_some_and(|v| v == version) {
-        print_warn!("Version '{version}' is already set as default");
+        print_warn!("Version '{version}' is already set as default.");
         return Ok(());
     }
     print_info!("Setting default version to '{version}'...");
@@ -597,8 +641,10 @@ pub fn set_default_version(version: &str) -> Result<(), String> {
     create_dir(config_path.parent().ok_or("Invalid config path")?)?;
     fs::write(&config_path, format!("default = \"{version}\"\n"))
         .map_err(report_error!("Failed to write config file"))?;
-    let bin_path = version_path.join(bin_name());
-    try_symlink_bin_path(&bin_path)?;
+    let bin_path = version_dir(&version).join(bin_name());
+    try_symlink_bin_path(&bin_path).inspect_err(|_err| {
+        let _ = fs::remove_file(&config_path);
+    })?;
     print_success!("Default version set to '{version}'");
     Ok(())
 }
@@ -610,20 +656,13 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
 
     print_info!("Creating symlink to '{}'", bin_path.display());
 
-    let (bin_root, link) = if cfg!(windows) {
-        let bin_root = naijascript_dir().join("bin");
-        let link = bin_root.join("naija.exe");
-        (bin_root, link)
-    } else {
-        let bin_root = home_dir().join(".local/bin");
-        let link = bin_root.join("naija");
-        (bin_root, link)
-    };
+    let bin_root = get_bin_root();
+    let link = bin_root.join(bin_name());
 
     create_dir(&bin_root)?;
 
     let temp_path = Builder::new().prefix(".naija-symlink-").tempfile_in(&bin_root).map_or_else(
-        |err| Err(format!("Failed to reserve temporary symlink location: {err}")),
+        |err| Err(report_error!("Failed to reserve temporary symlink location")(err)),
         |file| Ok(file.into_temp_path()),
     )?;
 
@@ -637,8 +676,17 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
 
     #[cfg(windows)]
     {
-        os::windows::fs::symlink_file(bin_path, &temp_path_buf)
-            .map_err(report_error!("Failed to create symlink to version"))?;
+        os::windows::fs::symlink_file(bin_path, &temp_path_buf).map_err(|err| {
+            if err.raw_os_error() == Some(1314) {
+                return r#"Failed to create symlink: Windows denied the request (OS error 1314).
+
+                You can fix this by either: 
+                1. Enabling Developer Mode in Windows Settings, or 
+                2. Re-running this command from an elevated (Administrator) terminal."#
+                    .to_string();
+            }
+            report_error!("Failed to create symlink to version")(err)
+        })?;
     }
 
     if let Err(err) = fs::rename(&temp_path_buf, &link) {
@@ -648,8 +696,11 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
                 .map_err(report_error!("Failed to replace existing symlink"))?;
         }
         let _ = fs::remove_file(&temp_path_buf);
-        return Err(format!("Failed to replace symlink: {err}"));
+        return Err(report_error!("Failed to replace symlink")(err));
     }
-
     Ok(())
+}
+
+fn get_bin_root() -> PathBuf {
+    naijascript_dir().join("bin")
 }
