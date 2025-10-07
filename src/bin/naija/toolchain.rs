@@ -441,7 +441,8 @@ fn get_toolchain_version() -> Option<String> {
 }
 
 fn read_file_trimmed(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().and_then(|s| {
+    fs::read(path).ok().and_then(|s| {
+        let s = String::from_utf8_lossy(s.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&s));
         let s = s.trim();
         (!s.is_empty()).then(|| s.to_owned())
     })
@@ -496,9 +497,8 @@ fn uninstall_all() -> Result<(), String> {
 
     match spawn_result {
         Ok(_) => {
-            print_success!(
-                "Uninstall complete. Please restart your terminal to apply environment changes."
-            );
+            print_success!("Uninstall complete.");
+            print_info!("You may need to restart your terminal for changes to take effect.");
             std::process::exit(0)
         }
         Err(err) => {
