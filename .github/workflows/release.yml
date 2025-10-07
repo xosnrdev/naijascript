@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - v*
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -96,6 +97,7 @@ jobs:
           path: ${{ steps.artifact_info.outputs.artifact_name }}.*
 
   release:
+    name: ${{ github.event_name == 'workflow_dispatch' && 'Create nightly release' || 'Create release' }}
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -105,10 +107,11 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           path: dist
-      - name: Create Release
+      - name: ${{ github.event_name == 'workflow_dispatch' && 'Create nightly release' || 'Create release' }}
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ github.event_name == 'workflow_dispatch' && format('Nightly Build {0}', github.run_number) || github.ref_name }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && 'nightly' || github.ref_name }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' }}
+          generate_release_notes: ${{ github.event_name == 'push' }}
           files: dist/**
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
