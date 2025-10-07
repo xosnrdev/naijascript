@@ -53,14 +53,14 @@ const REPO: &str = "xosnrdev/naijascript";
 const ASSET_PREFIX: &str = "naija";
 
 pub fn install_version(versions: &[String]) -> Result<(), String> {
-    for version in versions.iter().collect::<HashSet<_>>() {
+    for version in versions.iter().map(|s| s.to_ascii_lowercase()).collect::<HashSet<_>>() {
         let version = {
-            let version = resolve_version(version)?;
+            let version = resolve_version(&version)?;
             normalize_version(&version)
         };
         let dir = version_dir(&version);
-        if dir.exists() {
-            print_warn!("Version '{version}' already exists, skipping installation.");
+        if dir.exists() || get_toolchain_version().as_deref().is_some_and(|v| v == version) {
+            print_warn!("Version '{version}' already exists, skipping install.");
             continue;
         } else {
             print_info!("Installing version '{version}'...");
@@ -80,7 +80,7 @@ pub fn install_version(versions: &[String]) -> Result<(), String> {
 
 fn resolve_version<'a>(version: &'a str) -> Result<Cow<'a, str>, String> {
     print_info!("Resolving version '{version}'...");
-    if version.to_lowercase() == "latest" {
+    if version.eq_ignore_ascii_case("latest") {
         let version = fetch_latest_version()?;
         Ok(Cow::Owned(version))
     } else {
@@ -401,7 +401,7 @@ pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
         let version = normalize_version(version);
         let path = version_dir(&version);
         if !path.exists() {
-            print_warn!("Version '{version}' does not exist, skipping Uninstall.");
+            print_warn!("Version '{version}' does not exist, skipping uninstall.");
             continue;
         }
         if get_toolchain_version().as_deref().is_some_and(|v| v == version) {
