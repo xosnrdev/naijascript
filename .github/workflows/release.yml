@@ -62,8 +62,6 @@ jobs:
           VERSION=${{ github.event_name == 'workflow_dispatch' && format('nightly-{0}', github.run_number) || github.ref_name }}
           NAME=${{ matrix.bin_target }}
           TARGET=${{ matrix.target }}
-          EXT=tar.xz
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then EXT=zip; fi
           ARTIFACT_NAME="$NAME-$VERSION-$TARGET"
           echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
 
@@ -113,7 +111,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.event_name == 'workflow_dispatch' && format('Nightly Build {0}', github.run_number) || github.ref_name }}
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && 'nightly' || github.ref_name }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('nightly-{0}', github.run_number) || github.ref_name }}
           prerelease: ${{ github.event_name == 'workflow_dispatch' }}
           generate_release_notes: ${{ github.event_name == 'push' }}
           files: dist/**
