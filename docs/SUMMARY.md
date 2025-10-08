@@ -1,7 +1,11 @@
-# Summary
+# The NaijaScript Interpreter
 
-- [Introduction](INTRODUCTION.md)
-- [Design Philosophy](DESIGN.md)
-- [Language Reference Manual (LRM)](LRM.md)
-- [Interpreter (naija)](NAIJA.md)
-- [Toolchain Manager (naijaup)](NAIJAUP.md)
+[Introduction](README.md)
+
+## Getting Started
+
+- [Installation](installation.md)
+
+## Reference
+
+- [Language Syntax](syntax-reference.md)
