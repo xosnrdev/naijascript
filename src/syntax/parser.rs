@@ -937,13 +937,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         self.parse_expression_continuation(lhs, min_bp)
     }
 
-    // FWIW, unlike [`parse_expression`], this function does not perform
-    // full, precedence-aware parsing. It only parses a single primary
-    // expression (literal, identifier, grouped expression, or prefix form)
-    // and returns the raw AST node allocated in the parser's arena.
-    // The caller is responsible for folding that primary with any surrounding
-    // binary operators according to precedence/associativity and for handling
-    // trailing punctuators.
+    // Helper for handling binary operators and function calls
     #[inline]
     fn parse_expression_continuation(
         &mut self,
@@ -1070,8 +1064,8 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let len = bytes.len();
 
         // No braces = static string
-        let pos = memchr(b'{', bytes, 0);
-        if pos == len {
+        let index = memchr(b'{', bytes, 0);
+        if index == len {
             let s = self.alloc_str(&content);
             return self.alloc(Expr::String { parts: StringParts::Static(s), span });
         }
@@ -1101,22 +1095,19 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let bytes = template.as_bytes();
         let len = bytes.len();
         let mut buffer = Vec::with_capacity_in(len, self.arena);
-
         // SAFETY: ptr is valid for reads up to len bytes
         let ptr = bytes.as_ptr();
-        let hay = unsafe { slice::from_raw_parts(ptr, len) };
 
-        let mut beg = 0;
-        let mut i = 0;
-
+        let (mut beg, mut i) = (0, 0);
         while i < len {
-            let pos = memchr2(b'{', b'}', hay, i);
-            if pos == len {
+            let index = memchr2(b'{', b'}', bytes, i);
+            if index == len {
                 break;
             }
-            i = pos;
+            i = index;
             match unsafe { *ptr.add(i) } {
                 b'{' => {
+                    // Is it an escaped brace `{{`?
                     if i + 1 < len && unsafe { *ptr.add(i + 1) } == b'{' {
                         if i > beg {
                             // SAFETY: beg..i are valid UTF-8 boundaries within template
