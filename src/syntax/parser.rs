@@ -90,6 +90,12 @@ pub enum Stmt<'ast> {
         expr: ExprRef<'ast>,
         span: Span,
     },
+    // "arr[0] get 5"
+    AssignIndex {
+        target: ExprRef<'ast>,
+        expr: ExprRef<'ast>,
+        span: Span,
+    },
     // "if to say(...) start...end"
     If {
         cond: ExprRef<'ast>,
@@ -161,6 +167,7 @@ pub enum SyntaxError {
     ExpectedNumberOrVariableOrLParen,
     TrailingTokensAfterProgramEnd,
     ReservedKeyword,
+    InvalidAssignmentTarget,
 }
 
 impl AsStr for SyntaxError {
@@ -180,6 +187,7 @@ impl AsStr for SyntaxError {
             }
             SyntaxError::TrailingTokensAfterProgramEnd => "Unexpected token",
             SyntaxError::ReservedKeyword => "Use of reserved keyword",
+            SyntaxError::InvalidAssignmentTarget => "Invalid assignment target",
         }
     }
 }
@@ -335,36 +343,45 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 let var = *var;
                 let var_span = self.cur.span;
                 self.bump(); // consume `identifier`
+
+                let initial_expr = self.alloc(Expr::Var(var, var_span));
+                let expr = self.parse_expression_continuation(initial_expr, 0);
+
                 if let Token::Get = self.cur.token {
-                    self.bump();
-                    let expr = self.parse_expression(0);
+                    self.bump(); // consume `get`
+                    let value_expr = self.parse_expression(0);
                     let end = self.cur.span.end;
-                    Some(self.alloc(Stmt::AssignExisting {
-                        var,
-                        var_span,
-                        expr,
-                        span: Range::from(start..end),
-                    }))
-                } else {
-                    // Is it a function call?
-                    if let Token::LParen = self.cur.token {
-                        let var_expr = self.alloc(Expr::Var(var, var_span));
-                        let expr = self.parse_expression_continuation(var_expr, 0);
-                        let end = self.cur.span.end;
-                        Some(self.alloc(Stmt::Expression { expr, span: Range::from(start..end) }))
-                    } else {
-                        self.errors.emit(
-                            var_span,
-                            Severity::Error,
-                            "syntax",
-                            SyntaxError::ExpectedStatement.as_str(),
-                            vec![Label {
-                                span: var_span,
-                                message: ArenaCow::Borrowed("I dey expect statement"),
-                            }],
-                        );
-                        None
+                    match expr {
+                        Expr::Var(name, span) => Some(self.alloc(Stmt::AssignExisting {
+                            var: name,
+                            var_span: *span,
+                            expr: value_expr,
+                            span: Range::from(start..end),
+                        })),
+                        Expr::Index { .. } => Some(self.alloc(Stmt::AssignIndex {
+                            target: expr,
+                            expr: value_expr,
+                            span: Range::from(start..end),
+                        })),
+                        _ => {
+                            self.errors.emit(
+                                Range::from(start..end),
+                                Severity::Error,
+                                "syntax",
+                                SyntaxError::InvalidAssignmentTarget.as_str(),
+                                vec![Label {
+                                    span: Range::from(start..end),
+                                    message: ArenaCow::Borrowed(
+                                        "I dey expect variable or index on left side of assignment",
+                                    ),
+                                }],
+                            );
+                            None
+                        }
                     }
+                } else {
+                    let end = self.cur.span.end;
+                    Some(self.alloc(Stmt::Expression { expr, span: Range::from(start..end) }))
                 }
             }
             _ => {

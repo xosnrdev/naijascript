@@ -61,7 +61,19 @@ make is_false get false
 make fruits get ["apple", "banana", "orange"]
 make numbers get [1, 2, 3, 4, 5]
 make mixed get ["text", 42, true]
-make nested get [[1, 2], [3, 4]]
+make nested get [[1, 2], [3, 4], [5, 6], [7, 8]]
+
+# Accessing elements
+make first_fruit get fruits[0]
+make second_number get numbers[1]
+make third_mixed get mixed[2]
+make fourth_nested get nested[3][0]
+
+# Index assignment
+fruits[0] get "kiwi"
+numbers[1] get 6
+mixed[2] get false
+nested[3][0] get 9
 ```
 
 ## Operators

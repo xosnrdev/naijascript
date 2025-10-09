@@ -33,9 +33,9 @@ NaijaScript serves as an educational tool and experimental platform for explorin
 
 As an experimental language, NaijaScript has intentional constraints:
 
-- **Limited Ecosystem**: No package management or extensive standard library yet
-- **Performance Scope**: Optimized for educational and scripting use cases, not large-scale applications
-- **Breaking Changes**: Rapid development may introduce compatibility issues between versions
+- No package management or extensive standard library yet
+- Optimized for educational and scripting use cases, not large-scale applications
+- Lacks IDE support and advanced tooling
 
 ## Getting Started
 

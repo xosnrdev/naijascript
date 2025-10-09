@@ -8,3 +8,11 @@ shout(value[3])
 shout(value[4])
 shout(value[5])
 shout(value[6])
+value[0] get 4
+value[1] get 5
+value[2] get 6
+value[3] get "baz"
+value[4] get "foo"
+value[5] get false
+value[6] get true
+shout(value)

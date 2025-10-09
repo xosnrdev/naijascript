@@ -230,6 +230,16 @@ fn test_array_index_type_not_number() {
 }
 
 #[test]
+fn test_array_index_assignment_resolves() {
+    assert_resolve!("make nums get [1, 2] nums[0] get 5");
+}
+
+#[test]
+fn test_array_index_assignment_invalid_target() {
+    assert_resolve!("shout(1)[0] get 5", SemanticError::TypeMismatch);
+}
+
+#[test]
 fn test_unary_minus_with_string() {
     assert_resolve!(r#"make x get minus "hello""#, SemanticError::TypeMismatch);
 }
