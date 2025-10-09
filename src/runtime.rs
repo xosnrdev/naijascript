@@ -202,6 +202,11 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 self.assign_var(var, val);
                 Ok(ExecFlow::Continue)
             }
+            Stmt::AssignIndex { target, expr, span } => {
+                let val = self.eval_expr(expr)?;
+                self.assign_index(target, val, *span)?;
+                Ok(ExecFlow::Continue)
+            }
             Stmt::If { cond, then_b, else_b, .. } => {
                 let condition_value = self.eval_expr(cond)?;
                 let is_truthy = match condition_value {
@@ -703,6 +708,99 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         unreachable!("Semantic analysis guarantees variable exists");
     }
 
+    fn assign_index(
+        &mut self,
+        target: ExprRef<'src>,
+        value: Value<'arena, 'src>,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let (base_var, index_exprs) = self.flatten_index_target(target);
+        assert!(!index_exprs.is_empty(), "Index assignment target should have at least one index");
+
+        let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.arena);
+        for (index_expr, index_span) in &index_exprs {
+            let idx = self.eval_index_value(index_expr, *index_span)?;
+            evaluated_indices.push((idx, *index_span));
+        }
+
+        let mut slot =
+            self.lookup_var_mut(base_var).expect("Semantic analysis guarantees variable exists");
+
+        for (i, (idx, index_span)) in evaluated_indices.iter().enumerate() {
+            let is_last = i + 1 == evaluated_indices.len();
+            match slot {
+                Value::Array(items) => {
+                    if *idx >= items.len() {
+                        return Err(RuntimeError {
+                            kind: RuntimeErrorKind::IndexOutOfBounds,
+                            span: *index_span,
+                        });
+                    }
+                    if is_last {
+                        items[*idx] = value;
+                        return Ok(());
+                    }
+                    slot = items.get_mut(*idx).expect("Index checked above");
+                }
+                _ => {
+                    return Err(RuntimeError { kind: RuntimeErrorKind::InvalidIndex, span });
+                }
+            }
+        }
+
+        unreachable!("Index assignment should return inside loop");
+    }
+
+    fn flatten_index_target(
+        &self,
+        mut target: ExprRef<'src>,
+    ) -> (&'src str, Vec<(ExprRef<'src>, Span), &'arena Arena>) {
+        let mut indices = Vec::new_in(self.arena);
+        loop {
+            match target {
+                Expr::Index { array, index, index_span, .. } => {
+                    indices.push((*index, *index_span));
+                    target = array;
+                }
+                Expr::Var(name, ..) => {
+                    indices.reverse();
+                    return (*name, indices);
+                }
+                _ => unreachable!("Semantic analysis guarantees valid index assignment target",),
+            }
+        }
+    }
+
+    fn eval_index_value(
+        &mut self,
+        index_expr: ExprRef<'src>,
+        index_span: Span,
+    ) -> Result<usize, RuntimeError> {
+        let value = self.eval_expr(index_expr)?;
+        let number = match value {
+            Value::Number(n) => n,
+            _ => {
+                return Err(RuntimeError {
+                    kind: RuntimeErrorKind::InvalidIndex,
+                    span: index_span,
+                });
+            }
+        };
+
+        if !number.is_finite() || number.fract() != 0.0 {
+            return Err(RuntimeError { kind: RuntimeErrorKind::InvalidIndex, span: index_span });
+        }
+
+        if number < 0.0 {
+            return Err(RuntimeError {
+                kind: RuntimeErrorKind::IndexOutOfBounds,
+                span: index_span,
+            });
+        }
+
+        Ok(number as usize)
+    }
+
     #[inline]
     fn lookup_var(&self, name: &str) -> Option<Value<'arena, 'src>> {
         // Function locals take precedence over outer scopes
@@ -717,6 +815,11 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         None
     }
 
+    fn lookup_var_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
+        self.lookup_call_stack_mut(name);
+        self.lookup_env_mut(name)
+    }
+
     fn lookup_func(&self, name: &str) -> usize {
         self.functions
             .iter()
@@ -727,6 +830,15 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     fn lookup_env(&self, name: &str) -> Option<&Value<'arena, 'src>> {
         for scope in self.env.iter().rev() {
             if let Some((.., val)) = scope.iter().find(|(var, ..)| *var == name) {
+                return Some(val);
+            }
+        }
+        None
+    }
+
+    fn lookup_env_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
+        for scope in self.env.iter_mut().rev() {
+            if let Some((.., val)) = scope.iter_mut().find(|(var, ..)| *var == name) {
                 return Some(val);
             }
         }

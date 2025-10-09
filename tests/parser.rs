@@ -117,6 +117,18 @@ fn test_parse_nested_array_index_expr() {
 }
 
 #[test]
+fn test_parse_array_index_assignment() {
+    let src = "make nums get [1, 2] nums[0] get 7";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_invalid_left_hand_side_of_assignment() {
+    let src = "x add 1 get 5";
+    assert_parse!(src, SyntaxError::InvalidAssignmentTarget);
+}
+
+#[test]
 fn test_parse_array_index_missing_rbracket() {
     let src = "make first get nums[0";
     assert_parse!(src, SyntaxError::ExpectedRBracket);
@@ -143,13 +155,13 @@ fn test_parse_condition_small_pass() {
 #[test]
 fn test_parse_invalid_statement() {
     let src = "x 5";
-    assert_parse!(src, SyntaxError::ExpectedStatement);
+    assert_parse!(src, SyntaxError::TrailingTokensAfterProgramEnd);
 }
 
 #[test]
 fn test_parse_shout_missing_parenthesis() {
     let src = "shout 42";
-    assert_parse!(src, SyntaxError::ExpectedStatement);
+    assert_parse!(src, SyntaxError::TrailingTokensAfterProgramEnd);
 }
 
 #[test]

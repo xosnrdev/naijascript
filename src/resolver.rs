@@ -123,6 +123,7 @@ impl<'ast> Resolver<'ast> {
                 let span = match stmt {
                     Stmt::Assign { span, .. } => span,
                     Stmt::AssignExisting { span, .. } => span,
+                    Stmt::AssignIndex { span, .. } => span,
                     Stmt::If { span, .. } => span,
                     Stmt::Loop { span, .. } => span,
                     Stmt::Block { span, .. } => span,
@@ -198,6 +199,9 @@ impl<'ast> Resolver<'ast> {
                 }
                 self.check_expr(expr);
             }
+            Stmt::AssignIndex { target, expr, .. } => {
+                self.check_assign_index(target, expr);
+            }
             // Handle "if to say(condition) start...end" with optional "if not so"
             Stmt::If { cond, then_b, else_b, .. } => {
                 self.check_expr(cond);
@@ -243,6 +247,11 @@ impl<'ast> Resolver<'ast> {
                 self.check_expr(expr);
             }
         }
+    }
+
+    fn check_assign_index(&mut self, target: ExprRef<'ast>, expr: ExprRef<'ast>) {
+        self.check_expr(target);
+        self.check_expr(expr);
     }
 
     #[inline]

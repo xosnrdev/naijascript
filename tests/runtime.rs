@@ -232,9 +232,41 @@ fn nested_array_index() {
 }
 
 #[test]
+fn array_index_assignment_updates_value() {
+    assert_runtime!(
+        "make nums get [1, 2] nums[0] get 9 shout(nums[0])",
+        output: vec![Value::Number(9.0)]
+    );
+}
+
+#[test]
+fn nested_array_index_assignment_updates_value() {
+    assert_runtime!(
+        "make matrix get [[1], [2]] matrix[1][0] get 5 shout(matrix[1][0])",
+        output: vec![Value::Number(5.0)]
+    );
+}
+
+#[test]
 fn array_index_out_of_bounds() {
     assert_runtime!(
         "make nums get [1, 2] shout(nums[5])",
+        error: RuntimeErrorKind::IndexOutOfBounds
+    );
+    assert_runtime!(
+        "make nums get [1, 2] shout(nums[minus 1])",
+        error: RuntimeErrorKind::IndexOutOfBounds
+    );
+}
+
+#[test]
+fn array_index_assignment_out_of_bounds() {
+    assert_runtime!(
+        "make nums get [1, 2] nums[5] get 3",
+        error: RuntimeErrorKind::IndexOutOfBounds
+    );
+    assert_runtime!(
+        "make nums get [1, 2] nums[minus 1] get 3",
         error: RuntimeErrorKind::IndexOutOfBounds
     );
 }
@@ -243,6 +275,14 @@ fn array_index_out_of_bounds() {
 fn array_index_not_whole_number() {
     assert_runtime!(
         "make nums get [1, 2] shout(nums[1.5])",
+        error: RuntimeErrorKind::InvalidIndex
+    );
+}
+
+#[test]
+fn array_index_assignment_not_whole_number() {
+    assert_runtime!(
+        "make nums get [1, 2] nums[0.5] get 3",
         error: RuntimeErrorKind::InvalidIndex
     );
 }
