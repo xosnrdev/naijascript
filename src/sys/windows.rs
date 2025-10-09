@@ -206,9 +206,9 @@ fn read_line_pipe<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, i
         total += n;
 
         let hay = unsafe { slice::from_raw_parts(base, total) };
-        let pos = memchr(b'\n', hay, total - n);
-        if pos < total {
-            total = pos;
+        let index = memchr(b'\n', hay, total - n);
+        if index < total {
+            total = index;
             break;
         }
     }

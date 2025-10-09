@@ -101,9 +101,9 @@ impl Stdin for UnixStdin {
             len += n;
 
             let hay = unsafe { slice::from_raw_parts(base, len) };
-            let pos = memchr(b'\n', hay, len - n);
-            if pos < len {
-                len = pos;
+            let index = memchr(b'\n', hay, len - n);
+            if index < len {
+                len = index;
                 break;
             }
         }
