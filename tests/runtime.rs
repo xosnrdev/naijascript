@@ -531,6 +531,6 @@ fn uninit_variable() {
 }
 
 #[test]
-fn test_variable_shadowing() {
+fn test_shadowing_variable_declaration() {
     assert_runtime!("make x get 1 make x get x add 1 shout(x)", output: vec![Value::Number(2.0)]);
 }
