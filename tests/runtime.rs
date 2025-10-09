@@ -529,3 +529,8 @@ fn string_interpolation_resolve_whitespace() {
 fn uninit_variable() {
     assert_runtime!("make x x get 5 shout(x)", output: vec![Value::Number(5.0)]);
 }
+
+#[test]
+fn test_variable_shadowing() {
+    assert_runtime!("make x get 1 make x get x add 1 shout(x)", output: vec![Value::Number(2.0)]);
+}

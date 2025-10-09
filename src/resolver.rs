@@ -174,46 +174,13 @@ impl<'ast> Resolver<'ast> {
                         }],
                     );
                 }
-                // We only want to prevent redeclaring a variable in the same block,
-                // so we check just the current (innermost) scope for duplicates
-                if let Some((.., orig_span)) = self
-                    .variable_scopes
-                    .last()
-                    .expect("scope stack should never be empty")
-                    .iter()
-                    .find(|(name, ..)| name == var)
-                {
-                    self.errors.emit(
-                        *var_span,
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::DuplicateIdentifier.as_str(),
-                        vec![
-                            Label {
-                                span: **orig_span,
-                                message: ArenaCow::Owned(arena_format!(
-                                    &self.arena,
-                                    "You don already declare `{var}` for here",
-                                )),
-                            },
-                            Label {
-                                span: *var_span,
-                                message: ArenaCow::Borrowed("You try declare am again for here"),
-                            },
-                        ],
-                    );
-                } else {
-                    // Let's figure out the type of this variable from the expression,
-                    // then add it to our symbol table so future code knows it's declared.
-                    let var_type = self.infer_expr_type(expr).unwrap_or(ValueType::Dynamic);
-                    self.variable_scopes
-                        .last_mut()
-                        .expect("scope stack should never be empty")
-                        .push((var, var_type, var_span));
-                }
-                // Always check the expression, even if variable was duplicate
-                // This catches more errors in one pass
+
                 self.check_expr(expr);
+                let var_type = self.infer_expr_type(expr).unwrap_or(ValueType::Dynamic);
+                self.variable_scopes
+                    .last_mut()
+                    .expect("scope stack should never be empty")
+                    .push((var, var_type, var_span));
             }
             // Handle variable reassignment: <variable> get <expression>
             Stmt::AssignExisting { var, var_span, expr, .. } => {
@@ -792,7 +759,7 @@ impl<'ast> Resolver<'ast> {
             Expr::Index { .. } => Some(ValueType::Dynamic),
             Expr::Var(v, ..) => {
                 for scope in self.variable_scopes.iter().rev() {
-                    if let Some((_, t, ..)) = scope.iter().find(|(name, ..)| *name == *v) {
+                    if let Some((_, t, ..)) = scope.iter().rev().find(|(name, ..)| *name == *v) {
                         return Some(*t);
                     }
                 }
