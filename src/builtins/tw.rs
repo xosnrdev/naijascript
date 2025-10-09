@@ -27,9 +27,9 @@ pub fn find(haystack: &str, needle: &str) -> Option<usize> {
     }
 
     if nlen == 1 {
-        let pos = memchr(n[0], h, 0);
-        if pos < hlen {
-            return Some(pos);
+        let index = memchr(n[0], h, 0);
+        if index < hlen {
+            return Some(index);
         } else {
             return None;
         }
@@ -39,14 +39,14 @@ pub fn find(haystack: &str, needle: &str) -> Option<usize> {
         let first = n[0];
         let mut offset = 0;
         while offset < hlen {
-            let pos = memchr(first, h, offset);
-            if pos >= hlen {
+            let index = memchr(first, h, offset);
+            if index >= hlen {
                 return None;
             }
-            if pos + 2 <= hlen && &h[pos..pos + 2] == n {
-                return Some(pos);
+            if index + 2 <= hlen && &h[index..index + 2] == n {
+                return Some(index);
             }
-            offset = pos + 1;
+            offset = index + 1;
         }
         return None;
     }
@@ -55,14 +55,14 @@ pub fn find(haystack: &str, needle: &str) -> Option<usize> {
         let first = n[0];
         let mut offset = 0;
         while offset < hlen {
-            let pos = memchr(first, h, offset);
-            if pos >= hlen {
+            let index = memchr(first, h, offset);
+            if index >= hlen {
                 return None;
             }
-            if pos + nlen <= hlen && &h[pos..pos + nlen] == n {
-                return Some(pos);
+            if index + nlen <= hlen && &h[index..index + nlen] == n {
+                return Some(index);
             }
-            offset = pos + 1;
+            offset = index + 1;
         }
         return None;
     }
@@ -73,17 +73,17 @@ pub fn find(haystack: &str, needle: &str) -> Option<usize> {
     let mut offset = 0;
 
     while offset + nlen <= hlen {
-        let pos = memchr(anchor, h, offset);
-        if pos >= hlen {
+        let index = memchr(anchor, h, offset);
+        if index >= hlen {
             return None;
         }
 
-        if pos < crit {
-            offset = pos + 1;
+        if index < crit {
+            offset = index + 1;
             continue;
         }
 
-        let start = pos - crit;
+        let start = index - crit;
         if start + nlen <= hlen && &h[start..start + nlen] == n {
             return Some(start);
         }
