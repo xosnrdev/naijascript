@@ -24,10 +24,10 @@ The language proves this philosophy through performance. In benchmarks, NaijaScr
 
 NaijaScript serves as an educational tool and experimental platform for exploring culturally-rooted programming languages. It is particularly effective for:
 
-- **Learning Programming**: Students can grasp computational concepts without simultaneous linguistic translation
-- **Prototyping Scripts**: Quick automation tasks using familiar language patterns
-- **Educational Research**: Studying the impact of linguistic accessibility on programming comprehension
-- **Cultural Computing**: Building software that reflects Nigerian linguistic heritage
+- Grasping computational concepts without simultaneous linguistic translation
+- Quick automation tasks using familiar language patterns
+- Studying the impact of linguistic accessibility on programming comprehension
+- Building software that reflects Nigerian linguistic heritage
 
 ### Current Limitations
 
@@ -57,7 +57,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/xos
 
 This installs the latest stable release.
 
-The installer adds `naija` to your PATH automatically. Restart your terminal after installation.
+The installer adds `naija` to your PATH automatically. You may need to restart your terminal after installation.
 
 ### Usage
 
@@ -95,11 +95,9 @@ naija help
 
 ### Documentation
 
-Learn the language through comprehensive documentation:
-
-- **[Language Guide](https://xosnrdev.github.io/naijascript/)**: Complete reference covering syntax, data types, and built-in functions
-- **[Online Playground](https://naijascript-playground.pages.dev)**: Try NaijaScript in your browser without installation
-- **[Examples](./examples/)**: Practical code samples demonstrating language features
+- [Language Guide](https://xosnrdev.github.io/naijascript/)
+- [Online Playground](https://naijascript-playground.pages.dev)
+- [Examples](./examples/)
 
 ## Contributing
 
