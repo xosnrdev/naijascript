@@ -20,11 +20,23 @@ macro_rules! assert_resolve {
             resolver.errors.diagnostics
         );
     }};
+    ($src:expr) => {{
+        let arena = naijascript::arena::Arena::new(KIBI).unwrap();
+        let mut parser = _parse_from_src($src, &arena);
+        let (root, err) = parser.parse_program();
+        assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
+        let mut resolver = Resolver::new(&arena);
+        resolver.resolve(root);
+        assert!(
+            resolver.errors.diagnostics.is_empty(),
+            "Expected no resolution errors, got: {:?}",
+            resolver.errors.diagnostics
+        );
+    }};
 }
-
 #[test]
-fn test_duplicate_variable_declaration() {
-    assert_resolve!("make x get 5 make x get 10", SemanticError::DuplicateIdentifier);
+fn test_shadowing_variable_declaration() {
+    assert_resolve!("make x get 5 make x get 10");
 }
 
 #[test]
@@ -80,11 +92,6 @@ fn test_boolean_arithmetic_operations() {
 #[test]
 fn test_block_scope_variable_not_visible_outside() {
     assert_resolve!("start make x get 1 end shout(x)", SemanticError::UndeclaredIdentifier);
-}
-
-#[test]
-fn test_block_scope_duplicate_in_same_block() {
-    assert_resolve!("start make x get 1 make x get 2 end", SemanticError::DuplicateIdentifier);
 }
 
 #[test]
