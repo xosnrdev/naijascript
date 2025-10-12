@@ -403,20 +403,24 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let (name, name_span) = match &self.cur.token {
             Token::Identifier(n) => (*n, self.cur.span),
             t if t.is_reserved_keyword() => {
+                let span = self.cur.span;
                 self.emit_error(
-                    self.cur.span,
+                    span,
                     SyntaxError::ReservedKeyword,
                     vec![Label {
-                        span: self.cur.span,
+                        span,
                         message: ArenaCow::Owned(arena_format!(
                             self.arena,
                             "`{t}` na reserved keyword"
                         )),
                     }],
                 );
-                return None;
+                // To always produce a complete AST, even with errors.
+                // We insert placeholder/dummy values and continue parsing.
+                ("_", span)
             }
             _ => {
+                let span = self.cur.span;
                 self.emit_error(
                     do_span,
                     SyntaxError::ExpectedIdentifier,
@@ -425,7 +429,9 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         message: ArenaCow::Borrowed("I dey expect function name after `do`"),
                     }],
                 );
-                return None;
+                // To always produce a complete AST, even with errors.
+                // We insert placeholder/dummy values and continue parsing.
+                ("_", span)
             }
         };
         self.bump();
@@ -452,18 +458,29 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             match &self.cur.token {
                 Token::Identifier(p) => {
                     if Token::is_reserved_keyword(&Token::Identifier(p)) {
+                        let span = self.cur.span;
                         self.emit_error(
-                            self.cur.span,
+                            span,
                             SyntaxError::ReservedKeyword,
                             vec![Label {
-                                span: self.cur.span,
+                                span,
                                 message: ArenaCow::Owned(arena_format!(
                                     &self.arena,
                                     "`{p}` na reserved keyword"
                                 )),
                             }],
                         );
-                        return None;
+                        // To always produce a complete AST, even with errors.
+                        // We insert placeholder/dummy values and continue parsing.
+                        params.push("_");
+                        param_spans.push(span);
+                        self.bump();
+                        if let Token::Comma = self.cur.token {
+                            self.bump();
+                        } else {
+                            break;
+                        }
+                        continue;
                     }
                     params.push(*p);
                     param_spans.push(self.cur.span);
@@ -475,18 +492,28 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     }
                 }
                 t if t.is_reserved_keyword() => {
+                    let span = self.cur.span;
                     self.emit_error(
-                        self.cur.span,
+                        span,
                         SyntaxError::ReservedKeyword,
                         vec![Label {
-                            span: self.cur.span,
+                            span,
                             message: ArenaCow::Owned(arena_format!(
                                 &self.arena,
                                 "`{t}` na reserved keyword"
                             )),
                         }],
                     );
-                    return None;
+                    // To always produce a complete AST, even with errors.
+                    // We insert placeholder/dummy values and continue parsing.
+                    params.push("_");
+                    param_spans.push(span);
+                    self.bump();
+                    if let Token::Comma = self.cur.token {
+                        self.bump();
+                    } else {
+                        break;
+                    }
                 }
                 _ => break,
             }
@@ -574,20 +601,24 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let (var, var_span) = match &self.cur.token {
             Token::Identifier(n) => (*n, self.cur.span),
             t if t.is_reserved_keyword() => {
+                let span = self.cur.span;
                 self.emit_error(
-                    self.cur.span,
+                    span,
                     SyntaxError::ReservedKeyword,
                     vec![Label {
-                        span: self.cur.span,
+                        span,
                         message: ArenaCow::Owned(arena_format!(
                             self.arena,
                             "`{t}` na reserved keyword"
                         )),
                     }],
                 );
-                return None;
+                // To always produce a complete AST, even with errors.
+                // We insert placeholder/dummy values and continue parsing.
+                ("_", span)
             }
             _ => {
+                let span = self.cur.span;
                 self.emit_error(
                     make_span,
                     SyntaxError::ExpectedIdentifier,
@@ -596,7 +627,9 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         message: ArenaCow::Borrowed("I dey expect variable name after `make`"),
                     }],
                 );
-                return None;
+                // To always produce a complete AST, even with errors.
+                // We insert placeholder/dummy values and continue parsing.
+                ("_", span)
             }
         };
         self.bump(); // consume variable name
