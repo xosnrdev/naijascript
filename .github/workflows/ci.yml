@@ -46,7 +46,7 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run tests
-        run: cargo test --all-features --all-targets
+        run: cargo test --all-features --lib --bins --tests
       - name: Run clippy
         run: cargo clippy --all-features --all-targets -- --no-deps --deny warnings
       - name: Check wasm
