@@ -236,17 +236,15 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         });
     }
 
+    fn emit_error(&mut self, span: Span, error: SyntaxError, labels: Vec<Label<'ast>>) {
+        self.errors.emit(span, Severity::Error, "syntax", error.as_str(), labels);
+    }
+
     /// Returns the parsed program as a Block reference.
     pub fn parse_program(&mut self) -> (BlockRef<'ast>, &Diagnostics<'ast>) {
         let block_ref = self.parse_program_body();
         if self.cur.token != Token::EOF {
-            self.errors.emit(
-                self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::TrailingTokensAfterProgramEnd.as_str(),
-                Vec::new(),
-            );
+            self.emit_error(self.cur.span, SyntaxError::TrailingTokensAfterProgramEnd, Vec::new());
         }
         (block_ref, &self.errors)
     }
@@ -298,12 +296,15 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         while !matches!(
             self.cur.token,
             Token::EOF
+                | Token::RParen
+                | Token::RBracket
+                | Token::Comma
+                | Token::End
                 | Token::Make
                 | Token::IfToSay
                 | Token::Jasi
                 | Token::Do
                 | Token::Return
-                | Token::End
         ) {
             self.bump();
         }
@@ -325,11 +326,9 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 if let Token::End = self.cur.token {
                     self.bump(); // consume `end` block
                 } else {
-                    self.errors.emit(
+                    self.emit_error(
                         self.cur.span,
-                        Severity::Error,
-                        "syntax",
-                        SyntaxError::UnterminatedBlock.as_str(),
+                        SyntaxError::UnterminatedBlock,
                         vec![Label {
                             span: self.cur.span,
                             message: ArenaCow::Borrowed("I dey expect `end` block"),
@@ -364,11 +363,9 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                             span: Range::from(start..end),
                         })),
                         _ => {
-                            self.errors.emit(
+                            self.emit_error(
                                 Range::from(start..end),
-                                Severity::Error,
-                                "syntax",
-                                SyntaxError::InvalidAssignmentTarget.as_str(),
+                                SyntaxError::InvalidAssignmentTarget,
                                 vec![Label {
                                     span: Range::from(start..end),
                                     message: ArenaCow::Borrowed(
@@ -385,11 +382,9 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 }
             }
             _ => {
-                self.errors.emit(
+                self.emit_error(
                     self.cur.span,
-                    Severity::Error,
-                    "syntax",
-                    SyntaxError::ExpectedStatement.as_str(),
+                    SyntaxError::ExpectedStatement,
                     vec![Label {
                         span: self.cur.span,
                         message: ArenaCow::Borrowed("I dey expect statement"),
@@ -408,48 +403,49 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let (name, name_span) = match &self.cur.token {
             Token::Identifier(n) => (*n, self.cur.span),
             t if t.is_reserved_keyword() => {
-                self.errors.emit(
-                    self.cur.span,
-                    Severity::Error,
-                    "syntax",
-                    SyntaxError::ReservedKeyword.as_str(),
+                let span = self.cur.span;
+                self.emit_error(
+                    span,
+                    SyntaxError::ReservedKeyword,
                     vec![Label {
-                        span: self.cur.span,
+                        span,
                         message: ArenaCow::Owned(arena_format!(
-                            &self.arena,
+                            self.arena,
                             "`{t}` na reserved keyword"
                         )),
                     }],
                 );
-                return None;
+                // To always produce a complete AST, even with errors.
+                // We insert placeholder/dummy values and continue parsing.
+                ("_", span)
             }
             _ => {
-                self.errors.emit(
+                let span = self.cur.span;
+                self.emit_error(
                     do_span,
-                    Severity::Error,
-                    "syntax",
-                    SyntaxError::ExpectedIdentifier.as_str(),
+                    SyntaxError::ExpectedIdentifier,
                     vec![Label {
-                        span: self.cur.span,
+                        span: do_span,
                         message: ArenaCow::Borrowed("I dey expect function name after `do`"),
                     }],
                 );
-                return None;
+                // To always produce a complete AST, even with errors.
+                // We insert placeholder/dummy values and continue parsing.
+                ("_", span)
             }
         };
         self.bump();
 
         // Parse parameter list
+        let lparen_span = self.cur.span;
         if let Token::LParen = self.cur.token {
             self.bump(); // consume `(`
         } else {
-            self.errors.emit(
-                self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedLParen.as_str(),
+            self.emit_error(
+                Range::from(start..name_span.end),
+                SyntaxError::ExpectedLParen,
                 vec![Label {
-                    span: self.cur.span,
+                    span: Range::from(start..name_span.end),
                     message: ArenaCow::Borrowed("I dey expect `(` after function name"),
                 }],
             );
@@ -462,20 +458,29 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             match &self.cur.token {
                 Token::Identifier(p) => {
                     if Token::is_reserved_keyword(&Token::Identifier(p)) {
-                        self.errors.emit(
-                            self.cur.span,
-                            Severity::Error,
-                            "syntax",
-                            SyntaxError::ReservedKeyword.as_str(),
+                        let span = self.cur.span;
+                        self.emit_error(
+                            span,
+                            SyntaxError::ReservedKeyword,
                             vec![Label {
-                                span: self.cur.span,
+                                span,
                                 message: ArenaCow::Owned(arena_format!(
                                     &self.arena,
                                     "`{p}` na reserved keyword"
                                 )),
                             }],
                         );
-                        return None;
+                        // To always produce a complete AST, even with errors.
+                        // We insert placeholder/dummy values and continue parsing.
+                        params.push("_");
+                        param_spans.push(span);
+                        self.bump();
+                        if let Token::Comma = self.cur.token {
+                            self.bump();
+                        } else {
+                            break;
+                        }
+                        continue;
                     }
                     params.push(*p);
                     param_spans.push(self.cur.span);
@@ -487,55 +492,57 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     }
                 }
                 t if t.is_reserved_keyword() => {
-                    self.errors.emit(
-                        self.cur.span,
-                        Severity::Error,
-                        "syntax",
-                        SyntaxError::ReservedKeyword.as_str(),
+                    let span = self.cur.span;
+                    self.emit_error(
+                        span,
+                        SyntaxError::ReservedKeyword,
                         vec![Label {
-                            span: self.cur.span,
+                            span,
                             message: ArenaCow::Owned(arena_format!(
                                 &self.arena,
                                 "`{t}` na reserved keyword"
                             )),
                         }],
                     );
-                    return None;
+                    // To always produce a complete AST, even with errors.
+                    // We insert placeholder/dummy values and continue parsing.
+                    params.push("_");
+                    param_spans.push(span);
+                    self.bump();
+                    if let Token::Comma = self.cur.token {
+                        self.bump();
+                    } else {
+                        break;
+                    }
                 }
                 _ => break,
             }
         }
 
+        let rparen_span = self.cur.span;
         if let Token::RParen = self.cur.token {
             self.bump(); // consume `)`
         } else {
-            self.errors.emit(
-                self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedRParen.as_str(),
-                vec![Label {
-                    span: self.cur.span,
-                    message: ArenaCow::Borrowed("I dey expect `)` to close function parameters"),
-                }],
+            let span = Range::from(start..param_spans.last().map_or(lparen_span.end, |s| s.end));
+            self.emit_error(
+                span,
+                SyntaxError::ExpectedRParen,
+                vec![Label { span, message: ArenaCow::Borrowed("I dey expect `)`") }],
             );
-            return None;
         }
 
+        let start_span = self.cur.span;
         if let Token::Start = self.cur.token {
             self.bump(); // consume `start` block
         } else {
-            self.errors.emit(
-                self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedStartBlock.as_str(),
+            self.emit_error(
+                Range::from(start..rparen_span.end),
+                SyntaxError::ExpectedStartBlock,
                 vec![Label {
-                    span: self.cur.span,
-                    message: ArenaCow::Borrowed("I dey expect `start` to begin function block"),
+                    span: Range::from(start..rparen_span.end),
+                    message: ArenaCow::Borrowed("I dey expect `start` block after `)`"),
                 }],
             );
-            return None;
         }
 
         let body = self.parse_block_body();
@@ -543,14 +550,12 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         if let Token::End = self.cur.token {
             self.bump(); // consume `end` block
         } else {
-            self.errors.emit(
-                self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::UnterminatedBlock.as_str(),
+            self.emit_error(
+                Range::from(start..start_span.end),
+                SyntaxError::UnterminatedBlock,
                 vec![Label {
-                    span: self.cur.span,
-                    message: ArenaCow::Borrowed("I dey expect `end` to close function block"),
+                    span: Range::from(start..start_span.end),
+                    message: ArenaCow::Borrowed("I dey expect `end` block"),
                 }],
             );
         }
@@ -594,33 +599,35 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let (var, var_span) = match &self.cur.token {
             Token::Identifier(n) => (*n, self.cur.span),
             t if t.is_reserved_keyword() => {
-                self.errors.emit(
-                    self.cur.span,
-                    Severity::Error,
-                    "syntax",
-                    SyntaxError::ReservedKeyword.as_str(),
+                let span = self.cur.span;
+                self.emit_error(
+                    span,
+                    SyntaxError::ReservedKeyword,
                     vec![Label {
-                        span: self.cur.span,
+                        span,
                         message: ArenaCow::Owned(arena_format!(
-                            &self.arena,
+                            self.arena,
                             "`{t}` na reserved keyword"
                         )),
                     }],
                 );
-                return None;
+                // To always produce a complete AST, even with errors.
+                // We insert placeholder/dummy values and continue parsing.
+                ("_", span)
             }
             _ => {
-                self.errors.emit(
+                let span = self.cur.span;
+                self.emit_error(
                     make_span,
-                    Severity::Error,
-                    "syntax",
-                    SyntaxError::ExpectedIdentifier.as_str(),
+                    SyntaxError::ExpectedIdentifier,
                     vec![Label {
-                        span: self.cur.span,
+                        span: make_span,
                         message: ArenaCow::Borrowed("I dey expect variable name after `make`"),
                     }],
                 );
-                return None;
+                // To always produce a complete AST, even with errors.
+                // We insert placeholder/dummy values and continue parsing.
+                ("_", span)
             }
         };
         self.bump(); // consume variable name
@@ -644,52 +651,45 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         if let Token::LParen = self.cur.token {
             self.bump(); // consume `(`
         } else {
-            self.errors.emit(
+            self.emit_error(
                 if_span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedLParen.as_str(),
+                SyntaxError::ExpectedLParen,
                 vec![Label {
-                    span: self.cur.span,
+                    span: if_span,
                     message: ArenaCow::Borrowed("I dey expect `(` after `if to say`"),
                 }],
             );
-            return None;
         }
 
         let cond = self.parse_expression(0);
+        let cond_span = Self::expr_span(cond);
 
+        let rparen_span = self.cur.span;
         if let Token::RParen = self.cur.token {
             self.bump(); // consume `)`
         } else {
-            self.errors.emit(
-                self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedRParen.as_str(),
+            self.emit_error(
+                Range::from(start..cond_span.end),
+                SyntaxError::ExpectedRParen,
                 vec![Label {
-                    span: self.cur.span,
-                    message: ArenaCow::Borrowed("I dey expect `)` to close `if to say` condition"),
+                    span: Range::from(start..cond_span.end),
+                    message: ArenaCow::Borrowed("I dey expect `)`"),
                 }],
             );
-            return None;
         }
 
         // Parse `if to say` block
         if let Token::Start = self.cur.token {
             self.bump(); // consume `start` block
         } else {
-            self.errors.emit(
-                self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedStartBlock.as_str(),
+            self.emit_error(
+                Range::from(start..rparen_span.end),
+                SyntaxError::ExpectedStartBlock,
                 vec![Label {
-                    span: self.cur.span,
-                    message: ArenaCow::Borrowed("I dey expect `start` to begin `if to say` block"),
+                    span: Range::from(start..rparen_span.end),
+                    message: ArenaCow::Borrowed("I dey expect `start` block after `)`"),
                 }],
             );
-            return None;
         }
 
         let then_b = self.parse_block_body();
@@ -698,53 +698,43 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         if let Token::End = self.cur.token {
             self.bump(); // consume `end` block
         } else {
-            self.errors.emit(
+            self.emit_error(
                 self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::UnterminatedBlock.as_str(),
+                SyntaxError::UnterminatedBlock,
                 vec![Label {
                     span: self.cur.span,
-                    message: ArenaCow::Borrowed("I dey expect `end` to close `if to say` block"),
+                    message: ArenaCow::Borrowed("I dey expect `end` block"),
                 }],
-            );
+            )
         }
 
         // Parse `if not so` block
         let else_b = if let Token::IfNotSo = self.cur.token {
             let else_span = self.cur.span;
             self.bump(); // consume `if not so`
+            let start_span = self.cur.span;
             if let Token::Start = self.cur.token {
                 self.bump(); // consume `start` block
             } else {
-                self.errors.emit(
-                    self.cur.span,
-                    Severity::Error,
-                    "syntax",
-                    SyntaxError::ExpectedStartBlock.as_str(),
+                self.emit_error(
+                    else_span,
+                    SyntaxError::ExpectedStartBlock,
                     vec![Label {
-                        span: self.cur.span,
-                        message: ArenaCow::Borrowed(
-                            "I dey expect `start` to begin `if not so` block",
-                        ),
+                        span: else_span,
+                        message: ArenaCow::Borrowed("I dey expect `start` block after `if not so`"),
                     }],
                 );
-                return None;
             }
             let b = self.parse_block_body();
             if let Token::End = self.cur.token {
                 self.bump(); // consume `end` block
             } else {
-                self.errors.emit(
-                    else_span,
-                    Severity::Error,
-                    "syntax",
-                    SyntaxError::UnterminatedBlock.as_str(),
+                self.emit_error(
+                    Range::from(else_span.start..start_span.end),
+                    SyntaxError::UnterminatedBlock,
                     vec![Label {
-                        span: else_span,
-                        message: ArenaCow::Borrowed(
-                            "I dey expect `end` to close `if not so` block",
-                        ),
+                        span: Range::from(else_span.start..start_span.end),
+                        message: ArenaCow::Borrowed("I dey expect `end` block"),
                     }],
                 );
             }
@@ -764,51 +754,45 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         if let Token::LParen = self.cur.token {
             self.bump(); // consume `(`
         } else {
-            self.errors.emit(
+            self.emit_error(
                 jasi_span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedLParen.as_str(),
+                SyntaxError::ExpectedLParen,
                 vec![Label {
-                    span: self.cur.span,
+                    span: jasi_span,
                     message: ArenaCow::Borrowed("I dey expect `(` after `jasi`"),
                 }],
             );
-            return None;
         }
 
         let cond = self.parse_expression(0);
+        let cond_span = Self::expr_span(cond);
 
+        let rparen_span = self.cur.span;
         if let Token::RParen = self.cur.token {
             self.bump(); // consume `)`
         } else {
-            self.errors.emit(
-                self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedRParen.as_str(),
+            self.emit_error(
+                Range::from(start..cond_span.end),
+                SyntaxError::ExpectedRParen,
                 vec![Label {
-                    span: self.cur.span,
-                    message: ArenaCow::Borrowed("I dey expect `)` to close loop condition"),
+                    span: Range::from(start..cond_span.end),
+                    message: ArenaCow::Borrowed("I dey expect `)`"),
                 }],
             );
-            return None;
         }
 
+        let start_span = self.cur.span;
         if let Token::Start = self.cur.token {
             self.bump(); // consume `start` block
         } else {
-            self.errors.emit(
-                self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::ExpectedStartBlock.as_str(),
+            self.emit_error(
+                Range::from(start..rparen_span.end),
+                SyntaxError::ExpectedStartBlock,
                 vec![Label {
-                    span: self.cur.span,
-                    message: ArenaCow::Borrowed("I dey expect `start` to begin loop block"),
+                    span: Range::from(start..rparen_span.end),
+                    message: ArenaCow::Borrowed("I dey expect `start` block after `)`"),
                 }],
             );
-            return None;
         }
 
         let body = self.parse_block_body();
@@ -816,14 +800,12 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         if let Token::End = self.cur.token {
             self.bump(); // consume `end` block
         } else {
-            self.errors.emit(
-                self.cur.span,
-                Severity::Error,
-                "syntax",
-                SyntaxError::UnterminatedBlock.as_str(),
+            self.emit_error(
+                Range::from(start..start_span.end),
+                SyntaxError::UnterminatedBlock,
                 vec![Label {
-                    span: self.cur.span,
-                    message: ArenaCow::Borrowed("I dey expect `end` to close loop block"),
+                    span: Range::from(start..start_span.end),
+                    message: ArenaCow::Borrowed("I dey expect `end` block"),
                 }],
             );
         }
@@ -881,16 +863,14 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 if let Token::RParen = self.cur.token {
                     self.bump(); // consume `)`
                 } else {
-                    self.errors.emit(
+                    self.emit_error(
                         self.cur.span,
-                        Severity::Error,
-                        "syntax",
-                        SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
+                        SyntaxError::ExpectedNumberOrVariableOrLParen,
                         vec![Label {
                             span: self.cur.span,
-                            message: ArenaCow::Borrowed("I dey expect `)` to close expression"),
+                            message: ArenaCow::Borrowed("I dey expect `)`"),
                         }],
-                    );
+                    )
                 }
                 expr
             }
@@ -917,14 +897,12 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     self.bump(); // consume ']'
                     end
                 } else {
-                    self.errors.emit(
+                    self.emit_error(
                         self.cur.span,
-                        Severity::Error,
-                        "syntax",
-                        SyntaxError::ExpectedRBracket.as_str(),
+                        SyntaxError::ExpectedRBracket,
                         vec![Label {
                             span: self.cur.span,
-                            message: ArenaCow::Borrowed("I dey expect `]` to close array"),
+                            message: ArenaCow::Borrowed("I dey expect `]`"),
                         }],
                     );
                     self.cur.span.end
@@ -934,20 +912,17 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 self.alloc(Expr::Array { elements, span: Range::from(start..end) })
             }
             _ => {
-                self.errors.emit(
+                self.emit_error(
                     self.cur.span,
-                    Severity::Error,
-                    "syntax",
-                    SyntaxError::ExpectedNumberOrVariableOrLParen.as_str(),
+                    SyntaxError::ExpectedNumberOrVariableOrLParen,
                     vec![Label {
                         span: self.cur.span,
                         message: ArenaCow::Borrowed("I dey expect expression"),
                     }],
                 );
+                self.synchronize();
                 let s = self.cur.span;
-                let expr = self.alloc(Expr::Number("0", s));
-                self.bump(); // consume unexpected token
-                expr
+                self.alloc(Expr::Number("0", s))
             }
         };
 
@@ -961,17 +936,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         mut lhs: ExprRef<'ast>,
         min_bp: u8,
     ) -> ExprRef<'ast> {
-        let start = match lhs {
-            Expr::Number(.., span) => span.start,
-            Expr::String { span, .. } => span.start,
-            Expr::Bool(.., span) => span.start,
-            Expr::Var(.., span) => span.start,
-            Expr::Binary { span, .. } => span.start,
-            Expr::Unary { span, .. } => span.start,
-            Expr::Call { span, .. } => span.start,
-            Expr::Index { span, .. } => span.start,
-            Expr::Array { span, .. } => span.start,
-        };
+        let start = Self::expr_span(lhs).start;
 
         // Pratt parselet for function calls and binary operators
         loop {
@@ -997,14 +962,12 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 if let Token::RParen = self.cur.token {
                     self.bump(); // consume ')'
                 } else {
-                    self.errors.emit(
+                    self.emit_error(
                         self.cur.span,
-                        Severity::Error,
-                        "syntax",
-                        SyntaxError::ExpectedRParen.as_str(),
+                        SyntaxError::ExpectedRParen,
                         vec![Label {
                             span: self.cur.span,
-                            message: ArenaCow::Borrowed("I dey expect `)` to close function call"),
+                            message: ArenaCow::Borrowed("I dey expect `)`"),
                         }],
                     );
                 }
@@ -1028,14 +991,12 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     self.bump(); // consume ']'
                     end
                 } else {
-                    self.errors.emit(
+                    self.emit_error(
                         self.cur.span,
-                        Severity::Error,
-                        "syntax",
-                        SyntaxError::ExpectedRBracket.as_str(),
+                        SyntaxError::ExpectedRBracket,
                         vec![Label {
                             span: self.cur.span,
-                            message: ArenaCow::Borrowed("I dey expect `]` to close array index"),
+                            message: ArenaCow::Borrowed("I dey expect `]`"),
                         }],
                     );
                     self.cur.span.end
@@ -1074,6 +1035,20 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             lhs = self.alloc(Expr::Binary { op, lhs, rhs, span: Range::from(start..end) });
         }
         lhs
+    }
+
+    fn expr_span(expr: ExprRef<'ast>) -> Span {
+        match expr {
+            Expr::Number(.., span) => *span,
+            Expr::String { span, .. } => *span,
+            Expr::Bool(.., span) => *span,
+            Expr::Var(.., span) => *span,
+            Expr::Binary { span, .. } => *span,
+            Expr::Unary { span, .. } => *span,
+            Expr::Call { span, .. } => *span,
+            Expr::Index { span, .. } => *span,
+            Expr::Array { span, .. } => *span,
+        }
     }
 
     fn parse_string_literal(&mut self, content: ArenaCow<'ast, 'src>, span: Span) -> ExprRef<'ast> {

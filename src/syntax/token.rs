@@ -1,7 +1,7 @@
 use crate::arena::ArenaCow;
 use crate::diagnostics::Span;
 
-/// Represents a token along with its location in the original source text.
+/// Represents a token
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct SpannedToken<'arena, 'input> {
     pub token: Token<'arena, 'input>,
@@ -9,9 +9,6 @@ pub struct SpannedToken<'arena, 'input> {
 }
 
 /// All possible token types in NaijaScript
-///
-/// The lifetime parameter 'input ties token references to the source text lifetime,
-/// letting us avoid copying strings for identifiers and numbers
 #[derive(Debug, Default, Clone, PartialEq)]
 pub enum Token<'arena, 'input> {
     // Variable length tokens
@@ -124,6 +121,8 @@ impl<'arena, 'input> Token<'arena, 'input> {
                 | Token::IfNotSo
                 | Token::True
                 | Token::False
+                | Token::Do
+                | Token::Return
         )
     }
 }
