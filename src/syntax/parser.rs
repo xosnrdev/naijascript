@@ -523,13 +523,11 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         if let Token::RParen = self.cur.token {
             self.bump(); // consume `)`
         } else {
+            let span = Range::from(start..param_spans.last().map_or(lparen_span.end, |s| s.end));
             self.emit_error(
-                Range::from(start..param_spans.last().map_or(lparen_span.end, |s| s.end)),
+                span,
                 SyntaxError::ExpectedRParen,
-                vec![Label {
-                    span: Range::from(start..param_spans.last().map_or(lparen_span.end, |s| s.end)),
-                    message: ArenaCow::Borrowed("I dey expect `)`"),
-                }],
+                vec![Label { span, message: ArenaCow::Borrowed("I dey expect `)`") }],
             );
         }
 
@@ -664,16 +662,17 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         }
 
         let cond = self.parse_expression(0);
+        let cond_span = Self::expr_span(cond);
 
         let rparen_span = self.cur.span;
         if let Token::RParen = self.cur.token {
             self.bump(); // consume `)`
         } else {
             self.emit_error(
-                Range::from(start..self.cur.span.end),
+                Range::from(start..cond_span.end),
                 SyntaxError::ExpectedRParen,
                 vec![Label {
-                    span: Range::from(start..self.cur.span.end),
+                    span: Range::from(start..cond_span.end),
                     message: ArenaCow::Borrowed("I dey expect `)`"),
                 }],
             );
@@ -766,16 +765,17 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         }
 
         let cond = self.parse_expression(0);
+        let cond_span = Self::expr_span(cond);
 
         let rparen_span = self.cur.span;
         if let Token::RParen = self.cur.token {
             self.bump(); // consume `)`
         } else {
             self.emit_error(
-                Range::from(start..self.cur.span.end),
+                Range::from(start..cond_span.end),
                 SyntaxError::ExpectedRParen,
                 vec![Label {
-                    span: Range::from(start..self.cur.span.end),
+                    span: Range::from(start..cond_span.end),
                     message: ArenaCow::Borrowed("I dey expect `)`"),
                 }],
             );
@@ -936,17 +936,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         mut lhs: ExprRef<'ast>,
         min_bp: u8,
     ) -> ExprRef<'ast> {
-        let start = match lhs {
-            Expr::Number(.., span) => span.start,
-            Expr::String { span, .. } => span.start,
-            Expr::Bool(.., span) => span.start,
-            Expr::Var(.., span) => span.start,
-            Expr::Binary { span, .. } => span.start,
-            Expr::Unary { span, .. } => span.start,
-            Expr::Call { span, .. } => span.start,
-            Expr::Index { span, .. } => span.start,
-            Expr::Array { span, .. } => span.start,
-        };
+        let start = Self::expr_span(lhs).start;
 
         // Pratt parselet for function calls and binary operators
         loop {
@@ -1045,6 +1035,20 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             lhs = self.alloc(Expr::Binary { op, lhs, rhs, span: Range::from(start..end) });
         }
         lhs
+    }
+
+    fn expr_span(expr: ExprRef<'ast>) -> Span {
+        match expr {
+            Expr::Number(.., span) => *span,
+            Expr::String { span, .. } => *span,
+            Expr::Bool(.., span) => *span,
+            Expr::Var(.., span) => *span,
+            Expr::Binary { span, .. } => *span,
+            Expr::Unary { span, .. } => *span,
+            Expr::Call { span, .. } => *span,
+            Expr::Index { span, .. } => *span,
+            Expr::Array { span, .. } => *span,
+        }
     }
 
     fn parse_string_literal(&mut self, content: ArenaCow<'ast, 'src>, span: Span) -> ExprRef<'ast> {
