@@ -17,7 +17,6 @@ pub enum SemanticError {
     DuplicateIdentifier,
     AssignmentToUndeclared,
     TypeMismatch,
-    InvalidStringOperation,
     UndeclaredIdentifier,
     FunctionCallArity,
     UnreachableCode,
@@ -30,7 +29,6 @@ impl AsStr for SemanticError {
             SemanticError::DuplicateIdentifier => "Duplicate identifier",
             SemanticError::AssignmentToUndeclared => "Assignment to undeclared variable",
             SemanticError::TypeMismatch => "Type mismatch",
-            SemanticError::InvalidStringOperation => "Invalid string operation",
             SemanticError::UndeclaredIdentifier => "Undeclared identifier",
             SemanticError::FunctionCallArity => "Invalid parameter count",
             SemanticError::UnreachableCode => "Unreachable code",
@@ -110,6 +108,10 @@ impl<'ast> Resolver<'ast> {
         self.function_scopes.pop();
     }
 
+    fn emit_error(&mut self, span: Span, error: SemanticError, labels: Vec<Label<'ast>>) {
+        self.errors.emit(span, Severity::Error, "semantic", error.as_str(), labels);
+    }
+
     #[inline]
     fn check_block(&mut self, block: BlockRef<'ast>) {
         // Enter new block scope
@@ -132,14 +134,12 @@ impl<'ast> Resolver<'ast> {
                     Stmt::Expression { span, .. } => span,
                 };
 
-                self.errors.emit(
+                self.emit_error(
                     *span,
-                    Severity::Warning,
-                    "semantic",
-                    SemanticError::UnreachableCode.as_str(),
+                    SemanticError::UnreachableCode,
                     vec![Label {
                         span: *span,
-                        message: ArenaCow::Borrowed("Unreachable code after return statement"),
+                        message: ArenaCow::Borrowed("Dead code after `return` statement"),
                     }],
                 );
             }
@@ -161,15 +161,13 @@ impl<'ast> Resolver<'ast> {
             // Handle "make variable get expression" statements
             Stmt::Assign { var, var_span, expr, .. } => {
                 if Builtin::from_name(var).is_some() {
-                    self.errors.emit(
+                    self.emit_error(
                         *var_span,
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::ReservedKeyword.as_str(),
+                        SemanticError::ReservedKeyword,
                         vec![Label {
                             span: *var_span,
                             message: ArenaCow::Owned(arena_format!(
-                                &self.arena,
+                                self.arena,
                                 "`{var}` na reserved keyword",
                             )),
                         }],
@@ -186,14 +184,15 @@ impl<'ast> Resolver<'ast> {
             // Handle variable reassignment: <variable> get <expression>
             Stmt::AssignExisting { var, var_span, expr, .. } => {
                 if !self.lookup_var(var) {
-                    self.errors.emit(
+                    self.emit_error(
                         *var_span,
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::AssignmentToUndeclared.as_str(),
+                        SemanticError::AssignmentToUndeclared,
                         vec![Label {
                             span: *var_span,
-                            message: ArenaCow::Borrowed("Dis variable no dey scope"),
+                            message: ArenaCow::Owned(arena_format!(
+                                self.arena,
+                                "Variable `{var}` no dey scope",
+                            )),
                         }],
                     );
                 }
@@ -224,15 +223,13 @@ impl<'ast> Resolver<'ast> {
             }
             Stmt::FunctionDef { name, name_span, params, body, span } => {
                 if Builtin::from_name(name).is_some() {
-                    self.errors.emit(
+                    self.emit_error(
                         *name_span,
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::ReservedKeyword.as_str(),
+                        SemanticError::ReservedKeyword,
                         vec![Label {
                             span: *name_span,
                             message: ArenaCow::Owned(arena_format!(
-                                &self.arena,
+                                self.arena,
                                 "`{name}` na reserved keyword",
                             )),
                         }],
@@ -281,23 +278,18 @@ impl<'ast> Resolver<'ast> {
         if let Some(current_scope) = self.function_scopes.last()
             && let Some(existing_func) = current_scope.iter().find(|sig| sig.name == name)
         {
-            self.errors.emit(
+            self.emit_error(
                 *name_span,
-                Severity::Error,
-                "semantic",
-                SemanticError::DuplicateIdentifier.as_str(),
+                SemanticError::DuplicateIdentifier,
                 vec![
                     Label {
                         span: *existing_func.name_span,
                         message: ArenaCow::Owned(arena_format!(
-                            &self.arena,
-                            "You don already define `{name}` for here"
+                            self.arena,
+                            "Function `{name}` dey scope already",
                         )),
                     },
-                    Label {
-                        span: *name_span,
-                        message: ArenaCow::Borrowed("You try define am again for here"),
-                    },
+                    Label { span: *name_span, message: ArenaCow::Borrowed("Duplicate here") },
                 ],
             );
             return;
@@ -307,31 +299,27 @@ impl<'ast> Resolver<'ast> {
         let mut set = HashSet::with_capacity(params.params.len());
         for (param_name, param_span) in params.params.iter().zip(params.param_spans.iter()) {
             if Builtin::from_name(param_name).is_some() {
-                self.errors.emit(
+                self.emit_error(
                     *param_span,
-                    Severity::Error,
-                    "semantic",
-                    SemanticError::ReservedKeyword.as_str(),
+                    SemanticError::ReservedKeyword,
                     vec![Label {
                         span: *param_span,
                         message: ArenaCow::Owned(arena_format!(
-                            &self.arena,
+                            self.arena,
                             "`{param_name}` na reserved keyword",
                         )),
                     }],
                 );
             }
             if !set.insert(param_name) {
-                self.errors.emit(
+                self.emit_error(
                     *param_span,
-                    Severity::Error,
-                    "semantic",
-                    SemanticError::DuplicateIdentifier.as_str(),
+                    SemanticError::DuplicateIdentifier,
                     vec![Label {
                         span: *param_span,
                         message: ArenaCow::Owned(arena_format!(
-                            &self.arena,
-                            "Dis parameter `{param_name}` na duplicate"
+                            self.arena,
+                            "Parameter `{param_name}` na duplicate",
                         )),
                     }],
                 );
@@ -371,14 +359,14 @@ impl<'ast> Resolver<'ast> {
     fn check_return_stmt(&mut self, expr: Option<ExprRef<'ast>>, span: &'ast Span) {
         // Check if we're inside a function
         if self.current_function.is_none() {
-            self.errors.emit(
+            self.emit_error(
                 *span,
-                Severity::Error,
-                "semantic",
-                SemanticError::UnreachableCode.as_str(),
+                SemanticError::UnreachableCode,
                 vec![Label {
                     span: *span,
-                    message: ArenaCow::Borrowed("You no fit `return` outside function"),
+                    message: ArenaCow::Borrowed(
+                        "You no fit use `return` statement outside function body",
+                    ),
                 }],
             );
         }
@@ -406,15 +394,10 @@ impl<'ast> Resolver<'ast> {
                 Expr::Index { span, .. } => *span,
                 Expr::Array { span, .. } => *span,
             };
-            self.errors.emit(
+            self.emit_error(
                 span,
-                Severity::Error,
-                "semantic",
-                SemanticError::TypeMismatch.as_str(),
-                vec![Label {
-                    span,
-                    message: ArenaCow::Borrowed("Condition for here suppose be true or false"),
-                }],
+                SemanticError::TypeMismatch,
+                vec![Label { span, message: ArenaCow::Borrowed("Dis expression no be boolean") }],
             );
         }
     }
@@ -430,15 +413,13 @@ impl<'ast> Resolver<'ast> {
                         if let StringSegment::Variable(var) = segment
                             && !self.lookup_var(var)
                         {
-                            self.errors.emit(
+                            self.emit_error(
                                 *span,
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::UndeclaredIdentifier.as_str(),
+                                SemanticError::UndeclaredIdentifier,
                                 vec![Label {
                                     span: *span,
                                     message: ArenaCow::Owned(arena_format!(
-                                        &self.arena,
+                                        self.arena,
                                         "Variable `{var}` no dey scope"
                                     )),
                                 }],
@@ -458,28 +439,24 @@ impl<'ast> Resolver<'ast> {
 
                 let array_ty = self.infer_expr_type(array);
                 if array_ty != Some(ValueType::Array) && array_ty != Some(ValueType::Dynamic) {
-                    self.errors.emit(
+                    self.emit_error(
                         *span,
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::TypeMismatch.as_str(),
+                        SemanticError::TypeMismatch,
                         vec![Label {
                             span: *span,
-                            message: ArenaCow::Borrowed("Type of value no be array"),
+                            message: ArenaCow::Borrowed("Dis expression no be array"),
                         }],
                     );
                 }
 
                 let index_ty = self.infer_expr_type(index);
                 if index_ty != Some(ValueType::Number) && index_ty != Some(ValueType::Dynamic) {
-                    self.errors.emit(
+                    self.emit_error(
                         *index_span,
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::TypeMismatch.as_str(),
+                        SemanticError::TypeMismatch,
                         vec![Label {
                             span: *index_span,
-                            message: ArenaCow::Borrowed("Type of array index no be number"),
+                            message: ArenaCow::Borrowed("Array index no be number"),
                         }],
                     );
                 }
@@ -487,14 +464,15 @@ impl<'ast> Resolver<'ast> {
             // Variables need to exist in our symbol table before we can use them
             Expr::Var(v, span) => {
                 if !self.lookup_var(v) {
-                    self.errors.emit(
+                    self.emit_error(
                         *span,
-                        Severity::Error,
-                        "semantic",
-                        SemanticError::UndeclaredIdentifier.as_str(),
+                        SemanticError::UndeclaredIdentifier,
                         vec![Label {
                             span: *span,
-                            message: ArenaCow::Borrowed("Dis variable no dey scope"),
+                            message: ArenaCow::Owned(arena_format!(
+                                self.arena,
+                                "Variable {v} no dey scope"
+                            )),
                         }],
                     );
                 }
@@ -507,142 +485,70 @@ impl<'ast> Resolver<'ast> {
                 let r = self.infer_expr_type(rhs);
                 match op {
                     BinaryOp::Add => match (l, r) {
-                        (Some(ValueType::Array), ..) | (.., Some(ValueType::Array)) => {
-                            self.errors.emit(
-                                *span,
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
-                                vec![Label {
-                                    span: *span,
-                                    message: ArenaCow::Borrowed("You no fit add array values"),
-                                }],
-                            );
-                        }
-                        (Some(ValueType::Bool), ..) | (.., Some(ValueType::Bool)) => {
-                            self.errors.emit(
-                                *span,
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
-                                vec![Label {
-                                    span: *span,
-                                    message: ArenaCow::Borrowed("You no fit add boolean values"),
-                                }],
-                            );
-                        }
                         (Some(ValueType::String), ..)
                         | (.., Some(ValueType::String))
                         | (Some(ValueType::Dynamic), ..)
                         | (.., Some(ValueType::Dynamic))
                         | (Some(ValueType::Number), Some(ValueType::Number)) => {}
-                        _ => {}
-                    },
-                    BinaryOp::Minus | BinaryOp::Times | BinaryOp::Divide | BinaryOp::Mod => {
-                        match (l, r) {
-                            (Some(ValueType::Number), Some(ValueType::Number)) => {}
-                            (Some(ValueType::Dynamic), Some(ValueType::Number))
-                            | (Some(ValueType::Number), Some(ValueType::Dynamic))
-                            | (Some(ValueType::Dynamic), Some(ValueType::Dynamic)) => {}
-                            (Some(ValueType::Dynamic), Some(ValueType::String))
-                            | (Some(ValueType::String), Some(ValueType::Dynamic))
-                            | (Some(ValueType::Dynamic), Some(ValueType::Bool))
-                            | (Some(ValueType::Bool), Some(ValueType::Dynamic))
-                            | (Some(ValueType::Array), ..)
-                            | (.., Some(ValueType::Array)) => {
-                                self.errors.emit(
-                                    *span,
-                                    Severity::Error,
-                                    "semantic",
-                                    SemanticError::TypeMismatch.as_str(),
-                                    vec![Label {
-                                        span: *span,
-                                        message: ArenaCow::Borrowed(
-                                            "You fit only use arithmetic operators with numbers",
-                                        ),
-                                    }],
-                                );
-                            }
-                            (Some(ValueType::String), Some(ValueType::String)) => {
-                                self.errors.emit(
-                                    *span,
-                                    Severity::Error,
-                                    "semantic",
-                                    SemanticError::InvalidStringOperation.as_str(),
-                                    vec![Label {
-                                        span: *span,
-                                        message: ArenaCow::Borrowed(
-                                            "You no fit do arithmetic with strings",
-                                        ),
-                                    }],
-                                );
-                            }
-                            (Some(ValueType::String), Some(ValueType::Number))
-                            | (Some(ValueType::Number), Some(ValueType::String)) => {
-                                self.errors.emit(
-                                    *span,
-                                    Severity::Error,
-                                    "semantic",
-                                    SemanticError::TypeMismatch.as_str(),
-                                    vec![Label {
-                                        span: *span,
-                                        message: ArenaCow::Borrowed(
-                                            "You no fit do arithmetic with string and number",
-                                        ),
-                                    }],
-                                );
-                            }
-                            (Some(ValueType::Bool), ..) | (.., Some(ValueType::Bool)) => {
-                                self.errors.emit(
-                                    *span,
-                                    Severity::Error,
-                                    "semantic",
-                                    SemanticError::TypeMismatch.as_str(),
-                                    vec![Label {
-                                        span: *span,
-                                        message: ArenaCow::Borrowed(
-                                            "You no fit do arithmetic with boolean values",
-                                        ),
-                                    }],
-                                );
-                            }
-                            _ => {}
-                        }
-                    }
-                    BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => match (l, r) {
-                        (Some(ValueType::Number), Some(ValueType::Number)) => {}
-                        (Some(ValueType::String), Some(ValueType::String)) => {}
-                        (Some(ValueType::Bool), Some(ValueType::Bool)) => {}
-                        (Some(ValueType::Dynamic), ..) | (.., Some(ValueType::Dynamic)) => {}
                         _ => {
-                            self.errors.emit(
+                            self.emit_error(
                                 *span,
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
+                                SemanticError::TypeMismatch,
                                 vec![Label {
                                     span: *span,
                                     message: ArenaCow::Borrowed(
-                                        "You fit only compare numbers, strings, or booleans",
+                                        "Dis expression no be number or string",
                                     ),
                                 }],
                             );
                         }
                     },
+                    BinaryOp::Minus | BinaryOp::Times | BinaryOp::Divide | BinaryOp::Mod => {
+                        match (l, r) {
+                            (Some(ValueType::Number), Some(ValueType::Number))
+                            | (Some(ValueType::Dynamic), Some(ValueType::Number))
+                            | (Some(ValueType::Number), Some(ValueType::Dynamic))
+                            | (Some(ValueType::Dynamic), Some(ValueType::Dynamic)) => {}
+                            _ => {
+                                self.emit_error(
+                                    *span,
+                                    SemanticError::TypeMismatch,
+                                    vec![Label {
+                                        span: *span,
+                                        message: ArenaCow::Borrowed("Dis expression no be number"),
+                                    }],
+                                );
+                            }
+                        }
+                    }
+                    BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => match (l, r) {
+                        (Some(ValueType::Number), Some(ValueType::Number))
+                        | (Some(ValueType::String), Some(ValueType::String))
+                        | (Some(ValueType::Bool), Some(ValueType::Bool))
+                        | (Some(ValueType::Dynamic), ..)
+                        | (.., Some(ValueType::Dynamic)) => {}
+                        _ => self.emit_error(
+                            *span,
+                            SemanticError::TypeMismatch,
+                            vec![Label {
+                                span: *span,
+                                message: ArenaCow::Borrowed(
+                                    "Dis expression no be number, string, or boolean",
+                                ),
+                            }],
+                        ),
+                    },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
-                        (Some(ValueType::Bool), Some(ValueType::Bool)) => {}
-                        (Some(ValueType::Dynamic), ..) | (.., Some(ValueType::Dynamic)) => {}
+                        (Some(ValueType::Bool), Some(ValueType::Bool))
+                        | (Some(ValueType::Dynamic), ..)
+                        | (.., Some(ValueType::Dynamic)) => {}
                         _ => {
-                            self.errors.emit(
+                            self.emit_error(
                                 *span,
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
+                                SemanticError::TypeMismatch,
                                 vec![Label {
                                     span: *span,
-                                    message: ArenaCow::Borrowed(
-                                        "Logical operators fit only work with boolean values",
-                                    ),
+                                    message: ArenaCow::Borrowed("Dis expression no be boolean"),
                                 }],
                             );
                         }
@@ -656,33 +562,25 @@ impl<'ast> Resolver<'ast> {
                     // Unary not requires a boolean operand or dynamic type
                     UnaryOp::Not => {
                         if t != Some(ValueType::Bool) && t != Some(ValueType::Dynamic) {
-                            self.errors.emit(
+                            self.emit_error(
                                 *span,
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
+                                SemanticError::TypeMismatch,
                                 vec![Label {
                                     span: *span,
-                                    message: ArenaCow::Borrowed(
-                                        "You fit only use `not` with boolean",
-                                    ),
+                                    message: ArenaCow::Borrowed("Dis expression no be boolean"),
                                 }],
-                            );
+                            )
                         }
                     }
                     // Unary minus requires a numeric operand or dynamic type
                     UnaryOp::Minus => {
                         if t != Some(ValueType::Number) && t != Some(ValueType::Dynamic) {
-                            self.errors.emit(
+                            self.emit_error(
                                 *span,
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::TypeMismatch.as_str(),
+                                SemanticError::TypeMismatch,
                                 vec![Label {
                                     span: *span,
-                                    message: ArenaCow::Borrowed(
-                                        "You fit only use `minus` with number",
-                                    ),
+                                    message: ArenaCow::Borrowed("Dis expression no be number"),
                                 }],
                             );
                         }
@@ -697,16 +595,14 @@ impl<'ast> Resolver<'ast> {
                         if let Some(builtin) = Builtin::from_name(func_name) {
                             // Validate arity for built-in functions
                             if args.args.len() != builtin.arity() {
-                                self.errors.emit(
+                                self.emit_error(
                                     *span,
-                                    Severity::Error,
-                                    "semantic",
-                                    SemanticError::FunctionCallArity.as_str(),
+                                    SemanticError::FunctionCallArity,
                                     vec![Label {
                                         span: *span,
                                         message: ArenaCow::Owned(arena_format!(
-                                            &self.arena,
-                                            "Function `{}` expect {} arguments but you pass {}",
+                                            self.arena,
+                                            "Function `{}` dey expect {} arguments but you pass {}",
                                             func_name,
                                             builtin.arity(),
                                             args.args.len()
@@ -717,16 +613,14 @@ impl<'ast> Resolver<'ast> {
                         } else if let Some(func_sig) = self.lookup_func(func_name) {
                             // Check parameter count for user-defined function
                             if args.args.len() != func_sig.param_names.len() {
-                                self.errors.emit(
+                                self.emit_error(
                                     *span,
-                                    Severity::Error,
-                                    "semantic",
-                                    SemanticError::FunctionCallArity.as_str(),
+                                    SemanticError::FunctionCallArity,
                                     vec![Label {
                                         span: *span,
                                         message: ArenaCow::Owned(arena_format!(
-                                            &self.arena,
-                                            "Function `{}` expect {} arguments but you pass {}",
+                                            self.arena,
+                                            "Function `{}` dey expect {} arguments but you pass {}",
                                             func_name,
                                             func_sig.param_names.len(),
                                             args.args.len()
@@ -735,14 +629,15 @@ impl<'ast> Resolver<'ast> {
                                 );
                             }
                         } else {
-                            self.errors.emit(
+                            self.emit_error(
                                 *span,
-                                Severity::Error,
-                                "semantic",
-                                SemanticError::UndeclaredIdentifier.as_str(),
+                                SemanticError::UndeclaredIdentifier,
                                 vec![Label {
                                     span: *span,
-                                    message: ArenaCow::Borrowed("Dis function no dey scope"),
+                                    message: ArenaCow::Owned(arena_format!(
+                                        self.arena,
+                                        "Function `{func_name}` no dey scope"
+                                    )),
                                 }],
                             );
                         }
@@ -779,11 +674,10 @@ impl<'ast> Resolver<'ast> {
                 let r = self.infer_expr_type(rhs)?;
                 match op {
                     BinaryOp::Add => match (l, r) {
-                        (ValueType::Array, ..) | (.., ValueType::Array) => None,
-                        (ValueType::Bool, ..) | (.., ValueType::Bool) => None,
                         (ValueType::String, ..) | (.., ValueType::String) => {
                             Some(ValueType::String)
                         }
+                        (ValueType::Number, ValueType::Number) => Some(ValueType::Number),
                         (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
                             if l == ValueType::Number || r == ValueType::Number {
                                 Some(ValueType::Number)
@@ -791,34 +685,28 @@ impl<'ast> Resolver<'ast> {
                                 Some(ValueType::String)
                             }
                         }
-                        (ValueType::Number, ValueType::Number) => Some(ValueType::Number),
+                        _ => None,
                     },
                     BinaryOp::Minus | BinaryOp::Times | BinaryOp::Divide | BinaryOp::Mod => {
                         match (l, r) {
-                            (ValueType::Number, ValueType::Number) => Some(ValueType::Number),
-                            (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
-                                Some(ValueType::Number)
-                            }
-                            (ValueType::Array, ..) | (.., ValueType::Array) => None,
+                            (ValueType::Number, ValueType::Number)
+                            | (ValueType::Dynamic, ..)
+                            | (.., ValueType::Dynamic) => Some(ValueType::Number),
                             _ => None,
                         }
                     }
                     BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => match (l, r) {
-                        (ValueType::Number, ValueType::Number) => Some(ValueType::Bool),
-                        (ValueType::String, ValueType::String) => Some(ValueType::Bool),
-                        (ValueType::Bool, ValueType::Bool) => Some(ValueType::Bool),
-                        (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
-                            Some(ValueType::Bool)
-                        }
-                        (ValueType::Array, ..) | (.., ValueType::Array) => None,
+                        (ValueType::Number, ValueType::Number)
+                        | (ValueType::String, ValueType::String)
+                        | (ValueType::Bool, ValueType::Bool)
+                        | (ValueType::Dynamic, ..)
+                        | (.., ValueType::Dynamic) => Some(ValueType::Bool),
                         _ => None,
                     },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
-                        (ValueType::Bool, ValueType::Bool) => Some(ValueType::Bool),
-                        (ValueType::Dynamic, ..) | (.., ValueType::Dynamic) => {
-                            Some(ValueType::Bool)
-                        }
-                        (ValueType::Array, ..) | (.., ValueType::Array) => None,
+                        (ValueType::Bool, ValueType::Bool)
+                        | (ValueType::Dynamic, ..)
+                        | (.., ValueType::Dynamic) => Some(ValueType::Bool),
                         _ => None,
                     },
                 }

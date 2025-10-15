@@ -61,7 +61,7 @@ fn test_string_number_comparison() {
 
 #[test]
 fn test_string_subtraction() {
-    assert_resolve!(r#"make x get "foo" minus "bar""#, SemanticError::InvalidStringOperation);
+    assert_resolve!(r#"make x get "foo" minus "bar""#, SemanticError::TypeMismatch);
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn test_string_number_comparison_in_loop() {
 
 #[test]
 fn test_string_modulus() {
-    assert_resolve!(r#"make x get "foo" mod "bar""#, SemanticError::InvalidStringOperation);
+    assert_resolve!(r#"make x get "foo" mod "bar""#, SemanticError::TypeMismatch);
 }
 
 #[test]
