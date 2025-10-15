@@ -95,11 +95,9 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                     unsafe { str::from_utf8_unchecked(self.src.get_unchecked(start..self.len)) };
                 if let Some(c) = rest.chars().next() {
                     let len = c.len_utf8();
-                    self.errors.emit(
+                    self.emit_error(
                         Range::from(start..self.pos + len),
-                        Severity::Error,
-                        "lexical",
-                        LexError::UnexpectedChar.as_str(),
+                        LexError::UnexpectedChar,
                         vec![Label {
                             span: Range::from(start..self.pos + len),
                             message: ArenaCow::Borrowed("I no sabi dis character"),
@@ -115,11 +113,9 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 }
             }
             // Likely an unexpected character ?
-            self.errors.emit(
+            self.emit_error(
                 Range::from(start..self.pos),
-                Severity::Error,
-                "lexical",
-                LexError::UnexpectedChar.as_str(),
+                LexError::UnexpectedChar,
                 vec![Label {
                     span: Range::from(start..self.pos),
                     message: ArenaCow::Borrowed("I no sabi dis character"),
@@ -127,6 +123,10 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             );
             self.pos += 1;
         }
+    }
+
+    fn emit_error(&mut self, span: Range<usize>, error: LexError, label: Vec<Label<'arena>>) {
+        self.errors.emit(span, Severity::Error, "lexical", error.as_str(), label);
     }
 
     // Skips all whitespace characters
@@ -226,17 +226,46 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         let mut buffer = ArenaString::new_in(self.arena);
 
         loop {
-            // Find the next quote or escape sequence
             // SAFETY: self.pos..self.len is valid because self.pos < self.len
             let bytes = unsafe { self.src.get_unchecked(self.pos..) };
-            let index = memchr2(quote, b'\\', bytes, 0);
+
+            // Find the next quote/escape OR newline sequence
+            let quote_or_escape = memchr2(quote, b'\\', bytes, 0);
+            let newline = memchr2(b'\n', b'\r', bytes, 0);
+
+            // Is the first occurrence a newline ?
+            if newline < quote_or_escape {
+                let line_end = self.pos + newline;
+                self.emit_error(
+                    Range::from(start..line_end),
+                    LexError::UnterminatedString,
+                    vec![Label {
+                        span: Range::from(start..line_end),
+                        message: ArenaCow::Owned(arena_format!(
+                            self.arena,
+                            "Dis string no get ending quote `{}`",
+                            quote as char
+                        )),
+                    }],
+                );
+                self.pos = line_end;
+                if has_escape {
+                    return Token::String(ArenaCow::Owned(buffer));
+                } else {
+                    // SAFETY: beg..line_end is valid UTF-8 because we only process valid string content
+                    let s =
+                        unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..line_end)) };
+                    return Token::String(ArenaCow::Borrowed(s));
+                }
+            }
+
             // We don't have a closing quote or escape sequence
-            if index == bytes.len() {
+            if quote_or_escape == bytes.len() {
                 break;
             }
 
-            let pos = self.pos + index;
-            // SAFETY: pos < self.len because index < bytes.len()
+            let pos = self.pos + quote_or_escape;
+            // SAFETY: pos < self.len because quote_or_escape < bytes.len()
             let c = unsafe { *self.src.get_unchecked(pos) };
             if c == quote {
                 // Closing quote
@@ -273,21 +302,18 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 }
                 // We don't want an incomplete escape sequence
                 if pos + 1 >= self.len {
-                    self.errors.emit(
-                        Range::from(start..self.len),
-                        Severity::Error,
-                        "lexical",
-                        LexError::UnterminatedString.as_str(),
+                    self.emit_error(
+                        Range::from(start..self.pos),
+                        LexError::UnterminatedString,
                         vec![Label {
-                            span: Range::from(start..self.len),
+                            span: Range::from(start..self.pos),
                             message: ArenaCow::Owned(arena_format!(
-                                &self.arena,
+                                self.arena,
                                 "Dis string no get ending quote `{}`",
                                 quote as char
                             )),
                         }],
                     );
-                    self.pos = self.len;
                     return Token::String(ArenaCow::Owned(buffer));
                 }
 
@@ -300,14 +326,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                     b'n' => buffer.push('\n'),
                     b't' => buffer.push('\t'),
                     _ => {
-                        self.errors.emit(
+                        self.emit_error(
                             Range::from(pos..pos + 2),
-                            Severity::Error,
-                            "lexical",
-                            LexError::InvalidStringEscape.as_str(),
+                            LexError::InvalidStringEscape,
                             vec![Label {
                                 span: Range::from(pos..pos + 2),
-                                message: ArenaCow::Borrowed("Dis escape character no valid"),
+                                message: ArenaCow::Borrowed("I no sabi dis escape character"),
                             }],
                         );
                         // Append the invalid escape character
@@ -318,25 +342,24 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             }
         }
 
-        // We don't want an unterminated string
-        let message = ArenaCow::Borrowed(if quote == b'"' {
-            r#"Dis string no get ending quote `"`"#
-        } else {
-            r#"Dis string no get ending quote `'`"#
-        });
-        self.errors.emit(
-            Range::from(start..self.len),
-            Severity::Error,
-            "lexical",
-            LexError::UnterminatedString.as_str(),
-            vec![Label { span: Range::from(start..self.len), message }],
+        // It's EOF, no closing quote found ?
+        self.emit_error(
+            Range::from(start..self.pos),
+            LexError::UnterminatedString,
+            vec![Label {
+                span: Range::from(start..self.pos),
+                message: ArenaCow::Owned(arena_format!(
+                    self.arena,
+                    "Dis string no get ending quote `{}`",
+                    quote as char
+                )),
+            }],
         );
-        self.pos = self.len;
         if has_escape {
             Token::String(ArenaCow::Owned(buffer))
         } else {
-            // SAFETY: beg..self.len is valid UTF-8 because we only process valid string content
-            let s = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..self.len)) };
+            // SAFETY: beg..self.pos is valid UTF-8 because we only process valid string content
+            let s = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..self.pos)) };
             Token::String(ArenaCow::Borrowed(s))
         }
     }
@@ -387,7 +410,6 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             *self.src.get_unchecked(self.pos) == b'.'
         } {
             saw_dot = true;
-            let dot_pos = self.pos;
             self.pos += 1;
 
             let after_dot = if self.pos < len {
@@ -398,13 +420,11 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             };
             if !after_dot.is_ascii_digit() {
                 // No digit after the dot
-                self.errors.emit(
+                self.emit_error(
                     Range::from(start..self.pos),
-                    Severity::Error,
-                    "lexical",
-                    LexError::InvalidNumber.as_str(),
+                    LexError::InvalidNumber,
                     vec![Label {
-                        span: Range::from(dot_pos..self.pos),
+                        span: Range::from(start..self.pos),
                         message: ArenaCow::Borrowed("Dis number no get digit after `.`"),
                     }],
                 );
@@ -424,15 +444,12 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         // SAFETY: self.pos < len, so this is safe
         unsafe { *self.src.get_unchecked(self.pos) == b'.'  }
         {
-            let extra_dot = self.pos;
             self.pos += 1;
-            self.errors.emit(
+            self.emit_error(
                 Range::from(start..self.pos),
-                Severity::Error,
-                "lexical",
-                LexError::InvalidNumber.as_str(),
+                LexError::InvalidNumber,
                 vec![Label {
-                    span: Range::from(extra_dot..self.pos),
+                    span: Range::from(start..self.pos),
                     message: ArenaCow::Borrowed("Dis number get extra `.`"),
                 }],
             );
@@ -456,13 +473,11 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 }
                 self.pos += 1;
             }
-            self.errors.emit(
+            self.emit_error(
                 Range::from(start..self.pos),
-                Severity::Error,
-                "lexical",
-                LexError::InvalidIdentifier.as_str(),
+                LexError::InvalidIdentifier,
                 vec![Label {
-                    span: Range::from(start..id_start),
+                    span: Range::from(start..self.pos),
                     message: ArenaCow::Borrowed("Identifier must start with letter or underscore"),
                 }],
             );
@@ -532,13 +547,11 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 let mut bytes = other.bytes();
                 if let Some(first) = bytes.next() {
                     if !Self::is_alpha_or_underscore(first) {
-                        self.errors.emit(
+                        self.emit_error(
                             Range::from(start..self.pos),
-                            Severity::Error,
-                            "lexical",
-                            LexError::InvalidIdentifier.as_str(),
+                            LexError::InvalidIdentifier,
                             vec![Label {
-                                span: Range::from(start..start + 1),
+                                span: Range::from(start..self.pos),
                                 message: ArenaCow::Borrowed(
                                     "Identifier must start with letter or underscore",
                                 ),
@@ -546,17 +559,13 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                         );
                     } else {
                         // Invalid chars in the rest of the identifier ?
-                        let mut offset = 1;
                         for b in bytes {
                             if !b.is_ascii_alphanumeric() && b != b'_' {
-                                let bad_pos = start + offset;
-                                self.errors.emit(
+                                self.emit_error(
                                     Range::from(start..self.pos),
-                                    Severity::Error,
-                                    "lexical",
-                                    LexError::InvalidIdentifier.as_str(),
+                                    LexError::InvalidIdentifier,
                                     vec![Label {
-                                        span: Range::from(bad_pos..bad_pos + 1),
+                                        span: Range::from(start..self.pos),
                                         message: ArenaCow::Borrowed(
                                             "Dis identifier get invalid character",
                                         ),
@@ -564,7 +573,6 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                                 );
                                 break;
                             }
-                            offset += 1;
                         }
                     }
                 }

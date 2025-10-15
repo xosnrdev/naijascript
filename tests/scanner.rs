@@ -97,7 +97,7 @@ fn test_scan_invalid_identifier() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..1));
+    assert_eq!(label.span, Range::from(0..4));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
 }
 
@@ -125,7 +125,7 @@ fn test_scan_invalid_number() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(1..2));
+    assert_eq!(label.span, Range::from(0..2));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidNumber.as_str()));
 }
 
@@ -137,7 +137,7 @@ fn test_scan_number_with_underscore_error() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..3));
+    assert_eq!(label.span, Range::from(0..7));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
 }
 
@@ -257,7 +257,7 @@ fn test_scan_unterminated_string() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..src.len()));
+    assert_eq!(label.span, Range::from(0..1));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str()));
 }
 
@@ -285,7 +285,7 @@ fn test_scan_unterminated_single_quoted_string() {
     let _ = lexer.next();
     let errors = lexer.errors;
     let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..src.len()));
+    assert_eq!(label.span, Range::from(0..1));
     assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str()));
 }
 
