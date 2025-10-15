@@ -4,7 +4,7 @@ use std::range::Range;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
-use crate::diagnostics::{AsStr, Diagnostics, Label, Severity};
+use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::simd::memchr2;
 use crate::syntax::token::{SpannedToken, Token};
 
@@ -125,7 +125,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         }
     }
 
-    fn emit_error(&mut self, span: Range<usize>, error: LexError, label: Vec<Label<'arena>>) {
+    fn emit_error(&mut self, span: Span, error: LexError, label: Vec<Label<'arena>>) {
         self.errors.emit(span, Severity::Error, "lexical", error.as_str(), label);
     }
 
