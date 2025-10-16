@@ -12,21 +12,13 @@ use crate::syntax::parser::{
 };
 use crate::sys::{self, Stdin};
 
-/// Runtime errors that can occur during NaijaScript execution.
-///
-/// We separate runtime errors from syntax/semantic errors because these
-/// can only be detected when expressions actually evaluate.
+/// Runtime errors that can occur during code execution.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RuntimeErrorKind {
-    /// I/O error that occurred
     Io(&'static str),
-    /// Division by zero, which we can't catch until the divisor evaluates to zero
     DivisionByZero,
-    /// Call stack overflow to prevent infinite recursion from crashing the host
     StackOverflow,
-    /// Index outside the bounds of an array
     IndexOutOfBounds,
-    /// Index with a non-integer/invalid value
     InvalidIndex,
 }
 
@@ -58,7 +50,7 @@ struct RuntimeError {
     span: Span,
 }
 
-/// Maximum recursion depth to prevent stack overflow
+// Maximum recursion depth to prevent stack overflow
 const MAX_CALL_DEPTH: usize = 1000;
 
 /// The value types our runtime can work with at runtime.
@@ -152,19 +144,18 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     pub fn run(&mut self, root: BlockRef<'src>) -> &Diagnostics<'arena> {
         self.env.push(Vec::new_in(self.arena)); // enter global scope
 
-        // Execute the program and handle both regular flow and early returns
         match self.exec_block_with_flow(root) {
-            Ok(..) => {} // Normal completion
+            Ok(..) => {}
             Err(err) => {
                 let labels = match err.kind {
                     RuntimeErrorKind::DivisionByZero => vec![Label {
                         span: err.span,
-                        message: ArenaCow::Borrowed("No divide by zero"),
+                        message: ArenaCow::Borrowed("You no fit divide by zero"),
                     }],
                     RuntimeErrorKind::StackOverflow => {
                         vec![Label {
                             span: err.span,
-                            message: ArenaCow::Borrowed("Dis function call too deep"),
+                            message: ArenaCow::Borrowed("Call stack don full"),
                         }]
                     }
                     RuntimeErrorKind::Io(msg) => {
@@ -186,10 +177,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         &self.errors
     }
 
-    // Statement execution dispatcher
-    //
-    // Each statement type updates the environment or controls flow.
-    // Functions definitions populate the global function table.
     fn exec_stmt(&mut self, stmt: StmtRef<'src>) -> Result<ExecFlow<'arena, 'src>, RuntimeError> {
         match stmt {
             Stmt::Assign { var, expr, .. } => {
@@ -208,8 +195,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 Ok(ExecFlow::Continue)
             }
             Stmt::If { cond, then_b, else_b, .. } => {
-                let condition_value = self.eval_expr(cond)?;
-                let is_truthy = match condition_value {
+                let val = self.eval_expr(cond)?;
+                let is_truthy = match val {
                     Value::Bool(b) => b,
                     _ => unreachable!(
                         "Semantic analysis guarantees only boolean expressions in conditions"
@@ -225,8 +212,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             }
             Stmt::Loop { cond, body, .. } => {
                 loop {
-                    let condition_value = self.eval_expr(cond)?;
-                    let should_continue = match condition_value {
+                    let val = self.eval_expr(cond)?;
+                    let should_continue = match val {
                         Value::Bool(b) => b,
                         _ => unreachable!(
                             "Semantic analysis guarantees only boolean expressions in loop conditions"
@@ -237,43 +224,39 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     }
                     match self.exec_block_with_flow(body)? {
                         ExecFlow::Continue => continue,
-                        flow @ ExecFlow::Return(..) => return Ok(flow), // Bubble up return
+                        flow @ ExecFlow::Return(..) => return Ok(flow),
                     }
                 }
                 Ok(ExecFlow::Continue)
             }
             Stmt::Block { block, .. } => self.exec_block_with_flow(block),
             Stmt::FunctionDef { name, params, body, .. } => {
-                // Store function for later calls, semantic analysis ensures no duplicates
                 let func_def = FunctionDef { name, params, body };
                 self.functions.push(func_def);
                 Ok(ExecFlow::Continue)
             }
             Stmt::Return { expr, .. } => {
-                // Semantic analysis guarantees we're inside a function
-                let return_val = if let Some(expr_ref) = expr {
+                let val = if let Some(expr_ref) = expr {
                     self.eval_expr(expr_ref)?
                 } else {
-                    Value::Number(0.0) // Default return value
+                    Value::Number(0.0)
                 };
-                Ok(ExecFlow::Return(return_val))
+                Ok(ExecFlow::Return(val))
             }
             Stmt::Expression { expr, .. } => {
-                // Execute expression for side effects (e.g., function calls)
                 self.eval_expr(expr)?;
                 Ok(ExecFlow::Continue)
             }
         }
     }
 
-    // Block execution with proper scope management and early return handling
     #[inline]
     fn exec_block_with_flow(
         &mut self,
         block: BlockRef<'src>,
     ) -> Result<ExecFlow<'arena, 'src>, RuntimeError> {
         self.env.push(Vec::new_in(self.arena)); // enter new block scope
-        for &stmt in block.stmts {
+        for stmt in block.stmts {
             match self.exec_stmt(stmt)? {
                 ExecFlow::Continue => continue,
                 flow @ ExecFlow::Return(..) => {
@@ -282,7 +265,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 }
             }
         }
-
         self.env.pop(); // exit block scope
         Ok(ExecFlow::Continue)
     }
@@ -301,107 +283,97 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     .expect("Semantic analysis should guarantee all variables are declared");
                 Ok(val)
             }
-            Expr::Binary { op, lhs, rhs, span } => {
-                match op {
-                    BinaryOp::And => {
-                        let l = self.eval_expr(lhs)?;
-                        if let Value::Bool(false) = l {
-                            return Ok(Value::Bool(false)); // Short-circuit evaluation
-                        }
-                        let r = self.eval_expr(rhs)?;
-                        match r {
-                            Value::Bool(b) => Ok(Value::Bool(b)),
-                            _ => unreachable!("Semantic analysis guarantees boolean expressions"),
-                        }
+            Expr::Binary { op, lhs, rhs, span } => match op {
+                BinaryOp::And => {
+                    let l = self.eval_expr(lhs)?;
+                    if let Value::Bool(false) = l {
+                        return Ok(Value::Bool(false)); // Short-circuit evaluation
                     }
-                    BinaryOp::Or => {
-                        let l = self.eval_expr(lhs)?;
-                        if let Value::Bool(true) = l {
-                            return Ok(Value::Bool(true)); // Short-circuit evaluation
-                        }
-                        let r = self.eval_expr(rhs)?;
-                        match r {
-                            Value::Bool(b) => Ok(Value::Bool(b)),
-                            _ => unreachable!("Semantic analysis guarantees boolean expressions"),
-                        }
+                    let r = self.eval_expr(rhs)?;
+                    match r {
+                        Value::Bool(b) => Ok(Value::Bool(b)),
+                        _ => unreachable!("Semantic analysis guarantees boolean expressions"),
                     }
-                    _ => {
-                        let l = self.eval_expr(lhs)?;
-                        let r = self.eval_expr(rhs)?;
-                        match (l, r) {
-                            (Value::Number(lv), Value::Number(rv)) => match op {
-                                BinaryOp::Add => Ok(Value::Number(lv + rv)),
-                                BinaryOp::Minus => Ok(Value::Number(lv - rv)),
-                                BinaryOp::Times => Ok(Value::Number(lv * rv)),
-                                BinaryOp::Divide | BinaryOp::Mod => {
-                                    if rv == 0.0 {
-                                        Err(RuntimeError {
-                                            kind: RuntimeErrorKind::DivisionByZero,
-                                            span: *span,
-                                        })
-                                    } else {
-                                        Ok(Value::Number(match op {
-                                            BinaryOp::Divide => lv / rv,
-                                            BinaryOp::Mod => lv % rv,
-                                            _ => unreachable!(),
-                                        }))
-                                    }
+                }
+                BinaryOp::Or => {
+                    let l = self.eval_expr(lhs)?;
+                    if let Value::Bool(true) = l {
+                        return Ok(Value::Bool(true)); // Short-circuit evaluation
+                    }
+                    let r = self.eval_expr(rhs)?;
+                    match r {
+                        Value::Bool(b) => Ok(Value::Bool(b)),
+                        _ => unreachable!("Semantic analysis guarantees boolean expressions"),
+                    }
+                }
+                _ => {
+                    let l = self.eval_expr(lhs)?;
+                    let r = self.eval_expr(rhs)?;
+                    match (l, r) {
+                        (Value::Number(lv), Value::Number(rv)) => match op {
+                            BinaryOp::Add => Ok(Value::Number(lv + rv)),
+                            BinaryOp::Minus => Ok(Value::Number(lv - rv)),
+                            BinaryOp::Times => Ok(Value::Number(lv * rv)),
+                            BinaryOp::Divide | BinaryOp::Mod => {
+                                if rv == 0.0 {
+                                    Err(RuntimeError {
+                                        kind: RuntimeErrorKind::DivisionByZero,
+                                        span: *span,
+                                    })
+                                } else {
+                                    let n = if *op == BinaryOp::Divide { lv / rv } else { lv % rv };
+                                    Ok(Value::Number(n))
                                 }
-                                BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
-                                BinaryOp::Gt => Ok(Value::Bool(lv > rv)),
-                                BinaryOp::Lt => Ok(Value::Bool(lv < rv)),
-                                _ => unreachable!(),
-                            },
-                            (Value::Str(ls), Value::Str(rs)) => match op {
-                                BinaryOp::Add => {
-                                    let mut s = ArenaString::with_capacity_in(
-                                        ls.len() + rs.len(),
-                                        self.arena,
-                                    );
-                                    s.push_str(&ls);
-                                    s.push_str(&rs);
-                                    Ok(Value::Str(ArenaCow::Owned(s)))
-                                }
-                                BinaryOp::Eq => Ok(Value::Bool(ls == rs)),
-                                BinaryOp::Gt => Ok(Value::Bool(ls > rs)),
-                                BinaryOp::Lt => Ok(Value::Bool(ls < rs)),
-                                _ => unreachable!("Semantic analysis guarantees valid string ops"),
-                            },
-                            (Value::Str(ls), Value::Number(n)) => {
-                                assert!(matches!(op, BinaryOp::Add));
-                                let num_str = n.to_string();
-                                let mut s = ArenaString::with_capacity_in(
-                                    ls.len() + num_str.len(),
-                                    self.arena,
-                                );
-                                s.push_str(&ls);
-                                s.push_str(&num_str);
-                                Ok(Value::Str(ArenaCow::Owned(s)))
                             }
-                            (Value::Number(n), Value::Str(rs)) => {
-                                assert!(matches!(op, BinaryOp::Add));
-                                let num_str = n.to_string();
-                                let mut s = ArenaString::with_capacity_in(
-                                    num_str.len() + rs.len(),
-                                    self.arena,
-                                );
-                                s.push_str(&num_str);
+                            BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
+                            BinaryOp::Gt => Ok(Value::Bool(lv > rv)),
+                            BinaryOp::Lt => Ok(Value::Bool(lv < rv)),
+                            _ => unreachable!("Semantic analysis guarantees valid number ops"),
+                        },
+                        (Value::Str(ls), Value::Str(rs)) => match op {
+                            BinaryOp::Add => {
+                                let mut s =
+                                    ArenaString::with_capacity_in(ls.len() + rs.len(), self.arena);
+                                s.push_str(&ls);
                                 s.push_str(&rs);
                                 Ok(Value::Str(ArenaCow::Owned(s)))
                             }
-                            (Value::Bool(lv), Value::Bool(rv)) => match op {
-                                BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
-                                BinaryOp::Gt => Ok(Value::Bool(lv & !rv)), // false < true
-                                BinaryOp::Lt => Ok(Value::Bool(!lv & rv)),
-                                _ => unreachable!("Semantic analysis guarantees valid bool ops"),
-                            },
-                            _ => {
-                                unreachable!("Semantic analysis guarantees valid type combinations")
-                            }
+                            BinaryOp::Eq => Ok(Value::Bool(ls == rs)),
+                            BinaryOp::Gt => Ok(Value::Bool(ls > rs)),
+                            BinaryOp::Lt => Ok(Value::Bool(ls < rs)),
+                            _ => unreachable!("Semantic analysis guarantees valid string ops"),
+                        },
+                        (Value::Str(ls), Value::Number(n)) => {
+                            assert!(matches!(op, BinaryOp::Add));
+                            let num_str = n.to_string();
+                            let mut s =
+                                ArenaString::with_capacity_in(ls.len() + num_str.len(), self.arena);
+                            s.push_str(&ls);
+                            s.push_str(&num_str);
+                            Ok(Value::Str(ArenaCow::Owned(s)))
+                        }
+                        (Value::Number(n), Value::Str(rs)) => {
+                            assert!(matches!(op, BinaryOp::Add));
+                            let num_str = n.to_string();
+                            let mut s =
+                                ArenaString::with_capacity_in(num_str.len() + rs.len(), self.arena);
+                            s.push_str(&num_str);
+                            s.push_str(&rs);
+                            Ok(Value::Str(ArenaCow::Owned(s)))
+                        }
+                        (Value::Bool(lv), Value::Bool(rv)) => match op {
+                            BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
+                            BinaryOp::Gt => Ok(Value::Bool(lv & !rv)), // false < true
+                            BinaryOp::Lt => Ok(Value::Bool(!lv & rv)),
+                            _ => unreachable!("Semantic analysis guarantees valid bool ops"),
+                        },
+                        _ => {
+                            unreachable!("Semantic analysis guarantees matching operand types")
                         }
                     }
                 }
-            }
+            },
+
             Expr::Unary { op, expr, .. } => {
                 let v = self.eval_expr(expr)?;
                 match (op, v) {
@@ -412,16 +384,16 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             }
             Expr::Array { elements, .. } => {
                 let mut values = Vec::with_capacity_in(elements.len(), self.arena);
-                for &element in *elements {
-                    let value = self.eval_expr(element)?;
-                    values.push(value);
+                for element in *elements {
+                    let val = self.eval_expr(element)?;
+                    values.push(val);
                 }
                 Ok(Value::Array(values))
             }
             Expr::Index { array, index, index_span, .. } => {
                 let array_value = self.eval_expr(array)?;
                 let index_value = self.eval_expr(index)?;
-                let items = match &array_value {
+                let items = match array_value {
                     Value::Array(items) => items,
                     _ => unreachable!("Semantic analysis guarantees only arrays can be indexed"),
                 };
@@ -457,7 +429,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    // Function call evaluation
     fn eval_function_call(
         &mut self,
         callee: ExprRef<'src>,
@@ -483,8 +454,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
 
         // We evaluate all arguments eagerly (left-to-right evaluation order)
-        let mut arg_values = Vec::new_in(self.arena);
-        for &arg_expr in args.args {
+        let mut arg_values = Vec::with_capacity_in(args.args.len(), self.arena);
+        for arg_expr in args.args {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
 
@@ -492,25 +463,23 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         assert_eq!(arg_values.len(), func_def.params.params.len());
 
         // We create a new activation record for the function call
-        let mut local_vars = Vec::new_in(self.arena);
+        let mut local_vars = Vec::with_capacity_in(func_def.params.params.len(), self.arena);
         for (param, arg) in func_def.params.params.iter().zip(arg_values.iter()) {
             local_vars.push((*param, arg.clone()));
         }
-
         self.call_stack.push(ActivationRecord { local_vars });
 
         // We execute the function body with proper return value handling
-        let result = match self.exec_block_with_flow(func_def.body)? {
+        let val = match self.exec_block_with_flow(func_def.body)? {
             ExecFlow::Continue => Value::Number(0.0),
             ExecFlow::Return(val) => val,
         };
 
         // We remove the activation record from the call stack
         self.call_stack.pop();
-        Ok(result)
+        Ok(val)
     }
 
-    // Built-in function evaluation
     fn eval_builtin_call(
         &mut self,
         builtin: Builtin,
@@ -518,11 +487,10 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         span: Span,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
         // We evaluate all arguments eagerly (left-to-right evaluation order)
-        let mut arg_values = Vec::new_in(self.arena);
-        for &arg_expr in args.args {
+        let mut arg_values = Vec::with_capacity_in(args.args.len(), self.arena);
+        for arg_expr in args.args {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
-
         assert_eq!(arg_values.len(), builtin.arity());
 
         match builtin {
@@ -664,7 +632,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         match parts {
             StringParts::Static(content) => Ok(Value::Str(ArenaCow::borrowed(content))),
             StringParts::Interpolated(segments) => {
-                let mut result = ArenaString::new_in(self.arena);
+                let mut result = ArenaString::with_capacity_in(segments.len(), self.arena);
                 for segment in *segments {
                     match segment {
                         StringSegment::Literal(s) => result.push_str(s),
@@ -803,16 +771,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     #[inline]
     fn lookup_var(&self, name: &str) -> Option<Value<'arena, 'src>> {
-        // Function locals take precedence over outer scopes
-        if let Some(val) = self.lookup_call_stack(name) {
-            return Some(val.clone());
-        }
-
-        // Then check regular scope stack (global and block scopes)
-        if let Some(val) = self.lookup_env(name) {
-            return Some(val.clone());
-        }
-        None
+        self.lookup_call_stack(name).cloned().or_else(|| self.lookup_env(name).cloned())
     }
 
     fn lookup_var_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
@@ -828,38 +787,32 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     fn lookup_env(&self, name: &str) -> Option<&Value<'arena, 'src>> {
-        for scope in self.env.iter().rev() {
-            if let Some((.., val)) = scope.iter().find(|(var, ..)| *var == name) {
-                return Some(val);
-            }
-        }
-        None
+        self.env.iter().rev().find_map(|scope| {
+            scope.iter().find_map(|(var, val)| if *var == name { Some(val) } else { None })
+        })
     }
 
     fn lookup_env_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
-        for scope in self.env.iter_mut().rev() {
-            if let Some((.., val)) = scope.iter_mut().find(|(var, ..)| *var == name) {
-                return Some(val);
-            }
-        }
-        None
+        self.env.iter_mut().rev().find_map(|scope| {
+            scope.iter_mut().find_map(|(var, val)| if *var == name { Some(val) } else { None })
+        })
     }
 
     fn lookup_call_stack(&self, name: &str) -> Option<&Value<'arena, 'src>> {
-        if let Some(activation) = self.call_stack.last()
-            && let Some((.., val)) = activation.local_vars.iter().find(|(var, ..)| *var == name)
-        {
-            return Some(val);
-        }
-        None
+        self.call_stack.last().and_then(|activation| {
+            activation
+                .local_vars
+                .iter()
+                .find_map(|(var, val)| if *var == name { Some(val) } else { None })
+        })
     }
 
     fn lookup_call_stack_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
-        if let Some(activation) = self.call_stack.last_mut()
-            && let Some((.., val)) = activation.local_vars.iter_mut().find(|(var, ..)| *var == name)
-        {
-            return Some(val);
-        }
-        None
+        self.call_stack.last_mut().and_then(|activation| {
+            activation
+                .local_vars
+                .iter_mut()
+                .find_map(|(var, val)| if *var == name { Some(val) } else { None })
+        })
     }
 }

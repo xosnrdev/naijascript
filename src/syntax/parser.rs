@@ -17,7 +17,7 @@ pub type ParamListRef<'ast> = &'ast ParamList<'ast>;
 pub type ArgListRef<'ast> = &'ast ArgList<'ast>;
 
 /// Binary operators for arithmetic and logical expressions.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinaryOp {
     Add,    // "add" keyword
     Minus,  // "minus" keyword
