@@ -386,6 +386,10 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 self.pos += 1;
                 Some(Token::Comma)
             }
+            b'.' => {
+                self.pos += 1;
+                Some(Token::Dot)
+            }
             _ => None,
         }
     }
