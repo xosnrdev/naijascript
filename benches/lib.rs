@@ -152,7 +152,7 @@ fn bench_string_slice(c: &mut Criterion) {
     c.bench_function("string_slice", |b| {
         b.iter(|| {
             let arena = scratch_arena(None);
-            let s = builtins::string_slice(src, 0.0, 5.0, &arena);
+            let s = builtins::StringBuiltin::slice(src, 0.0, 5.0, &arena);
             black_box(s);
         })
     });
