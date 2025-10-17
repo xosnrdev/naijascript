@@ -4,13 +4,12 @@ use std::fmt::{self, Write};
 use std::io;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
-use crate::builtins::{self, Builtin};
+use crate::builtins::{ArrayBuiltin, Builtin, GlobalBuiltin, NumberBuiltin, StringBuiltin};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     ArgList, BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts,
     StringSegment, UnaryOp,
 };
-use crate::sys::{self, Stdin};
 
 /// Runtime errors that can occur during code execution.
 #[derive(Debug, PartialEq, Eq)]
@@ -117,7 +116,6 @@ pub struct Runtime<'arena, 'src> {
     // Call stack for function execution, prevents infinite recursion
     call_stack: Vec<ActivationRecord<'arena, 'src>, &'arena Arena>,
 
-    /// Output from `shout()` function calls, public for caller access
     pub output: Vec<Value<'arena, 'src>, &'arena Arena>,
 
     /// Collection of runtime errors encountered during execution
@@ -425,6 +423,9 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
                 Ok(items[idx as usize].clone())
             }
+            Expr::Member { .. } => {
+                unreachable!("Semantic analysis guarantees member access is always a function call")
+            }
             Expr::Call { callee, args, span } => self.eval_function_call(callee, args, span),
         }
     }
@@ -435,13 +436,17 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         args: &'src ArgList<'src>,
         span: &'src Span,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
+        // Handle member method calls
+        if let Expr::Member { object, field, .. } = callee {
+            return self.eval_member_call(object, field, args);
+        }
+
         let func_name = match callee {
             Expr::Var(name, ..) => *name,
-            _ => unreachable!("Semantic analysis guarantees callee is a variable"),
+            _ => unreachable!("Semantic analysis guarantees callee is variable or member"),
         };
 
-        // We check for built-in functions first, as they are guaranteed to exist
-        if let Some(builtin) = Builtin::from_name(func_name) {
+        if let Some(builtin) = GlobalBuiltin::from_name(func_name) {
             return self.eval_builtin_call(builtin, args, *span);
         }
 
@@ -482,7 +487,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn eval_builtin_call(
         &mut self,
-        builtin: Builtin,
+        builtin: GlobalBuiltin,
         args: &'src ArgList<'src>,
         span: Span,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
@@ -494,134 +499,203 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         assert_eq!(arg_values.len(), builtin.arity());
 
         match builtin {
-            Builtin::Shout => {
+            GlobalBuiltin::Shout => {
                 self.output.push(arg_values[0].clone());
+                GlobalBuiltin::shout(&arg_values[0]);
                 Ok(Value::Number(0.0))
             }
-            Builtin::Abs => {
-                if let Value::Number(n) = arg_values[0] {
-                    Ok(Value::Number(n.abs()))
-                } else {
-                    unreachable!("Semantic analysis guarantees number argument for abs")
-                }
-            }
-            Builtin::Sqrt => {
-                if let Value::Number(n) = arg_values[0] {
-                    Ok(Value::Number(n.sqrt()))
-                } else {
-                    unreachable!("Semantic analysis guarantees number argument for sqrt")
-                }
-            }
-            Builtin::Floor => {
-                if let Value::Number(n) = arg_values[0] {
-                    Ok(Value::Number(n.floor()))
-                } else {
-                    unreachable!("Semantic analysis guarantees number argument for floor")
-                }
-            }
-            Builtin::Ceil => {
-                if let Value::Number(n) = arg_values[0] {
-                    Ok(Value::Number(n.ceil()))
-                } else {
-                    unreachable!("Semantic analysis guarantees number argument for ceil")
-                }
-            }
-            Builtin::Round => {
-                if let Value::Number(n) = arg_values[0] {
-                    Ok(Value::Number(n.round()))
-                } else {
-                    unreachable!("Semantic analysis guarantees number argument for round")
-                }
-            }
-            Builtin::Len => {
-                if let Value::Str(s) = &arg_values[0] {
-                    // Count Unicode characters, not bytes
-                    Ok(Value::Number(s.chars().count() as f64))
-                } else {
-                    unreachable!("Semantic analysis guarantees string argument for len")
-                }
-            }
-            Builtin::Slice => {
-                if let (Value::Str(s), Value::Number(start), Value::Number(end)) =
-                    (&arg_values[0], &arg_values[1], &arg_values[2])
-                {
-                    let s = builtins::string_slice(s, *start, *end, self.arena);
-                    Ok(Value::Str(ArenaCow::owned(s)))
-                } else {
-                    unreachable!("Semantic analysis guarantees correct argument types for slice")
-                }
-            }
-            Builtin::Upper => {
-                if let Value::Str(s) = &arg_values[0] {
-                    let s = builtins::string_upper(s, self.arena);
-                    Ok(Value::Str(ArenaCow::owned(s)))
-                } else {
-                    unreachable!("Semantic analysis guarantees string argument for upper")
-                }
-            }
-            Builtin::Lower => {
-                if let Value::Str(s) = &arg_values[0] {
-                    let s = builtins::string_lower(s, self.arena);
-                    Ok(Value::Str(ArenaCow::owned(s)))
-                } else {
-                    unreachable!("Semantic analysis guarantees string argument for lower")
-                }
-            }
-            Builtin::Find => {
-                if let (Value::Str(haystack), Value::Str(needle)) = (&arg_values[0], &arg_values[1])
-                {
-                    let i = builtins::string_find(haystack, needle);
-                    Ok(Value::Number(i))
-                } else {
-                    unreachable!("Semantic analysis guarantees string arguments for find")
-                }
-            }
-            Builtin::Replace => {
-                if let (Value::Str(s), Value::Str(old), Value::Str(new)) =
-                    (&arg_values[0], &arg_values[1], &arg_values[2])
-                {
-                    let s = builtins::string_replace(s, old, new, self.arena);
-                    Ok(Value::Str(ArenaCow::owned(s)))
-                } else {
-                    unreachable!("Semantic analysis guarantees string arguments for replace")
-                }
-            }
-            Builtin::Trim => {
-                if let Value::Str(s) = &arg_values[0] {
-                    let s = builtins::string_trim(s, self.arena);
-                    Ok(Value::Str(ArenaCow::owned(s)))
-                } else {
-                    unreachable!("Semantic analysis guarantees string argument for trim")
-                }
-            }
-            Builtin::ToString => {
-                let s = arg_values[0].to_string();
-                let s = ArenaString::from_str(self.arena, &s);
-                Ok(Value::Str(ArenaCow::owned(s)))
-            }
-            Builtin::ToNumber => {
-                if let Value::Str(s) = &arg_values[0] {
-                    let n = s.parse::<f64>().unwrap_or(f64::NAN);
-                    Ok(Value::Number(n))
-                } else {
-                    unreachable!("Semantic analysis guarantees string argument for to_number")
-                }
-            }
-            Builtin::TypeOf => {
-                let t = match &arg_values[0] {
-                    Value::Number(..) => "number",
-                    Value::Str(..) => "string",
-                    Value::Bool(..) => "boolean",
-                    Value::Array(..) => "array",
-                };
+
+            GlobalBuiltin::TypeOf => {
+                let t = GlobalBuiltin::type_of(&arg_values[0]);
                 Ok(Value::Str(ArenaCow::borrowed(t)))
             }
-            Builtin::ReadLine => {
+            GlobalBuiltin::ReadLine => {
                 let prompt = arg_values[0].to_string();
-                let s = sys::stdin::read_line(&prompt, self.arena)
+                let s = GlobalBuiltin::read_line(&prompt, self.arena)
                     .map_err(|err| RuntimeError { kind: RuntimeErrorKind::from(err), span })?;
                 Ok(Value::Str(ArenaCow::owned(s)))
             }
+        }
+    }
+
+    fn eval_member_call(
+        &mut self,
+        object: ExprRef<'src>,
+        field: &'src str,
+        args: &'src ArgList<'src>,
+    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+        // Array methods like push/pop requires mutable access to the array variable
+        // so we handle them first before evaluating the receiver
+        if ArrayBuiltin::from_name(field).is_some() {
+            return self.eval_array_member_call(object, field, args);
+        }
+
+        // Now we evaluate the receiver expression
+        let receiver = self.eval_expr(object)?;
+        match receiver {
+            Value::Str(s) => self.eval_string_member_call(s, field, args),
+            Value::Number(n) => self.eval_number_member_call(n, field),
+            Value::Array(..) => unreachable!("Array methods handled above"),
+            Value::Bool(..) => unimplemented!("Boolean methods not implemented yet"),
+        }
+    }
+
+    fn eval_array_member_call(
+        &mut self,
+        receiver: ExprRef<'src>,
+        field: &'src str,
+        args: &'src ArgList<'src>,
+    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+        let array_builtin = ArrayBuiltin::from_name(field)
+            .expect("Semantic analysis guarantees valid array method");
+
+        match array_builtin {
+            ArrayBuiltin::Push => {
+                let value = self.eval_expr(args.args[0])?;
+                let array = self.get_mutable_array(receiver)?;
+                ArrayBuiltin::push(array, value);
+                Ok(Value::Array(array.clone()))
+            }
+            ArrayBuiltin::Pop => {
+                let array = self.get_mutable_array(receiver)?;
+                ArrayBuiltin::pop(array);
+                Ok(Value::Array(array.clone()))
+            }
+            ArrayBuiltin::Len => {
+                let value = self.eval_expr(receiver)?;
+                match value {
+                    Value::Array(array) => Ok(Value::Number(ArrayBuiltin::len(&array))),
+                    _ => unreachable!("Semantic analysis guarantees array receiver"),
+                }
+            }
+        }
+    }
+
+    fn eval_string_member_call(
+        &mut self,
+        s: ArenaCow<'arena, 'src>,
+        field: &'src str,
+        args: &'src ArgList<'src>,
+    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+        let string_builtin = StringBuiltin::from_name(field)
+            .expect("Semantic analysis guarantees valid string method");
+        match string_builtin {
+            StringBuiltin::Len => Ok(Value::Number(StringBuiltin::len(&s))),
+            StringBuiltin::Slice => {
+                let start = self.eval_expr(args.args[0])?;
+                let end = self.eval_expr(args.args[1])?;
+                match (start, end) {
+                    (Value::Number(start), Value::Number(end)) => {
+                        let s = StringBuiltin::slice(&s, start, end, self.arena);
+                        Ok(Value::Str(ArenaCow::Owned(s)))
+                    }
+                    _ => unreachable!("Semantic analysis guarantees number args"),
+                }
+            }
+            StringBuiltin::ToUppercase => {
+                let s = StringBuiltin::to_uppercase(&s, self.arena);
+                Ok(Value::Str(ArenaCow::Owned(s)))
+            }
+            StringBuiltin::ToLowercase => {
+                let s = StringBuiltin::to_lowercase(&s, self.arena);
+                Ok(Value::Str(ArenaCow::Owned(s)))
+            }
+            StringBuiltin::Trim => {
+                let s = StringBuiltin::trim(&s, self.arena);
+                Ok(Value::Str(ArenaCow::Owned(s)))
+            }
+            StringBuiltin::Find => {
+                let needle = self.eval_expr(args.args[0])?;
+                match needle {
+                    Value::Str(n) => Ok(Value::Number(StringBuiltin::find(&s, &n))),
+                    _ => unreachable!("Semantic analysis guarantees string arg"),
+                }
+            }
+            StringBuiltin::Replace => {
+                let old = self.eval_expr(args.args[0])?;
+                let new = self.eval_expr(args.args[1])?;
+                match (old, new) {
+                    (Value::Str(o), Value::Str(n)) => {
+                        let result = StringBuiltin::replace(&s, &o, &n, self.arena);
+                        Ok(Value::Str(ArenaCow::Owned(result)))
+                    }
+                    _ => unreachable!("Semantic analysis guarantees string args"),
+                }
+            }
+            StringBuiltin::ToNumber => Ok(Value::Number(StringBuiltin::to_number(&s))),
+        }
+    }
+
+    fn eval_number_member_call(
+        &mut self,
+        n: f64,
+        field: &'src str,
+    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+        let number_builtin = NumberBuiltin::from_name(field)
+            .expect("Semantic analysis guarantees valid number method");
+        match number_builtin {
+            NumberBuiltin::Abs => Ok(Value::Number(NumberBuiltin::abs(n))),
+            NumberBuiltin::Sqrt => Ok(Value::Number(NumberBuiltin::sqrt(n))),
+            NumberBuiltin::Floor => Ok(Value::Number(NumberBuiltin::floor(n))),
+            NumberBuiltin::Ceil => Ok(Value::Number(NumberBuiltin::ceil(n))),
+            NumberBuiltin::Round => Ok(Value::Number(NumberBuiltin::round(n))),
+        }
+    }
+
+    fn get_mutable_array(
+        &mut self,
+        object: ExprRef<'src>,
+    ) -> Result<&mut Vec<Value<'arena, 'src>, &'arena Arena>, RuntimeError> {
+        match object {
+            Expr::Var(name, ..) => {
+                let var = self
+                    .lookup_var_mut(name)
+                    .expect("Semantic analysis guarantees variable exists");
+                match var {
+                    Value::Array(arr) => Ok(arr),
+                    _ => unreachable!("Semantic analysis guarantees array receiver"),
+                }
+            }
+            Expr::Index { .. } => {
+                let (base_var, index_exprs) = self.flatten_index_target(object);
+
+                let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.arena);
+                for (index_expr, index_span) in &index_exprs {
+                    let idx = self.eval_index_value(index_expr, *index_span)?;
+                    evaluated_indices.push((idx, *index_span));
+                }
+
+                let mut slot = self
+                    .lookup_var_mut(base_var)
+                    .expect("Semantic analysis guarantees variable exists");
+
+                for (idx, index_span) in evaluated_indices.iter() {
+                    match slot {
+                        Value::Array(items) => {
+                            if *idx >= items.len() {
+                                return Err(RuntimeError {
+                                    kind: RuntimeErrorKind::IndexOutOfBounds,
+                                    span: *index_span,
+                                });
+                            }
+                            // SAFETY: idx >= 0 and < items.len()
+                            slot = unsafe { items.get_unchecked_mut(*idx) };
+                        }
+                        _ => {
+                            return Err(RuntimeError {
+                                kind: RuntimeErrorKind::InvalidIndex,
+                                span: *index_span,
+                            });
+                        }
+                    }
+                }
+
+                match slot {
+                    Value::Array(arr) => Ok(arr),
+                    _ => unreachable!("Semantic analysis guarantees array receiver"),
+                }
+            }
+            _ => unreachable!("Semantic analysis guarantees variable or index as receiver"),
         }
     }
 
@@ -683,7 +757,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         span: Span,
     ) -> Result<(), RuntimeError> {
         let (base_var, index_exprs) = self.flatten_index_target(target);
-        assert!(!index_exprs.is_empty(), "Index assignment target should have at least one index");
 
         let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.arena);
         for (index_expr, index_span) in &index_exprs {
@@ -708,7 +781,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                         items[*idx] = value;
                         return Ok(());
                     }
-                    slot = items.get_mut(*idx).expect("Index checked above");
+                    // SAFETY: idx >= 0 and < items.len()
+                    slot = unsafe { items.get_unchecked_mut(*idx) };
                 }
                 _ => {
                     return Err(RuntimeError { kind: RuntimeErrorKind::InvalidIndex, span });

@@ -129,9 +129,6 @@ fn run_source(filename: &str, src: &str, arena: &Arena) -> ExitCode {
     if !err.diagnostics.is_empty() {
         err.report(src, filename);
     }
-    for value in &runtime.output {
-        println!("{value}")
-    }
 
     ExitCode::SUCCESS
 }

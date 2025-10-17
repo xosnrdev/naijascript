@@ -143,6 +143,8 @@ pub enum Expr<'ast> {
     // logical/arithmetic negation
     Unary { op: UnaryOp, expr: ExprRef<'ast>, span: Span },
     Bool(bool, Span), // "true", "false"
+    // Member access: expr.field
+    Member { object: ExprRef<'ast>, field: &'ast str, field_span: Span, span: Span },
 }
 
 /// Represents a block of statements, which can be nested.
@@ -254,7 +256,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let mut stmts = Vec::new_in(self.arena);
 
         while matches!(
-            &self.cur.token,
+            self.cur.token,
             Token::Make
                 | Token::IfToSay
                 | Token::Jasi
@@ -465,7 +467,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                             vec![Label {
                                 span,
                                 message: ArenaCow::Owned(arena_format!(
-                                    &self.arena,
+                                    self.arena,
                                     "`{p}` na reserved keyword"
                                 )),
                             }],
@@ -940,6 +942,52 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
 
         // Pratt parselet for function calls and binary operators
         loop {
+            // Member access: <expr>.<identifier>
+            if let Token::Dot = self.cur.token {
+                self.bump(); // consume '.'
+
+                let (field, field_span) = match &self.cur.token {
+                    Token::Identifier(name) => (*name, self.cur.span),
+                    t if t.is_reserved_keyword() => {
+                        let span = self.cur.span;
+                        self.emit_error(
+                            span,
+                            SyntaxError::ReservedKeyword,
+                            vec![Label {
+                                span,
+                                message: ArenaCow::Owned(arena_format!(
+                                    self.arena,
+                                    "`{t}` na reserved keyword"
+                                )),
+                            }],
+                        );
+                        ("_", span)
+                    }
+                    _ => {
+                        let span = self.cur.span;
+                        self.emit_error(
+                            span,
+                            SyntaxError::ExpectedIdentifier,
+                            vec![Label {
+                                span,
+                                message: ArenaCow::Borrowed("I dey expect identifier after `.`"),
+                            }],
+                        );
+                        ("_", span)
+                    }
+                };
+                self.bump(); // consume identifier
+
+                let end = self.cur.span.end;
+                lhs = self.alloc(Expr::Member {
+                    object: lhs,
+                    field,
+                    field_span,
+                    span: Range::from(start..end),
+                });
+                continue;
+            }
+
             // Function call: <expr>(<args>?)
             if let Token::LParen = self.cur.token {
                 let call_start = start;
@@ -1048,6 +1096,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             Expr::Call { span, .. } => *span,
             Expr::Index { span, .. } => *span,
             Expr::Array { span, .. } => *span,
+            Expr::Member { span, .. } => *span,
         }
     }
 

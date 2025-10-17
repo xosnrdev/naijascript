@@ -114,59 +114,6 @@ fn bench_parse_ctrl_flow(c: &mut Criterion) {
     });
 }
 
-fn bench_parse_long_program(c: &mut Criterion) {
-    let src = r#"
-        do factorial(n) start
-            if to say (n small pass 2) start
-                return 1
-            end
-            return n times factorial(n minus 1)
-        end
-
-        do fibonacci(n) start
-            if to say (n small pass 2) start
-                return n
-            end
-            return fibonacci(n minus 1) add fibonacci(n minus 2)
-        end
-
-        do gcd(a, b) start
-            jasi (b no be 0) start
-                make temp get b
-                b get a mod b
-                a get temp
-            end
-            return a
-        end
-
-        make i get 1
-        jasi (i small pass 20) start
-            make fact get factorial(i)
-            make fib get fibonacci(i)
-            if to say (i mod 3 na 0) start
-                shout("Multiple of 3: ", i)
-            end if not so start
-                if to say (i mod 2 na 0) start
-                    shout("Even: ", i)
-                end if not so start
-                    shout("Odd: ", i)
-                end
-            end
-            i get i add 1
-        end
-    "#;
-
-    c.bench_function("parse_long_program", |b| {
-        b.iter(|| {
-            let arena = scratch_arena(None);
-            let lexer = Lexer::new(src, &arena);
-            let mut parser = Parser::new(lexer, &arena);
-            let (root, error) = parser.parse_program();
-            black_box((root, error));
-        })
-    });
-}
-
 fn bench_parse_string_interpolation(c: &mut Criterion) {
     let src = r#"
         make name get "World"
@@ -205,7 +152,7 @@ fn bench_string_slice(c: &mut Criterion) {
     c.bench_function("string_slice", |b| {
         b.iter(|| {
             let arena = scratch_arena(None);
-            let s = builtins::string_slice(src, 0.0, 5.0, &arena);
+            let s = builtins::StringBuiltin::slice(src, 0.0, 5.0, &arena);
             black_box(s);
         })
     });
@@ -233,7 +180,6 @@ fn bench(c: &mut Criterion) {
     bench_parse_arithmetic_expr(c);
     bench_parse_fn_def(c);
     bench_parse_ctrl_flow(c);
-    bench_parse_long_program(c);
     bench_parse_string_interpolation(c);
     bench_parse_nested_expr(c);
 }

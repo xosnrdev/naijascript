@@ -27,7 +27,7 @@ impl<'a> ArenaString<'a> {
     /// Turns a [`str`] into an [`ArenaString`].
     #[must_use]
     pub fn from_str(arena: &'a Arena, s: &str) -> Self {
-        let mut res = Self::new_in(arena);
+        let mut res = Self::with_capacity_in(s.len(), arena);
         res.push_str(s);
         res
     }
