@@ -30,11 +30,6 @@ Expected output example:
 naijascript 0.11.5
 ```
 
-You can also confirm the binary location:
-
-- Linux/macOS: `which naija`
-- PowerShell: `Get-Command naija`
-
 ## First program
 
 Create `hello.ns`:

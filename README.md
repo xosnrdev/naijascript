@@ -31,7 +31,9 @@ you are not just writing code but thinking computationally in your natural lingu
 
 This is more than syntax translation. It represents a fundamental shift toward inclusive technology that recognizes linguistic diversity as strength. By removing artificial barriers, NaijaScript opens programming education to millions while demonstrating that powerful software can emerge from any cultural context.
 
-The language proves this philosophy through performance. In benchmarks, NaijaScript often outperforms JavaScript and Python in string manipulation, mathematical computation, and algorithmic tasks making cultural authenticity and technical excellence complementary goals. Read more in [this article](https://hackmd.io/sIhWJ4QeSAGiaE3D-xiieg).
+The language proves this philosophy through performance. In benchmarks, NaijaScript often outperforms JavaScript and Python in string manipulation, mathematical computation, and algorithmic tasks making cultural authenticity and technical excellence complementary goals.
+
+Read more in [this article](https://hackmd.io/sIhWJ4QeSAGiaE3D-xiieg).
 
 ## Limitations
 
@@ -70,11 +72,6 @@ Expected output example:
 ```text
 naijascript 0.11.5
 ```
-
-You can also confirm the binary location:
-
-- Linux/macOS: `which naija`
-- PowerShell: `Get-Command naija`
 
 See the [Installation Guide](./INSTALL.md) for more.
 
