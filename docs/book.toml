@@ -8,3 +8,4 @@ title = "The NaijaScript Interpreter"
 default-theme = "ayu"
 git-repository-url = "https://github.com/xosnrdev/naijascript"
 edit-url-template = "https://github.com/xosnrdev/naijascript/edit/docs/{path}"
+additional-css = ["theme/css/custom.css"]

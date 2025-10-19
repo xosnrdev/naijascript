@@ -1,6 +1,6 @@
 # Functions
 
-## Declaration
+## Definition
 
 Define a function with `do name(params) start ... end`:
 

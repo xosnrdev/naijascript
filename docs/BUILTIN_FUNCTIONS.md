@@ -2,45 +2,49 @@
 
 ## I/O functions
 
-- shout(value)  
-   Prints value to the console.
+### shout(value)
 
-  Example:
+Prints value to the console.
 
-  ```naijascript
-  shout("Hello, World!")
-  ```
+Example:
 
-- read_line(prompt)  
-   Prompts the user and reads a single line from standard input. Returns a string with the line.
+```naijascript
+shout("Hello, World!")
+```
 
-  Example:
+### read_line(prompt)
 
-  ```naijascript
-  make name get read_line("Enter name: ")
-  shout("Hello {name}")
-  ```
+Prompts the user and reads a single line from standard input. Returns a string with the line.
+
+Example:
+
+```naijascript
+make name get read_line("Enter name: ")
+shout("Hello {name}")
+```
 
 ## Introspection
 
-- typeof(value)  
-   Returns the runtime type of value as a string: "number", "string", "boolean", or "array".
+### typeof(value)
 
-  Example:
+Returns the runtime type of value as a string: "number", "string", "boolean", or "array".
 
-  ```naijascript
-  make foo get 42
-  make t get typeof(foo)
-  shout("foo is a {t}")
-  ```
+Example:
 
-- to_string(value)  
-   Converts the given value to its string representation.
+```naijascript
+make foo get 42
+make t get typeof(foo)
+shout("foo is a {t}")
+```
 
-  Example:
+### to_string(value)
 
-  ```naijascript
-  make x get 42
-  make s get to_string(x)
-  shout(s)
-  ```
+Converts the given value to its string representation.
+
+Example:
+
+```naijascript
+make x get 42
+make s get to_string(x)
+shout(s)
+```
