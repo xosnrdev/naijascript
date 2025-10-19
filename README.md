@@ -12,29 +12,33 @@ A scripting language interpreter inspired by the expressive linguistics of Naija
 
 ## Motivation
 
-Programming should not require abandoning your cultural identity. For over 75 million speakers of Nigerian Pidgin English, learning to code has meant translating thoughts between languages before expressing computational logic.
+Programming should not require abandoning your cultural identity.
 
-NaijaScript eliminates this cognitive overhead by embracing authentic Pidgin expressions as first-class programming constructs. When you write `make age get 25` instead of `let age = 25`, you are not just writing code but thinking computationally in your natural linguistic patterns.
+For over 75 million speakers of Nigerian Pidgin English, learning to code has meant translating thoughts between languages before expressing computational logic.
+
+NaijaScript eliminates this cognitive overhead by embracing authentic Pidgin expressions as first-class programming constructs.
+
+When you write:
+
+```naijascript
+make age get 25
+if to say (age pass 18) start
+    shout("You fit vote!")
+end
+```
+
+you are not just writing code but thinking computationally in your natural linguistic patterns.
 
 This is more than syntax translation. It represents a fundamental shift toward inclusive technology that recognizes linguistic diversity as strength. By removing artificial barriers, NaijaScript opens programming education to millions while demonstrating that powerful software can emerge from any cultural context.
 
-The language proves this philosophy through performance. In benchmarks, NaijaScript often outperforms JavaScript and Python in string manipulation, mathematical computation, and algorithmic tasks. Cultural authenticity and technical excellence are not opposing forces.
+The language proves this philosophy through performance. In benchmarks, NaijaScript often outperforms JavaScript and Python in string manipulation, mathematical computation, and algorithmic tasks making cultural authenticity and technical excellence complementary goals. Read more in [this article](https://hackmd.io/sIhWJ4QeSAGiaE3D-xiieg).
 
-## Acknowledgements
+### Limitations
 
-NaijaScript serves as an educational tool and experimental platform for exploring culturally-rooted programming languages. It is particularly effective for:
-
-- Grasping computational concepts without simultaneous linguistic translation
-- Quick automation tasks using familiar language patterns
-- Studying the impact of linguistic accessibility on programming comprehension
-- Building software that reflects Nigerian linguistic heritage
-
-### Current Limitations
-
-As an experimental language, NaijaScript has intentional constraints:
+While NaijaScript aims to be a practical scripting language, it currently has some limitations:
 
 - No package management or extensive standard library yet
-- Optimized for educational and scripting use cases, not large-scale applications
+- Designed for educational and scripting use cases, not large-scale applications
 - Lacks IDE support and advanced tooling
 
 ## Getting Started

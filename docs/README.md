@@ -1,10 +1,16 @@
 # The NaijaScript Interpreter
 
-Welcome to **NaijaScript**, where programming meets cultural authenticity. This book will teach you a scripting language that speaks your language literally, removing artificial barriers between thought and computational expression.
+Welcome to **NaijaScript**, where programming meets cultural authenticity.
 
-## What is NaijaScript?
+This book will teach you a scripting language that speaks Nigerian Pidgin English literally, removing artificial barriers between thought and computational expression.
 
-NaijaScript is a programming language built around Nigerian Pidgin English, designed to make coding accessible to over 75 million Pidgin speakers. But this is not simply English words with Nigerian flavor. NaijaScript represents a fundamental rethinking of how programming languages can embrace linguistic diversity while maintaining technical excellence.
+## Motivation
+
+Programming should not require abandoning your cultural identity.
+
+For over 75 million speakers of Nigerian Pidgin English, learning to code has meant translating thoughts between languages before expressing computational logic.
+
+NaijaScript eliminates this cognitive overhead by embracing authentic Pidgin expressions as first-class programming constructs.
 
 When you write:
 
@@ -15,36 +21,23 @@ if to say (age pass 18) start
 end
 ```
 
-You are not translating between languages in your head. You are thinking computationally in patterns that feel natural, using expressions that reflect how you actually communicate.
+you are not just writing code but thinking computationally in your natural linguistic patterns.
 
-## Why NaijaScript Matters
+This is more than syntax translation. It represents a fundamental shift toward inclusive technology that recognizes linguistic diversity as strength. By removing artificial barriers, NaijaScript opens programming education to millions while demonstrating that powerful software can emerge from any cultural context.
 
-Programming education has long assumed that learners must first master foreign linguistic constructs before expressing computational logic. This creates unnecessary cognitive overhead, forcing students to simultaneously learn programming concepts and unfamiliar syntax patterns.
+The language proves this philosophy through performance. In benchmarks, NaijaScript often outperforms JavaScript and Python in string manipulation, mathematical computation, and algorithmic tasks making cultural authenticity and technical excellence complementary goals. Read more in [this article](https://hackmd.io/sIhWJ4QeSAGiaE3D-xiieg).
 
-NaijaScript eliminates this barrier. Research shows that Pidgin English serves as Nigeria's true lingua franca, bridging diverse ethnic groups and social contexts. By grounding programming syntax in this authentic linguistic foundation, NaijaScript makes computational thinking accessible to millions who were previously excluded by linguistic barriers.
+### Limitations
 
-## Performance and Practicality
+While NaijaScript aims to be a practical scripting language, it currently has some limitations:
 
-Cultural authenticity does not compromise technical capability. NaijaScript benchmarks demonstrate competitive performance, often outperforming JavaScript and Python in string manipulation, mathematical computation, and algorithmic tasks. The interpreter uses modern techniques including:
+- No package management or extensive standard library yet
+- Designed for educational and scripting use cases, not large-scale applications
+- Lacks IDE support and advanced tooling
 
-- **Tree-walk evaluation** with efficient memory management
-- **Static semantic analysis** for early error detection
-- **WebAssembly compilation** for browser deployment
-- **Comprehensive error reporting** in culturally familiar language
+## What you will learn
 
-## What You Will Learn
+- How to install NaijaScript and run the interpreter
+- The language syntax and core semantics
 
-This book covers the essential knowledge for working with NaijaScript:
-
-- **Installation**: Get NaijaScript running on your system quickly
-- **Syntax Reference**: Master the complete language through practical examples
-
-Additional chapters covering advanced topics and real-world applications are planned as the language evolves.
-
-## A Living Language
-
-NaijaScript will continue evolving based on community feedback and real-world usage. The language embraces experimentation and iteration, reflecting the dynamic nature of both technology and culture.
-
-Whether you are learning programming for the first time, exploring cultural computing, or researching linguistic accessibility in technology, NaijaScript offers a unique perspective on how programming languages can serve human diversity rather than constrain it.
-
-Ready to begin? Let's start with [installation](installation.md).
+Ready to begin? Let's start with [installation](INSTALLATION.md).

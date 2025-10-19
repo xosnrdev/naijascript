@@ -6,7 +6,7 @@
 
 - [Installation](INSTALLATION.md)
 
-## Reference
+## Language Constructs
 
 - [Variables](VARIABLES.md)
 - [Comments](COMMENTS.md)
