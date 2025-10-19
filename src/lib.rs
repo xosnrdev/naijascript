@@ -32,7 +32,7 @@ use {
 #[cfg(target_family = "wasm")]
 #[wasm_bindgen]
 pub fn run_source(src: &str, filename: &str) -> String {
-    if let Err(err) = arena::init(GIBI) {
+    if let Err(err) = arena::init(256 * MEBI) {
         return format!("Failed to initialize arena: {err}");
     }
     let arena = scratch_arena(None);
