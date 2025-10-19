@@ -33,7 +33,7 @@ This is more than syntax translation. It represents a fundamental shift toward i
 
 The language proves this philosophy through performance. In benchmarks, NaijaScript often outperforms JavaScript and Python in string manipulation, mathematical computation, and algorithmic tasks making cultural authenticity and technical excellence complementary goals. Read more in [this article](https://hackmd.io/sIhWJ4QeSAGiaE3D-xiieg).
 
-### Limitations
+## Limitations
 
 While NaijaScript aims to be a practical scripting language, it currently has some limitations:
 
@@ -45,53 +45,54 @@ While NaijaScript aims to be a practical scripting language, it currently has so
 
 ### Installation
 
-The easiest way to install the interpreter is using our installation scripts:
+Linux/macOS
 
-**Linux/macOS:**
-
-```sh
+```bash
 curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.sh | sh
 ```
 
-**Windows (PowerShell):**
+Windows (PowerShell)
 
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/xosnrdev/naijascript/master/scripts/install.ps1 | iex"
 ```
 
-This installs the latest stable release.
+These scripts download the latest stable release, install the `naija` interpreter, and add the install directory to your PATH. You may need to restart your terminal after installation.
 
-The installer adds `naija` to your PATH automatically. You may need to restart your terminal after installation.
+Verify the install
 
-### Usage
-
-Try run your first program
-
-Create a file called `hello.ns`:
-
-```naijascript
-shout("Hello World!")
+```bash
+naija --version
 ```
 
-Execute it with:
+Expected output example:
+
+```text
+naijascript 0.11.5
+```
+
+You can also confirm the binary location:
+
+- Linux/macOS: `which naija`
+- PowerShell: `Get-Command naija`
+
+See the [Installation Guide](./INSTALL.md) for more.
+
+### First program
+
+Create `hello.ns`:
+
+```naijascript
+shout("Hello, World!")
+```
+
+Run it:
 
 ```bash
 naija hello.ns
 ```
 
-You can also run code directly:
-
-```bash
-naija --eval 'shout("Hello World!")'
-```
-
-Or pipe code through standard input:
-
-```bash
-echo 'shout("Hello World!")' | naija -
-```
-
-For help with available commands:
+For help:
 
 ```bash
 naija help
@@ -99,8 +100,8 @@ naija help
 
 ### Documentation
 
-- [Language Guide](https://xosnrdev.github.io/naijascript/)
-- [Online Playground](https://naijascript-playground.pages.dev)
+- [Official Documentation](https://xosnrdev.github.io/naijascript/)
+- [Web Playground](https://naijascript-playground.pages.dev)
 - [Examples](./examples/)
 
 ## Contributing
