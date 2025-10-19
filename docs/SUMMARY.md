@@ -4,8 +4,8 @@
 
 ## Getting Started
 
-- [Installation](installation.md)
+- [Installation](INSTALLATION.md)
 
 ## Reference
 
-- [Language Syntax](syntax-reference.md)
+- [Language Syntax](SYNTAX.md)
