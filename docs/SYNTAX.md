@@ -1,92 +1,10 @@
 # Syntax Reference
 
-This page provides a complete reference for NaijaScript syntax, organized by language construct. Use this as a quick lookup for language features.
+This page provides a complete reference for NaijaScript syntax, organized by language construct.
 
-## Variables
-
-### Declaration
-
-```naijascript
-make variable_name get value
-```
-
-### Assignment
-
-```naijascript
-variable_name get new_value
-```
-
-### Examples
-
-```naijascript
-make name get "Kemi"
-make age get 25
-make is_student get true
-make scores get [85, 90, 92]
-
-age get 26  # reassignment
-```
-
-## Data Types
-
-### Numbers
-
-```naijascript
-make integer get 42
-make decimal get 3.14159
-make negative get 0 minus 10
-```
-
-### Strings
-
-```naijascript
-make greeting get "Hello!"
-make name get "Adaeze"
-make empty get ""
-
-# String interpolation
-make message get "My name is {name}"
-```
-
-### Booleans
-
-```naijascript
-make is_true get true
-make is_false get false
-```
-
-### Arrays
-
-```naijascript
-make fruits get ["apple", "banana", "orange"]
-make numbers get [1, 2, 3, 4, 5]
-make mixed get ["text", 42, true]
-make nested get [[1, 2], [3, 4], [5, 6], [7, 8]]
-
-# Accessing elements
-make first_fruit get fruits[0]
-make second_number get numbers[1]
-make third_mixed get mixed[2]
-make fourth_nested get nested[3][0]
-
-# Index assignment
-fruits[0] get "kiwi"
-numbers[1] get 6
-mixed[2] get false
-nested[3][0] get 9
-```
+> Use this as a quick lookup for language features and syntax.
 
 ## Operators
-
-### Arithmetic
-
-```naijascript
-a add b      # Addition
-a minus b    # Subtraction
-a times b    # Multiplication
-a divide b   # Division
-a mod b      # Modulus (remainder)
-```
 
 ### Comparison
 
@@ -94,14 +12,6 @@ a mod b      # Modulus (remainder)
 a na b           # Equal to
 a pass b         # Greater than
 a small pass b   # Less than
-```
-
-### Logical
-
-```naijascript
-a and b     # Logical AND
-a or b      # Logical OR
-not a       # Logical NOT
 ```
 
 ## Control Flow
@@ -165,18 +75,6 @@ ceil(number)        # Round up
 round(number)       # Round to nearest integer
 ```
 
-### String Functions
-
-```naijascript
-len(string)                      # String length
-slice(string, start, length)     # Extract substring
-upper(string)                    # Convert to uppercase
-lower(string)                    # Convert to lowercase
-trim(string)                     # Remove whitespace
-find(string, substring)          # Find position of substring
-replace(string, old, new)        # Replace text
-```
-
 ### Type Functions
 
 ```naijascript
@@ -190,12 +88,4 @@ to_number(string)    # Convert string to number
 ```naijascript
 # Single line comment
 make value get 42  # Inline comment
-```
-
-## String Interpolation
-
-```naijascript
-make name get "Aisha"
-make message get "Hello, {name}!"
-make calculation get "Result: {5 add 3}"
 ```
