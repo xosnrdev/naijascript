@@ -1,11 +1,26 @@
 # The NaijaScript Interpreter
 
-[Introduction](README.md)
+- [Introduction](README.md)
 
-## Getting Started
+# Getting Started
 
-- [Installation](installation.md)
+- [Installation](INSTALLATION.md)
+- [Variables](VARIABLES.md)
+- [Comments](COMMENTS.md)
 
-## Reference
+# Data Types
 
-- [Language Syntax](syntax-reference.md)
+- [Numbers](NUMBERS.md)
+- [Strings](STRINGS.md)
+- [Booleans](BOOLEANS.md)
+- [Arrays](ARRAYS.md)
+
+# Control Flow
+
+- [Conditionals](CONDITIONALS.md)
+- [Loops](LOOPS.md)
+
+# Functions
+
+- [Defining Functions](FUNCTIONS.md)
+- [Built-in Functions](BUILTIN_FUNCTIONS.md)
