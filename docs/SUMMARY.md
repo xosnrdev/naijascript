@@ -9,6 +9,7 @@
 ## Reference
 
 - [Variables](VARIABLES.md)
+- [Comments](COMMENTS.md)
 
 ### Data Types
 
@@ -21,3 +22,8 @@
 
 - [Conditionals](CONDITIONALS.md)
 - [Loops](LOOPS.md)
+
+## Functions
+
+- [Defining Functions](FUNCTIONS.md)
+- [Built-in Functions](BUILTIN_FUNCTIONS.md)
