@@ -53,13 +53,3 @@ Available arithmetic operators:
 | `times`  | Multiplication |
 | `divide` | Division       |
 | `mod`    | Modulo         |
-
-Examples:
-
-```naijascript
-make sum get 5 add 3
-make diff get 10 minus 4
-make prod get 7 times 6
-make quot get 20 divide 5
-make rem get 10 mod 3
-```
