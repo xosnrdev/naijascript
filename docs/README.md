@@ -1,4 +1,4 @@
-# The NaijaScript Interpreter
+# Introduction
 
 Welcome to **NaijaScript**, where programming meets cultural authenticity.
 
