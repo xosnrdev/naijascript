@@ -60,6 +60,7 @@ pub enum Token<'arena, 'input> {
     LBracket, // "["
     RBracket, // "]"
     Comma,    // ","
+    Dot,      // "."
 
     // Special tokens
     #[default]
@@ -91,6 +92,7 @@ impl<'arena, 'input> std::fmt::Display for Token<'arena, 'input> {
             Token::False => write!(f, "false"),
             Token::LBracket => write!(f, "["),
             Token::RBracket => write!(f, "]"),
+            Token::Dot => write!(f, "."),
             _ => write!(f, "{self:?}"),
         }
     }

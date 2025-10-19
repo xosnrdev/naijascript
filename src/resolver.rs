@@ -1,10 +1,14 @@
 //! The resolver (semantic analyzer) for NaijaScript.
 
+use core::fmt;
 use std::collections::HashSet;
 
 use crate::arena::{Arena, ArenaCow};
 use crate::arena_format;
-use crate::builtins::{Builtin, BuiltinReturnType};
+use crate::builtins::{
+    ArrayBuiltin, Builtin, BuiltinReturnType, GlobalBuiltin, MemberBuiltin, NumberBuiltin,
+    StringBuiltin,
+};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts, StringSegment,
@@ -47,12 +51,25 @@ enum ValueType {
     Dynamic,
 }
 
+impl fmt::Display for ValueType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ValueType::Number => write!(f, "number"),
+            ValueType::String => write!(f, "string"),
+            ValueType::Bool => write!(f, "boolean"),
+            ValueType::Array => write!(f, "array"),
+            ValueType::Dynamic => write!(f, "dynamic"),
+        }
+    }
+}
+
 impl From<BuiltinReturnType> for ValueType {
     fn from(builtin_type: BuiltinReturnType) -> Self {
         match builtin_type {
             BuiltinReturnType::Number => ValueType::Number,
             BuiltinReturnType::String => ValueType::String,
             BuiltinReturnType::Bool => ValueType::Bool,
+            BuiltinReturnType::Array => ValueType::Array,
         }
     }
 }
@@ -160,7 +177,7 @@ impl<'ast> Resolver<'ast> {
         match stmt {
             // Handle "make variable get expression" statements
             Stmt::Assign { var, var_span, expr, .. } => {
-                if Builtin::from_name(var).is_some() {
+                if GlobalBuiltin::from_name(var).is_some() {
                     self.emit_error(
                         *var_span,
                         SemanticError::ReservedKeyword,
@@ -222,7 +239,7 @@ impl<'ast> Resolver<'ast> {
                 self.check_block(block);
             }
             Stmt::FunctionDef { name, name_span, params, body, span } => {
-                if Builtin::from_name(name).is_some() {
+                if GlobalBuiltin::from_name(name).is_some() {
                     self.emit_error(
                         *name_span,
                         SemanticError::ReservedKeyword,
@@ -298,7 +315,7 @@ impl<'ast> Resolver<'ast> {
         // Check for duplicate parameter names
         let mut set = HashSet::with_capacity(params.params.len());
         for (param_name, param_span) in params.params.iter().zip(params.param_spans.iter()) {
-            if Builtin::from_name(param_name).is_some() {
+            if GlobalBuiltin::from_name(param_name).is_some() {
                 self.emit_error(
                     *param_span,
                     SemanticError::ReservedKeyword,
@@ -393,6 +410,7 @@ impl<'ast> Resolver<'ast> {
                 Expr::Call { span, .. } => *span,
                 Expr::Index { span, .. } => *span,
                 Expr::Array { span, .. } => *span,
+                Expr::Member { span, .. } => *span,
             };
             self.emit_error(
                 span,
@@ -587,12 +605,16 @@ impl<'ast> Resolver<'ast> {
                     }
                 }
             }
+            Expr::Member { object, .. } => {
+                // We don't track precise receiver types, so validation is deferred to runtime
+                self.check_expr(object);
+            }
             Expr::Call { callee, args, span } => {
                 // Check the callee expression
                 match callee {
                     Expr::Var(func_name, ..) => {
                         // Check if this is a built-in function first
-                        if let Some(builtin) = Builtin::from_name(func_name) {
+                        if let Some(builtin) = GlobalBuiltin::from_name(func_name) {
                             // Validate arity for built-in functions
                             if args.args.len() != builtin.arity() {
                                 self.emit_error(
@@ -642,11 +664,66 @@ impl<'ast> Resolver<'ast> {
                             );
                         }
                     }
+                    Expr::Member { object, field, .. } => {
+                        self.check_expr(object);
+
+                        if let Some(receiver_type) = self.infer_expr_type(object) {
+                            // Is it a dynamic type ?
+                            if receiver_type == ValueType::Dynamic {
+                                return;
+                            }
+
+                            let builtin = match receiver_type {
+                                ValueType::String => {
+                                    StringBuiltin::from_name(field).map(MemberBuiltin::String)
+                                }
+                                ValueType::Array => {
+                                    ArrayBuiltin::from_name(field).map(MemberBuiltin::Array)
+                                }
+                                ValueType::Number => {
+                                    NumberBuiltin::from_name(field).map(MemberBuiltin::Number)
+                                }
+                                ValueType::Bool | ValueType::Dynamic => None,
+                            };
+
+                            if let Some(builtin) = builtin {
+                                if args.args.len() != builtin.arity() {
+                                    self.emit_error(
+                                        *span,
+                                        SemanticError::FunctionCallArity,
+                                        vec![Label {
+                                            span: *span,
+                                            message: ArenaCow::Owned(arena_format!(
+                                                self.arena,
+                                                "Method `{}` dey expect {} argument{} but you pass {}",
+                                                field,
+                                                builtin.arity(),
+                                                if builtin.arity() == 1 { "" } else { "s" },
+                                                args.args.len()
+                                            )),
+                                        }],
+                                    );
+                                }
+                            } else {
+                                self.emit_error(
+                                    *span,
+                                    SemanticError::UndeclaredIdentifier,
+                                    vec![Label {
+                                        span: *span,
+                                        message: ArenaCow::Owned(arena_format!(
+                                            self.arena,
+                                            "Method `{field}` no dey for {receiver_type} type",
+                                        )),
+                                    }],
+                                );
+                            }
+                        }
+                    }
                     _ => self.check_expr(callee),
                 }
 
                 // Check all arguments
-                for &arg in args.args {
+                for arg in args.args {
                     self.check_expr(arg);
                 }
             }
@@ -730,14 +807,26 @@ impl<'ast> Resolver<'ast> {
                     }
                 }
             }
+            Expr::Member { .. } => {
+                // Member expressions return methods/properties
+                // We don't know the exact type until runtime
+                Some(ValueType::Dynamic)
+            }
             Expr::Call { callee, .. } => match callee {
                 Expr::Var(func_name, ..) => {
-                    if let Some(builtin) = Builtin::from_name(func_name) {
+                    if let Some(builtin) = GlobalBuiltin::from_name(func_name) {
                         Some(ValueType::from(builtin.return_type()))
                     } else if self.lookup_func(func_name).is_some() {
                         Some(ValueType::Dynamic)
                     } else {
                         None
+                    }
+                }
+                Expr::Member { field, .. } => {
+                    if let Some(builtin) = MemberBuiltin::from_name(field) {
+                        Some(ValueType::from(builtin.return_type()))
+                    } else {
+                        Some(ValueType::Dynamic)
                     }
                 }
                 _ => None,

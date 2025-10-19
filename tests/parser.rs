@@ -303,6 +303,28 @@ fn test_parse_function_call_missing_rparen() {
 }
 
 #[test]
+fn test_parse_method_call() {
+    let src = "foo().bar()";
+    assert_parse!(src);
+    let src = "foo().bar().baz()";
+    assert_parse!(src);
+}
+
+#[test]
+fn test_parse_method_call_reserved_keyword_member() {
+    let src = "foo().make()";
+    assert_parse!(src, SyntaxError::ReservedKeyword);
+}
+
+#[test]
+fn test_parse_method_call_missing_member() {
+    let src = "foo().";
+    assert_parse!(src, SyntaxError::ExpectedIdentifier);
+    let src = "foo().bar().";
+    assert_parse!(src, SyntaxError::ExpectedIdentifier);
+}
+
+#[test]
 fn test_parse_return_no_value() {
     let src = "return";
     assert_parse!(src);

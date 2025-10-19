@@ -386,12 +386,15 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 self.pos += 1;
                 Some(Token::Comma)
             }
+            b'.' => {
+                self.pos += 1;
+                Some(Token::Dot)
+            }
             _ => None,
         }
     }
 
     fn scan_number(&mut self, start: usize) -> Token<'arena, 'input> {
-        let mut saw_dot = false;
         let len = self.len;
 
         // Try consume the integer part first
@@ -409,7 +412,6 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         unsafe {
             *self.src.get_unchecked(self.pos) == b'.'
         } {
-            saw_dot = true;
             self.pos += 1;
 
             let after_dot = if self.pos < len {
@@ -437,23 +439,6 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             {
                 self.pos += 1;
             }
-        }
-
-        // Multiple dots in the number, like "1.2.3" ?
-        if saw_dot && self.pos < len &&
-        // SAFETY: self.pos < len, so this is safe
-        unsafe { *self.src.get_unchecked(self.pos) == b'.'  }
-        {
-            self.pos += 1;
-            self.emit_error(
-                Range::from(start..self.pos),
-                LexError::InvalidNumber,
-                vec![Label {
-                    span: Range::from(start..self.pos),
-                    message: ArenaCow::Borrowed("Dis number get extra `.`"),
-                }],
-            );
-            return self.next_token().token;
         }
 
         // Is it a letter or underscore (like "1foo" or "1_bar") ?
