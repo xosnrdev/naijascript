@@ -27,7 +27,7 @@ shout("Hello {name}")
 
 ### typeof(value)
 
-Returns the runtime type of value as a string: "number", "string", "boolean", or "array".
+Returns the runtime type of value as a string: "number", "string", "boolean", "array", or "null".
 
 Example:
 
