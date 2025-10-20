@@ -275,6 +275,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             )),
             Expr::String { parts, .. } => self.eval_string_expr(parts),
             Expr::Bool(b, ..) => Ok(Value::Bool(*b)),
+            Expr::Null(..) => Ok(Value::Null),
             Expr::Var(v, ..) => {
                 let val = self
                     .lookup_var(v)

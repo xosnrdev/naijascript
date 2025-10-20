@@ -408,6 +408,7 @@ impl<'ast> Resolver<'ast> {
         {
             let span = match expr {
                 Expr::Number(.., span) => *span,
+                Expr::Null(span) => *span,
                 Expr::String { span, .. } => *span,
                 Expr::Bool(.., span) => *span,
                 Expr::Var(.., span) => *span,
@@ -430,7 +431,7 @@ impl<'ast> Resolver<'ast> {
     fn check_expr(&mut self, expr: ExprRef<'ast>) {
         match expr {
             // Literals are always valid since they represent concrete values
-            Expr::Number(..) | Expr::Bool(..) => {}
+            Expr::Number(..) | Expr::Bool(..) | Expr::Null(..) => {}
             Expr::String { parts, span } => {
                 if let StringParts::Interpolated(segments) = parts {
                     for segment in *segments {
@@ -740,6 +741,7 @@ impl<'ast> Resolver<'ast> {
     fn infer_expr_type(&self, expr: ExprRef<'ast>) -> Option<ValueType> {
         match expr {
             Expr::Number(..) => Some(ValueType::Number),
+            Expr::Null(..) => Some(ValueType::Null),
             Expr::String { .. } => Some(ValueType::String),
             Expr::Bool(..) => Some(ValueType::Bool),
             Expr::Array { .. } => Some(ValueType::Array),
