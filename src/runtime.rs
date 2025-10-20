@@ -876,8 +876,22 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     fn lookup_var_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
-        self.lookup_call_stack_mut(name);
-        self.lookup_env_mut(name)
+        if let Some(activation) = self.call_stack.last_mut() {
+            for (var, val) in activation.local_vars.iter_mut() {
+                if *var == name {
+                    return Some(val);
+                }
+            }
+        }
+
+        for scope in self.env.iter_mut().rev() {
+            for (var, val) in scope.iter_mut() {
+                if *var == name {
+                    return Some(val);
+                }
+            }
+        }
+        None
     }
 
     fn lookup_func(&self, name: &str) -> usize {
@@ -890,12 +904,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     fn lookup_env(&self, name: &str) -> Option<&Value<'arena, 'src>> {
         self.env.iter().rev().find_map(|scope| {
             scope.iter().find_map(|(var, val)| if *var == name { Some(val) } else { None })
-        })
-    }
-
-    fn lookup_env_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
-        self.env.iter_mut().rev().find_map(|scope| {
-            scope.iter_mut().find_map(|(var, val)| if *var == name { Some(val) } else { None })
         })
     }
 
