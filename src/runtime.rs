@@ -552,14 +552,41 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         match array_builtin {
             ArrayBuiltin::Push => {
                 let value = self.eval_expr(args.args[0])?;
-                let array = self.get_mutable_array(receiver)?;
-                ArrayBuiltin::push(array, value);
-                Ok(Value::Array(array.clone()))
+
+                // Is receiver an assignable ?
+                if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
+                    let array = self.get_mutable_array(receiver)?;
+                    ArrayBuiltin::push(array, value);
+                    Ok(Value::Array(array.clone()))
+                } else {
+                    // Oh, we need to clone the array
+                    let receiver_value = self.eval_expr(receiver)?;
+                    match receiver_value {
+                        Value::Array(mut arr) => {
+                            ArrayBuiltin::push(&mut arr, value);
+                            Ok(Value::Array(arr))
+                        }
+                        _ => unreachable!("Semantic analysis guarantees array receiver"),
+                    }
+                }
             }
             ArrayBuiltin::Pop => {
-                let array = self.get_mutable_array(receiver)?;
-                ArrayBuiltin::pop(array);
-                Ok(Value::Array(array.clone()))
+                // Is receiver an assignable ?
+                if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
+                    let array = self.get_mutable_array(receiver)?;
+                    ArrayBuiltin::pop(array);
+                    Ok(Value::Array(array.clone()))
+                } else {
+                    // Oh, we need to clone the array
+                    let receiver_value = self.eval_expr(receiver)?;
+                    match receiver_value {
+                        Value::Array(mut arr) => {
+                            ArrayBuiltin::pop(&mut arr);
+                            Ok(Value::Array(arr))
+                        }
+                        _ => unreachable!("Semantic analysis guarantees array receiver"),
+                    }
+                }
             }
             ArrayBuiltin::Len => {
                 let value = self.eval_expr(receiver)?;
