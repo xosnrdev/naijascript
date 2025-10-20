@@ -556,14 +556,41 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         match array_builtin {
             ArrayBuiltin::Push => {
                 let value = self.eval_expr(args.args[0])?;
-                let array = self.get_mutable_array(receiver)?;
-                ArrayBuiltin::push(array, value);
-                Ok(Value::Array(array.clone()))
+
+                // Is receiver an assignable ?
+                if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
+                    let array = self.get_mutable_array(receiver)?;
+                    ArrayBuiltin::push(array, value);
+                    Ok(Value::Array(array.clone()))
+                } else {
+                    // Oh, we need to clone the array
+                    let receiver_value = self.eval_expr(receiver)?;
+                    match receiver_value {
+                        Value::Array(mut arr) => {
+                            ArrayBuiltin::push(&mut arr, value);
+                            Ok(Value::Array(arr))
+                        }
+                        _ => unreachable!("Semantic analysis guarantees array receiver"),
+                    }
+                }
             }
             ArrayBuiltin::Pop => {
-                let array = self.get_mutable_array(receiver)?;
-                ArrayBuiltin::pop(array);
-                Ok(Value::Array(array.clone()))
+                // Is receiver an assignable ?
+                if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
+                    let array = self.get_mutable_array(receiver)?;
+                    ArrayBuiltin::pop(array);
+                    Ok(Value::Array(array.clone()))
+                } else {
+                    // Oh, we need to clone the array
+                    let receiver_value = self.eval_expr(receiver)?;
+                    match receiver_value {
+                        Value::Array(mut arr) => {
+                            ArrayBuiltin::pop(&mut arr);
+                            Ok(Value::Array(arr))
+                        }
+                        _ => unreachable!("Semantic analysis guarantees array receiver"),
+                    }
+                }
             }
             ArrayBuiltin::Len => {
                 let value = self.eval_expr(receiver)?;
@@ -853,8 +880,22 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     fn lookup_var_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
-        self.lookup_call_stack_mut(name);
-        self.lookup_env_mut(name)
+        if let Some(activation) = self.call_stack.last_mut() {
+            for (var, val) in activation.local_vars.iter_mut() {
+                if *var == name {
+                    return Some(val);
+                }
+            }
+        }
+
+        for scope in self.env.iter_mut().rev() {
+            for (var, val) in scope.iter_mut() {
+                if *var == name {
+                    return Some(val);
+                }
+            }
+        }
+        None
     }
 
     fn lookup_func(&self, name: &str) -> usize {
@@ -867,12 +908,6 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     fn lookup_env(&self, name: &str) -> Option<&Value<'arena, 'src>> {
         self.env.iter().rev().find_map(|scope| {
             scope.iter().find_map(|(var, val)| if *var == name { Some(val) } else { None })
-        })
-    }
-
-    fn lookup_env_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
-        self.env.iter_mut().rev().find_map(|scope| {
-            scope.iter_mut().find_map(|(var, val)| if *var == name { Some(val) } else { None })
         })
     }
 
