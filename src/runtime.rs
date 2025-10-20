@@ -515,6 +515,10 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     .map_err(|err| RuntimeError { kind: RuntimeErrorKind::from(err), span })?;
                 Ok(Value::Str(ArenaCow::owned(s)))
             }
+            GlobalBuiltin::ToString => {
+                let s = GlobalBuiltin::to_string(self.arena, &arg_values[0]);
+                Ok(Value::Str(ArenaCow::owned(s)))
+            }
         }
     }
 

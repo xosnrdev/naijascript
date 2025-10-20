@@ -42,19 +42,26 @@ pub enum GlobalBuiltin {
     TypeOf,
     /// Read a line of input from stdin
     ReadLine,
+    /// Convert a value to a string
+    ToString,
 }
 
 impl Builtin for GlobalBuiltin {
     fn arity(&self) -> usize {
         match self {
-            GlobalBuiltin::Shout | GlobalBuiltin::TypeOf | GlobalBuiltin::ReadLine => 1,
+            GlobalBuiltin::Shout
+            | GlobalBuiltin::TypeOf
+            | GlobalBuiltin::ReadLine
+            | GlobalBuiltin::ToString => 1,
         }
     }
 
     fn return_type(&self) -> BuiltinReturnType {
         match self {
             GlobalBuiltin::Shout => BuiltinReturnType::Number,
-            GlobalBuiltin::TypeOf | GlobalBuiltin::ReadLine => BuiltinReturnType::String,
+            GlobalBuiltin::TypeOf | GlobalBuiltin::ReadLine | GlobalBuiltin::ToString => {
+                BuiltinReturnType::String
+            }
         }
     }
 
@@ -63,6 +70,7 @@ impl Builtin for GlobalBuiltin {
             "shout" => Some(GlobalBuiltin::Shout),
             "typeof" => Some(GlobalBuiltin::TypeOf),
             "read_line" => Some(GlobalBuiltin::ReadLine),
+            "to_string" => Some(GlobalBuiltin::ToString),
             _ => None,
         }
     }
