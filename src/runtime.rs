@@ -23,7 +23,7 @@ pub enum RuntimeErrorKind {
 
 impl AsStr for RuntimeErrorKind {
     fn as_str(&self) -> &'static str {
-        match &self {
+        match self {
             RuntimeErrorKind::Io(..) => "I/O error",
             RuntimeErrorKind::DivisionByZero => "Division by zero",
             RuntimeErrorKind::StackOverflow => "Stack overflow",
@@ -63,6 +63,8 @@ pub enum Value<'arena, 'src> {
     Bool(bool),
     /// Array literal values
     Array(Vec<Value<'arena, 'src>, &'arena Arena>),
+    /// Represents the absence of a value
+    Null,
 }
 
 impl fmt::Display for Value<'_, '_> {
@@ -81,6 +83,7 @@ impl fmt::Display for Value<'_, '_> {
                 }
                 write!(f, "]")
             }
+            Value::Null => write!(f, "null"),
         }
     }
 }
@@ -234,11 +237,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 Ok(ExecFlow::Continue)
             }
             Stmt::Return { expr, .. } => {
-                let val = if let Some(expr_ref) = expr {
-                    self.eval_expr(expr_ref)?
-                } else {
-                    Value::Number(0.0)
-                };
+                let val =
+                    if let Some(expr_ref) = expr { self.eval_expr(expr_ref)? } else { Value::Null };
                 Ok(ExecFlow::Return(val))
             }
             Stmt::Expression { expr, .. } => {
@@ -476,7 +476,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
         // We execute the function body with proper return value handling
         let val = match self.exec_block_with_flow(func_def.body)? {
-            ExecFlow::Continue => Value::Number(0.0),
+            ExecFlow::Continue => Value::Null,
             ExecFlow::Return(val) => val,
         };
 
@@ -502,7 +502,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             GlobalBuiltin::Shout => {
                 self.output.push(arg_values[0].clone());
                 GlobalBuiltin::shout(&arg_values[0]);
-                Ok(Value::Number(0.0))
+                Ok(Value::Null)
             }
 
             GlobalBuiltin::TypeOf => {
@@ -541,6 +541,9 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Value::Number(n) => self.eval_number_member_call(n, field),
             Value::Array(..) => unreachable!("Array methods handled above"),
             Value::Bool(..) => unimplemented!("Boolean methods not implemented yet"),
+            Value::Null => {
+                unreachable!("Semantic analysis guarantees no method calls on null values")
+            }
         }
     }
 

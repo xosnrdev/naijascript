@@ -31,6 +31,7 @@ pub enum BuiltinReturnType {
     String,
     Bool,
     Array,
+    Null,
 }
 
 /// Enumeration of global built-in functions available in NaijaScript.
@@ -58,7 +59,7 @@ impl Builtin for GlobalBuiltin {
 
     fn return_type(&self) -> BuiltinReturnType {
         match self {
-            GlobalBuiltin::Shout => BuiltinReturnType::Number,
+            GlobalBuiltin::Shout => BuiltinReturnType::Null,
             GlobalBuiltin::TypeOf | GlobalBuiltin::ReadLine | GlobalBuiltin::ToString => {
                 BuiltinReturnType::String
             }
@@ -97,6 +98,7 @@ impl GlobalBuiltin {
             Value::Str(..) => "string",
             Value::Bool(..) => "boolean",
             Value::Array(..) => "array",
+            Value::Null => "null",
         }
     }
 

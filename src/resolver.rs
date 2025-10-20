@@ -49,6 +49,7 @@ enum ValueType {
     Bool,
     Array,
     Dynamic,
+    Null,
 }
 
 impl fmt::Display for ValueType {
@@ -59,6 +60,7 @@ impl fmt::Display for ValueType {
             ValueType::Bool => write!(f, "boolean"),
             ValueType::Array => write!(f, "array"),
             ValueType::Dynamic => write!(f, "dynamic"),
+            ValueType::Null => write!(f, "null"),
         }
     }
 }
@@ -70,6 +72,7 @@ impl From<BuiltinReturnType> for ValueType {
             BuiltinReturnType::String => ValueType::String,
             BuiltinReturnType::Bool => ValueType::Bool,
             BuiltinReturnType::Array => ValueType::Array,
+            BuiltinReturnType::Null => ValueType::Null,
         }
     }
 }
@@ -80,6 +83,7 @@ struct FunctionSig<'ast> {
     name: &'ast str,
     param_names: &'ast [&'ast str],
     name_span: &'ast Span,
+    return_type: ValueType,
 }
 
 /// An arena-backed semantic analyzer.
@@ -343,11 +347,13 @@ impl<'ast> Resolver<'ast> {
             }
         }
 
+        let return_type = self.infer_function_return_type(body);
+
         // Add function to current function scope
         self.function_scopes
             .last_mut()
             .expect("function scope stack should never be empty")
-            .push(FunctionSig { name, name_span, param_names: params.params });
+            .push(FunctionSig { name, name_span, param_names: params.params, return_type });
 
         // Set current function context for return validation
         let prev_function = self.current_function;
@@ -683,7 +689,7 @@ impl<'ast> Resolver<'ast> {
                                 ValueType::Number => {
                                     NumberBuiltin::from_name(field).map(MemberBuiltin::Number)
                                 }
-                                ValueType::Bool | ValueType::Dynamic => None,
+                                ValueType::Bool | ValueType::Null | ValueType::Dynamic => None,
                             };
 
                             if let Some(builtin) = builtin {
@@ -816,10 +822,8 @@ impl<'ast> Resolver<'ast> {
                 Expr::Var(func_name, ..) => {
                     if let Some(builtin) = GlobalBuiltin::from_name(func_name) {
                         Some(ValueType::from(builtin.return_type()))
-                    } else if self.lookup_func(func_name).is_some() {
-                        Some(ValueType::Dynamic)
                     } else {
-                        None
+                        self.lookup_func(func_name).map(|func_sig| func_sig.return_type)
                     }
                 }
                 Expr::Member { field, .. } => {
@@ -831,6 +835,66 @@ impl<'ast> Resolver<'ast> {
                 }
                 _ => None,
             },
+        }
+    }
+
+    fn infer_function_return_type(&self, body: BlockRef<'ast>) -> ValueType {
+        let mut return_types = Vec::new_in(self.arena);
+        self.collect_return_types(body, &mut return_types);
+
+        if return_types.is_empty() {
+            return ValueType::Null;
+        }
+
+        let first_type = return_types[0];
+        if return_types.iter().all(|t| *t == first_type) { first_type } else { ValueType::Dynamic }
+    }
+
+    fn collect_return_types(
+        &self,
+        block: BlockRef<'ast>,
+        return_types: &mut Vec<ValueType, &'ast Arena>,
+    ) {
+        for stmt in block.stmts {
+            self.collect_return_types_from_stmt(stmt, return_types);
+        }
+    }
+
+    fn collect_return_types_from_stmt(
+        &self,
+        stmt: StmtRef<'ast>,
+        return_types: &mut Vec<ValueType, &'ast Arena>,
+    ) {
+        match stmt {
+            Stmt::Return { expr, .. } => {
+                if let Some(expr_ref) = expr {
+                    if let Some(typ) = self.infer_expr_type(expr_ref) {
+                        return_types.push(typ);
+                    } else {
+                        return_types.push(ValueType::Dynamic);
+                    }
+                } else {
+                    return_types.push(ValueType::Null);
+                }
+            }
+            Stmt::If { then_b, else_b, .. } => {
+                self.collect_return_types(then_b, return_types);
+                if let Some(eb) = else_b {
+                    self.collect_return_types(eb, return_types);
+                }
+            }
+            Stmt::Loop { body, .. } => {
+                self.collect_return_types(body, return_types);
+            }
+            Stmt::Block { block, .. } => {
+                self.collect_return_types(block, return_types);
+            }
+            Stmt::FunctionDef { body, .. } => {
+                // For nested functions we don't collect its returns
+                // as they don't affect the outer function's return type
+                self.collect_return_types(body, return_types);
+            }
+            _ => {}
         }
     }
 }
