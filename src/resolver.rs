@@ -348,7 +348,7 @@ impl<'ast> Resolver<'ast> {
                         span: *param_span,
                         message: ArenaCow::Owned(arena_format!(
                             self.arena,
-                            "Parameter `{param_name}` na duplicate",
+                            "Parameter `{param_name}` used more than once",
                         )),
                     }],
                 );
@@ -395,9 +395,7 @@ impl<'ast> Resolver<'ast> {
                 SemanticError::UnreachableCode,
                 vec![Label {
                     span: *span,
-                    message: ArenaCow::Borrowed(
-                        "You no fit use `return` statement outside function body",
-                    ),
+                    message: ArenaCow::Borrowed("`return` statement outside function body"),
                 }],
             );
         }
@@ -477,7 +475,7 @@ impl<'ast> Resolver<'ast> {
                         SemanticError::TypeMismatch,
                         vec![Label {
                             span: *span,
-                            message: ArenaCow::Borrowed("Dis expression no be array"),
+                            message: ArenaCow::Borrowed("Dis expression type no be array"),
                         }],
                     );
                 }
@@ -489,7 +487,7 @@ impl<'ast> Resolver<'ast> {
                         SemanticError::TypeMismatch,
                         vec![Label {
                             span: *index_span,
-                            message: ArenaCow::Borrowed("Array index no be number"),
+                            message: ArenaCow::Borrowed("Dis index type no be number"),
                         }],
                     );
                 }
@@ -530,7 +528,7 @@ impl<'ast> Resolver<'ast> {
                                 vec![Label {
                                     span: *span,
                                     message: ArenaCow::Borrowed(
-                                        "Dis expression no be number or string",
+                                        "Dis expression type no be number or string",
                                     ),
                                 }],
                             );
@@ -548,7 +546,9 @@ impl<'ast> Resolver<'ast> {
                                     SemanticError::TypeMismatch,
                                     vec![Label {
                                         span: *span,
-                                        message: ArenaCow::Borrowed("Dis expression no be number"),
+                                        message: ArenaCow::Borrowed(
+                                            "Dis expression type no be number",
+                                        ),
                                     }],
                                 );
                             }
@@ -568,7 +568,7 @@ impl<'ast> Resolver<'ast> {
                             vec![Label {
                                 span: *span,
                                 message: ArenaCow::Borrowed(
-                                    "Dis expression no be number, string, or boolean",
+                                    "Dis expression type no be number, string, or boolean",
                                 ),
                             }],
                         ),
@@ -585,7 +585,9 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::TypeMismatch,
                                 vec![Label {
                                     span: *span,
-                                    message: ArenaCow::Borrowed("Dis expression no be boolean"),
+                                    message: ArenaCow::Borrowed(
+                                        "Dis expression type no be boolean",
+                                    ),
                                 }],
                             );
                         }
@@ -607,7 +609,9 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::TypeMismatch,
                                 vec![Label {
                                     span: *span,
-                                    message: ArenaCow::Borrowed("Dis expression no be boolean"),
+                                    message: ArenaCow::Borrowed(
+                                        "Dis expression type no be boolean",
+                                    ),
                                 }],
                             )
                         }
@@ -620,7 +624,7 @@ impl<'ast> Resolver<'ast> {
                                 SemanticError::TypeMismatch,
                                 vec![Label {
                                     span: *span,
-                                    message: ArenaCow::Borrowed("Dis expression no be number"),
+                                    message: ArenaCow::Borrowed("Dis expression type no be number"),
                                 }],
                             );
                         }
@@ -646,9 +650,10 @@ impl<'ast> Resolver<'ast> {
                                         span: *span,
                                         message: ArenaCow::Owned(arena_format!(
                                             self.arena,
-                                            "Function `{}` dey expect {} arguments but you pass {}",
+                                            "Function `{}` dey expect {} argument{} but na {} dey here",
                                             func_name,
                                             builtin.arity(),
+                                            if builtin.arity() == 1 { "" } else { "s" },
                                             args.args.len()
                                         )),
                                     }],
@@ -664,9 +669,10 @@ impl<'ast> Resolver<'ast> {
                                         span: *span,
                                         message: ArenaCow::Owned(arena_format!(
                                             self.arena,
-                                            "Function `{}` dey expect {} arguments but you pass {}",
+                                            "Function `{}` dey expect {} argument{} but na {} dey here",
                                             func_name,
                                             func_sig.param_names.len(),
+                                            if func_sig.param_names.len() == 1 { "" } else { "s" },
                                             args.args.len()
                                         )),
                                     }],
@@ -728,7 +734,7 @@ impl<'ast> Resolver<'ast> {
                                             span: *span,
                                             message: ArenaCow::Owned(arena_format!(
                                                 self.arena,
-                                                "Method `{}` dey expect {} argument{} but you pass {}",
+                                                "Method `{}` dey expect {} argument{} but na {} dey here",
                                                 field,
                                                 builtin.arity(),
                                                 if builtin.arity() == 1 { "" } else { "s" },
