@@ -52,7 +52,7 @@ struct RuntimeError {
 }
 
 // Maximum recursion depth to prevent stack overflow
-const MAX_CALL_DEPTH: usize = 1000;
+const MAX_CALL_DEPTH: usize = 512;
 
 /// The value types our runtime can work with at runtime.
 #[derive(Debug, Clone, PartialEq)]
@@ -153,7 +153,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let labels = match err.kind {
                     RuntimeErrorKind::DivisionByZero => vec![Label {
                         span: err.span,
-                        message: ArenaCow::Borrowed("You no fit divide by zero"),
+                        message: ArenaCow::Borrowed("Zero no fit be divisor"),
                     }],
                     RuntimeErrorKind::StackOverflow => {
                         vec![Label {
@@ -166,11 +166,11 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     }
                     RuntimeErrorKind::IndexOutOfBounds => vec![Label {
                         span: err.span,
-                        message: ArenaCow::Borrowed("Index don pass array length"),
+                        message: ArenaCow::Borrowed("Index value don pass array length"),
                     }],
                     RuntimeErrorKind::InvalidIndex => vec![Label {
                         span: err.span,
-                        message: ArenaCow::Borrowed("Array index no be whole number"),
+                        message: ArenaCow::Borrowed("Index value no be whole number"),
                     }],
                 };
                 self.errors.emit(err.span, Severity::Error, "runtime", err.kind.as_str(), labels);
