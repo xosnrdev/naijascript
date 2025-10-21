@@ -86,9 +86,7 @@ struct FunctionSig<'ast> {
     return_type: ValueType,
 }
 
-/// An arena-backed semantic analyzer.
-///
-/// FWIW, this is a work in progress and may change as the language evolves.
+/// An arena-allocated semantic analyzer.
 pub struct Resolver<'ast> {
     // Stack of variable symbol tables for block-scoped variables
     variable_scopes: Vec<Vec<(&'ast str, ValueType, &'ast Span), &'ast Arena>, &'ast Arena>,
@@ -310,7 +308,13 @@ impl<'ast> Resolver<'ast> {
                             "Function `{name}` dey scope already",
                         )),
                     },
-                    Label { span: *name_span, message: ArenaCow::Borrowed("Duplicate here") },
+                    Label {
+                        span: *name_span,
+                        message: ArenaCow::Owned(arena_format!(
+                            self.arena,
+                            "Another function `{name}` for here"
+                        )),
+                    },
                 ],
             );
             return;
