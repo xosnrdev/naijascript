@@ -678,12 +678,23 @@ impl<'ast> Resolver<'ast> {
                             );
                         }
                     }
-                    Expr::Member { object, field, .. } => {
+                    Expr::Member { object, field, span, .. } => {
                         self.check_expr(object);
 
                         if let Some(receiver_type) = self.infer_expr_type(object) {
                             // Is it a dynamic type ?
                             if receiver_type == ValueType::Dynamic {
+                                self.emit_error(
+                                    *span,
+                                    SemanticError::TypeMismatch,
+                                    vec![Label {
+                                        span: *span,
+                                        message: ArenaCow::Owned(arena_format!(
+                                            self.arena,
+                                            "Method `{field}` no dey for {receiver_type} type",
+                                        )),
+                                    }],
+                                );
                                 return;
                             }
 
