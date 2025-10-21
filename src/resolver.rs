@@ -131,6 +131,10 @@ impl<'ast> Resolver<'ast> {
         self.errors.emit(span, Severity::Error, "semantic", error.as_str(), labels);
     }
 
+    fn emit_warning(&mut self, span: Span, warning: SemanticError, labels: Vec<Label<'ast>>) {
+        self.errors.emit(span, Severity::Warning, "semantic", warning.as_str(), labels);
+    }
+
     #[inline]
     fn check_block(&mut self, block: BlockRef<'ast>) {
         // Enter new block scope
@@ -153,7 +157,7 @@ impl<'ast> Resolver<'ast> {
                     Stmt::Expression { span, .. } => span,
                 };
 
-                self.emit_error(
+                self.emit_warning(
                     *span,
                     SemanticError::UnreachableCode,
                     vec![Label {
