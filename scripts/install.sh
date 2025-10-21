@@ -28,6 +28,7 @@ INSTALL_DIR=".naijascript"
 BIN_ROOT="${HOME}/${INSTALL_DIR}/bin"
 BIN_PATH="${BIN_ROOT}/${BIN}"
 CONFIG_FILE="${HOME}/${INSTALL_DIR}/config.toml"
+VERSION_DIR="${HOME}/${INSTALL_DIR}/versions"
 REPO="xosnrdev/naijascript"
 
 info "Checking environment..."
@@ -85,7 +86,7 @@ fi
 
 info "Installing binary..."
 tar -xf "${BIN}-${LATEST_TAG}-${TARGET}.tar.xz"
-mkdir -p "${BIN_ROOT}"
+mkdir -p "${BIN_ROOT}" "${VERSION_DIR}/${LATEST_TAG#v}"
 
 TMP_BIN=$(mktemp)
 install -m 755 "${BIN}" "${TMP_BIN}"
@@ -97,6 +98,7 @@ if ! "${TMP_BIN}" --version >/dev/null 2>&1; then
 fi
 
 mv "${TMP_BIN}" "${BIN_PATH}"
+mv "${BIN}" "${VERSION_DIR}/${LATEST_TAG#v}"
 
 CONFIG_VERSION=${LATEST_TAG#v}
 info "Setting default version to '${CONFIG_VERSION}'..."
