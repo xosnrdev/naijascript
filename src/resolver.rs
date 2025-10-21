@@ -1,7 +1,7 @@
 //! The resolver (semantic analyzer) for NaijaScript.
 
-use core::fmt;
 use std::collections::HashSet;
+use std::fmt;
 
 use crate::arena::{Arena, ArenaCow};
 use crate::arena_format;

@@ -22,6 +22,9 @@ pub trait Builtin {
     fn from_name(name: &str) -> Option<Self>
     where
         Self: Sized;
+    fn requires_mut_receiver(&self) -> bool {
+        false
+    }
 }
 
 /// Return types for built-in functions.
@@ -141,5 +144,13 @@ impl Builtin for MemberBuiltin {
             .map(MemberBuiltin::String)
             .or_else(|| ArrayBuiltin::from_name(name).map(MemberBuiltin::Array))
             .or_else(|| NumberBuiltin::from_name(name).map(MemberBuiltin::Number))
+    }
+
+    fn requires_mut_receiver(&self) -> bool {
+        match self {
+            MemberBuiltin::String(b) => b.requires_mut_receiver(),
+            MemberBuiltin::Array(b) => b.requires_mut_receiver(),
+            MemberBuiltin::Number(b) => b.requires_mut_receiver(),
+        }
     }
 }
