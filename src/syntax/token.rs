@@ -54,6 +54,9 @@ pub enum Token<'arena, 'input> {
     True,  // "true" - truthy
     False, // "false" - falsy
 
+    // Null literal
+    Null, // "null" - absence of value
+
     // Punctuation
     LParen,   // "("
     RParen,   // ")"
@@ -90,6 +93,7 @@ impl<'arena, 'input> std::fmt::Display for Token<'arena, 'input> {
             Token::IfNotSo => write!(f, "if not so"),
             Token::True => write!(f, "true"),
             Token::False => write!(f, "false"),
+            Token::Null => write!(f, "null"),
             Token::LBracket => write!(f, "["),
             Token::RBracket => write!(f, "]"),
             Token::Dot => write!(f, "."),
@@ -123,6 +127,7 @@ impl<'arena, 'input> Token<'arena, 'input> {
                 | Token::IfNotSo
                 | Token::True
                 | Token::False
+                | Token::Null
                 | Token::Do
                 | Token::Return
         )

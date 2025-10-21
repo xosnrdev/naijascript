@@ -586,6 +586,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             | Token::String(..)
             | Token::True
             | Token::False
+            | Token::Null
             | Token::Identifier(..)
             | Token::Not
             | Token::LParen => Some(self.parse_expression(0)),
@@ -841,6 +842,12 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 let value = matches!(&self.cur.token, Token::True);
                 let expr = self.alloc(Expr::Bool(value, s));
                 self.bump(); // consume boolean
+                expr
+            }
+            Token::Null => {
+                let s = self.cur.span;
+                let expr = self.alloc(Expr::Null(s));
+                self.bump(); // consume null
                 expr
             }
             Token::Identifier(v) => {

@@ -199,6 +199,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let val = self.eval_expr(cond)?;
                 let is_truthy = match val {
                     Value::Bool(b) => b,
+                    Value::Null => false, // null is falsy
                     _ => unreachable!(
                         "Semantic analysis guarantees only boolean expressions in conditions"
                     ),
@@ -216,6 +217,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     let val = self.eval_expr(cond)?;
                     let should_continue = match val {
                         Value::Bool(b) => b,
+                        Value::Null => false,
                         _ => unreachable!(
                             "Semantic analysis guarantees only boolean expressions in loop conditions"
                         ),
@@ -285,12 +287,13 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Expr::Binary { op, lhs, rhs, span } => match op {
                 BinaryOp::And => {
                     let l = self.eval_expr(lhs)?;
-                    if let Value::Bool(false) = l {
+                    if matches!(l, Value::Bool(false) | Value::Null) {
                         return Ok(Value::Bool(false)); // Short-circuit evaluation
                     }
                     let r = self.eval_expr(rhs)?;
                     match r {
                         Value::Bool(b) => Ok(Value::Bool(b)),
+                        Value::Null => Ok(Value::Bool(false)),
                         _ => unreachable!("Semantic analysis guarantees boolean expressions"),
                     }
                 }
@@ -302,6 +305,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     let r = self.eval_expr(rhs)?;
                     match r {
                         Value::Bool(b) => Ok(Value::Bool(b)),
+                        Value::Null => Ok(Value::Bool(false)),
                         _ => unreachable!("Semantic analysis guarantees boolean expressions"),
                     }
                 }
@@ -366,6 +370,16 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                             BinaryOp::Lt => Ok(Value::Bool(!lv & rv)),
                             _ => unreachable!("Semantic analysis guarantees valid bool ops"),
                         },
+                        (Value::Null, Value::Null) => match op {
+                            BinaryOp::Eq => Ok(Value::Bool(true)),
+                            BinaryOp::Gt | BinaryOp::Lt => Ok(Value::Bool(false)),
+                            _ => unreachable!("Semantic analysis guarantees valid null ops"),
+                        },
+                        (Value::Null, ..) | (.., Value::Null) => match op {
+                            BinaryOp::Eq => Ok(Value::Bool(false)),
+                            BinaryOp::Gt | BinaryOp::Lt => Ok(Value::Bool(false)),
+                            _ => unreachable!("Semantic analysis guarantees valid null ops"),
+                        },
                         _ => {
                             unreachable!("Semantic analysis guarantees matching operand types")
                         }
@@ -377,6 +391,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let v = self.eval_expr(expr)?;
                 match (op, v) {
                     (UnaryOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
+                    (UnaryOp::Not, Value::Null) => Ok(Value::Bool(true)),
                     (UnaryOp::Minus, Value::Number(n)) => Ok(Value::Number(-n)),
                     _ => unreachable!("Semantic analysis guarantees valid unary expressions"),
                 }

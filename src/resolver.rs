@@ -404,7 +404,7 @@ impl<'ast> Resolver<'ast> {
     fn check_boolean_expr(&mut self, expr: ExprRef<'ast>) {
         let expr_type = self.infer_expr_type(expr);
         if let Some(t) = expr_type
-            && !matches!(t, ValueType::Bool | ValueType::Dynamic)
+            && !matches!(t, ValueType::Bool | ValueType::Null | ValueType::Dynamic)
         {
             let span = match expr {
                 Expr::Number(.., span) => *span,
@@ -550,6 +550,8 @@ impl<'ast> Resolver<'ast> {
                         (Some(ValueType::Number), Some(ValueType::Number))
                         | (Some(ValueType::String), Some(ValueType::String))
                         | (Some(ValueType::Bool), Some(ValueType::Bool))
+                        | (Some(ValueType::Null), ..)
+                        | (.., Some(ValueType::Null))
                         | (Some(ValueType::Dynamic), ..)
                         | (.., Some(ValueType::Dynamic)) => {}
                         _ => self.emit_error(
@@ -565,6 +567,8 @@ impl<'ast> Resolver<'ast> {
                     },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
                         (Some(ValueType::Bool), Some(ValueType::Bool))
+                        | (Some(ValueType::Null), ..)
+                        | (.., Some(ValueType::Null))
                         | (Some(ValueType::Dynamic), ..)
                         | (.., Some(ValueType::Dynamic)) => {}
                         _ => {
@@ -586,7 +590,10 @@ impl<'ast> Resolver<'ast> {
                 match op {
                     // Unary not requires a boolean operand or dynamic type
                     UnaryOp::Not => {
-                        if t != Some(ValueType::Bool) && t != Some(ValueType::Dynamic) {
+                        if t != Some(ValueType::Bool)
+                            && t != Some(ValueType::Null)
+                            && t != Some(ValueType::Dynamic)
+                        {
                             self.emit_error(
                                 *span,
                                 SemanticError::TypeMismatch,
@@ -784,12 +791,16 @@ impl<'ast> Resolver<'ast> {
                         (ValueType::Number, ValueType::Number)
                         | (ValueType::String, ValueType::String)
                         | (ValueType::Bool, ValueType::Bool)
+                        | (ValueType::Null, ..)
+                        | (.., ValueType::Null)
                         | (ValueType::Dynamic, ..)
                         | (.., ValueType::Dynamic) => Some(ValueType::Bool),
                         _ => None,
                     },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
                         (ValueType::Bool, ValueType::Bool)
+                        | (ValueType::Null, ..)
+                        | (.., ValueType::Null)
                         | (ValueType::Dynamic, ..)
                         | (.., ValueType::Dynamic) => Some(ValueType::Bool),
                         _ => None,
@@ -800,7 +811,7 @@ impl<'ast> Resolver<'ast> {
                 let t = self.infer_expr_type(expr)?;
                 match op {
                     UnaryOp::Not => {
-                        if t == ValueType::Bool {
+                        if t == ValueType::Bool || t == ValueType::Null {
                             Some(ValueType::Bool)
                         } else {
                             None
