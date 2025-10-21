@@ -16,3 +16,11 @@ value[4] get "foo"
 value[5] get false
 value[6] get true
 shout(value)
+value.push("bar")
+shout(value)
+value.pop()
+shout(value)
+value.push(value.len()).pop()
+shout(value)
+value.pop().push("qux")
+shout(value)
