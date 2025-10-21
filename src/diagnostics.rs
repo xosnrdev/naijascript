@@ -149,7 +149,7 @@ impl<'arena> Diagnostics<'arena> {
             });
 
         // Render same-line labels as underlines with dashes
-        let mut label_lines = Vec::with_capacity_in(same_line_labels.len(), &self.arena);
+        let mut label_lines = Vec::with_capacity_in(same_line_labels.len(), self.arena);
         for label in same_line_labels {
             // Convert absolute span to column position relative to line start
             let lbl_col = label.span.start.saturating_sub(line_start) + 1;
@@ -165,7 +165,7 @@ impl<'arena> Diagnostics<'arena> {
         }
 
         // Handle cross-line labels by showing their complete source context
-        let mut cross_line_displays = Vec::with_capacity_in(cross_line_labels.len(), &self.arena);
+        let mut cross_line_displays = Vec::with_capacity_in(cross_line_labels.len(), self.arena);
         for label in cross_line_labels {
             let (label_line, label_col, label_line_start, label_line_end) =
                 self.line_col_from_span(src, label.span.start);
@@ -209,7 +209,7 @@ impl<'arena> Diagnostics<'arena> {
     fn render_header(&self, severity: Severity, code: &str, message: &str) -> ArenaString<'arena> {
         let color = severity.color_code();
         arena_format!(
-            &self.arena,
+            self.arena,
             "{BOLD}{color}{}[{code}]{RESET}: {BOLD}{message}{RESET}",
             severity.label()
         )
@@ -222,16 +222,16 @@ impl<'arena> Diagnostics<'arena> {
         col: usize,
         color: &str,
     ) -> ArenaString<'arena> {
-        arena_format!(&self.arena, " {BOLD}{color}-->{RESET} {filename}:{line}:{col}")
+        arena_format!(self.arena, " {BOLD}{color}-->{RESET} {filename}:{line}:{col}")
     }
 
     #[inline]
     fn render_gutter(&self, line: usize, color: &str, width: usize) -> ArenaString<'arena> {
-        arena_format!(&self.arena, "{BOLD}{color}{line:>width$} |{RESET} ")
+        arena_format!(self.arena, "{BOLD}{color}{line:>width$} |{RESET} ")
     }
 
     fn render_plain_gutter(&self, color: &str, width: usize) -> ArenaString<'arena> {
-        arena_format!(&self.arena, "{BOLD}{color}{:>width$} |{RESET} ", "")
+        arena_format!(self.arena, "{BOLD}{color}{:>width$} |{RESET} ", "")
     }
 
     // Build the caret `^^^` line that points to the error location.

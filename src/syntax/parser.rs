@@ -503,7 +503,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         vec![Label {
                             span,
                             message: ArenaCow::Owned(arena_format!(
-                                &self.arena,
+                                self.arena,
                                 "`{t}` na reserved keyword"
                             )),
                         }],
