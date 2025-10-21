@@ -240,6 +240,15 @@ fn test_array_index_assignment_invalid_target() {
 }
 
 #[test]
+fn test_array_index_method_call() {
+    let src = r#"
+        make foo get [1]
+        foo[0].pop()
+    "#;
+    assert_resolve!(src, SemanticError::TypeMismatch)
+}
+
+#[test]
 fn test_unary_minus_with_string() {
     assert_resolve!(r#"make x get minus "hello""#, SemanticError::TypeMismatch);
 }

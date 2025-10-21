@@ -37,6 +37,10 @@ impl Builtin for ArrayBuiltin {
             _ => None,
         }
     }
+
+    fn requires_mut_receiver(&self) -> bool {
+        matches!(self, ArrayBuiltin::Push | ArrayBuiltin::Pop)
+    }
 }
 
 impl ArrayBuiltin {

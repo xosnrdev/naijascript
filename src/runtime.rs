@@ -4,7 +4,9 @@ use std::fmt::{self, Write};
 use std::io;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
-use crate::builtins::{ArrayBuiltin, Builtin, GlobalBuiltin, NumberBuiltin, StringBuiltin};
+use crate::builtins::{
+    ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
+};
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
     ArgList, BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts,
@@ -544,18 +546,17 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         field: &'src str,
         args: &'src ArgList<'src>,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
-        // Array methods like push/pop requires mutable access to the array variable
-        // so we handle them first before evaluating the receiver
-        if ArrayBuiltin::from_name(field).is_some() {
-            return self.eval_array_member_call(object, field, args);
+        let builtin = MemberBuiltin::from_name(field)
+            .expect("Semantic analysis guarantees valid method name");
+        if builtin.requires_mut_receiver() {
+            return self.eval_member_call_mut(object, field, args);
         }
 
-        // Now we evaluate the receiver expression
         let receiver = self.eval_expr(object)?;
         match receiver {
             Value::Str(s) => self.eval_string_member_call(s, field, args),
             Value::Number(n) => self.eval_number_member_call(n, field),
-            Value::Array(..) => unreachable!("Array methods handled above"),
+            Value::Array(arr) => self.eval_array_member_call(&arr, field),
             Value::Bool(..) => unimplemented!("Boolean methods not implemented yet"),
             Value::Null => {
                 unreachable!("Semantic analysis guarantees no method calls on null values")
@@ -563,7 +564,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    fn eval_array_member_call(
+    fn eval_member_call_mut(
         &mut self,
         receiver: ExprRef<'src>,
         field: &'src str,
@@ -576,13 +577,11 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             ArrayBuiltin::Push => {
                 let value = self.eval_expr(args.args[0])?;
 
-                // Is receiver an assignable ?
                 if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
                     let array = self.get_mutable_array(receiver)?;
                     ArrayBuiltin::push(array, value);
                     Ok(Value::Array(array.clone()))
                 } else {
-                    // Oh, we need to clone the array
                     let receiver_value = self.eval_expr(receiver)?;
                     match receiver_value {
                         Value::Array(mut arr) => {
@@ -594,13 +593,11 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 }
             }
             ArrayBuiltin::Pop => {
-                // Is receiver an assignable ?
                 if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
                     let array = self.get_mutable_array(receiver)?;
                     ArrayBuiltin::pop(array);
                     Ok(Value::Array(array.clone()))
                 } else {
-                    // Oh, we need to clone the array
                     let receiver_value = self.eval_expr(receiver)?;
                     match receiver_value {
                         Value::Array(mut arr) => {
@@ -612,11 +609,22 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 }
             }
             ArrayBuiltin::Len => {
-                let value = self.eval_expr(receiver)?;
-                match value {
-                    Value::Array(array) => Ok(Value::Number(ArrayBuiltin::len(&array))),
-                    _ => unreachable!("Semantic analysis guarantees array receiver"),
-                }
+                unreachable!("Len does not require mutable access")
+            }
+        }
+    }
+
+    fn eval_array_member_call(
+        &self,
+        array: &Vec<Value<'arena, 'src>, &'arena Arena>,
+        field: &'src str,
+    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+        let array_builtin = ArrayBuiltin::from_name(field)
+            .expect("Semantic analysis guarantees valid array method");
+        match array_builtin {
+            ArrayBuiltin::Len => Ok(Value::Number(ArrayBuiltin::len(array))),
+            ArrayBuiltin::Push | ArrayBuiltin::Pop => {
+                unreachable!("Push and Pop require mutable access")
             }
         }
     }
