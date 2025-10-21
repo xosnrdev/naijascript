@@ -23,7 +23,7 @@ pub enum RuntimeErrorKind {
 
 impl AsStr for RuntimeErrorKind {
     fn as_str(&self) -> &'static str {
-        match &self {
+        match self {
             RuntimeErrorKind::Io(..) => "I/O error",
             RuntimeErrorKind::DivisionByZero => "Division by zero",
             RuntimeErrorKind::StackOverflow => "Stack overflow",
@@ -63,6 +63,8 @@ pub enum Value<'arena, 'src> {
     Bool(bool),
     /// Array literal values
     Array(Vec<Value<'arena, 'src>, &'arena Arena>),
+    /// Represents the absence of a value
+    Null,
 }
 
 impl fmt::Display for Value<'_, '_> {
@@ -81,6 +83,7 @@ impl fmt::Display for Value<'_, '_> {
                 }
                 write!(f, "]")
             }
+            Value::Null => write!(f, "null"),
         }
     }
 }
@@ -196,6 +199,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let val = self.eval_expr(cond)?;
                 let is_truthy = match val {
                     Value::Bool(b) => b,
+                    Value::Null => false, // null is falsy
                     _ => unreachable!(
                         "Semantic analysis guarantees only boolean expressions in conditions"
                     ),
@@ -213,6 +217,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     let val = self.eval_expr(cond)?;
                     let should_continue = match val {
                         Value::Bool(b) => b,
+                        Value::Null => false,
                         _ => unreachable!(
                             "Semantic analysis guarantees only boolean expressions in loop conditions"
                         ),
@@ -234,11 +239,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 Ok(ExecFlow::Continue)
             }
             Stmt::Return { expr, .. } => {
-                let val = if let Some(expr_ref) = expr {
-                    self.eval_expr(expr_ref)?
-                } else {
-                    Value::Number(0.0)
-                };
+                let val =
+                    if let Some(expr_ref) = expr { self.eval_expr(expr_ref)? } else { Value::Null };
                 Ok(ExecFlow::Return(val))
             }
             Stmt::Expression { expr, .. } => {
@@ -275,6 +277,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             )),
             Expr::String { parts, .. } => self.eval_string_expr(parts),
             Expr::Bool(b, ..) => Ok(Value::Bool(*b)),
+            Expr::Null(..) => Ok(Value::Null),
             Expr::Var(v, ..) => {
                 let val = self
                     .lookup_var(v)
@@ -284,12 +287,13 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Expr::Binary { op, lhs, rhs, span } => match op {
                 BinaryOp::And => {
                     let l = self.eval_expr(lhs)?;
-                    if let Value::Bool(false) = l {
+                    if matches!(l, Value::Bool(false) | Value::Null) {
                         return Ok(Value::Bool(false)); // Short-circuit evaluation
                     }
                     let r = self.eval_expr(rhs)?;
                     match r {
                         Value::Bool(b) => Ok(Value::Bool(b)),
+                        Value::Null => Ok(Value::Bool(false)),
                         _ => unreachable!("Semantic analysis guarantees boolean expressions"),
                     }
                 }
@@ -301,6 +305,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     let r = self.eval_expr(rhs)?;
                     match r {
                         Value::Bool(b) => Ok(Value::Bool(b)),
+                        Value::Null => Ok(Value::Bool(false)),
                         _ => unreachable!("Semantic analysis guarantees boolean expressions"),
                     }
                 }
@@ -365,6 +370,16 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                             BinaryOp::Lt => Ok(Value::Bool(!lv & rv)),
                             _ => unreachable!("Semantic analysis guarantees valid bool ops"),
                         },
+                        (Value::Null, Value::Null) => match op {
+                            BinaryOp::Eq => Ok(Value::Bool(true)),
+                            BinaryOp::Gt | BinaryOp::Lt => Ok(Value::Bool(false)),
+                            _ => unreachable!("Semantic analysis guarantees valid null ops"),
+                        },
+                        (Value::Null, ..) | (.., Value::Null) => match op {
+                            BinaryOp::Eq => Ok(Value::Bool(false)),
+                            BinaryOp::Gt | BinaryOp::Lt => Ok(Value::Bool(false)),
+                            _ => unreachable!("Semantic analysis guarantees valid null ops"),
+                        },
                         _ => {
                             unreachable!("Semantic analysis guarantees matching operand types")
                         }
@@ -376,6 +391,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let v = self.eval_expr(expr)?;
                 match (op, v) {
                     (UnaryOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
+                    (UnaryOp::Not, Value::Null) => Ok(Value::Bool(true)),
                     (UnaryOp::Minus, Value::Number(n)) => Ok(Value::Number(-n)),
                     _ => unreachable!("Semantic analysis guarantees valid unary expressions"),
                 }
@@ -476,7 +492,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
         // We execute the function body with proper return value handling
         let val = match self.exec_block_with_flow(func_def.body)? {
-            ExecFlow::Continue => Value::Number(0.0),
+            ExecFlow::Continue => Value::Null,
             ExecFlow::Return(val) => val,
         };
 
@@ -502,7 +518,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             GlobalBuiltin::Shout => {
                 self.output.push(arg_values[0].clone());
                 GlobalBuiltin::shout(&arg_values[0]);
-                Ok(Value::Number(0.0))
+                Ok(Value::Null)
             }
 
             GlobalBuiltin::TypeOf => {
@@ -541,6 +557,9 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Value::Number(n) => self.eval_number_member_call(n, field),
             Value::Array(..) => unreachable!("Array methods handled above"),
             Value::Bool(..) => unimplemented!("Boolean methods not implemented yet"),
+            Value::Null => {
+                unreachable!("Semantic analysis guarantees no method calls on null values")
+            }
         }
     }
 

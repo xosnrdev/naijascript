@@ -145,6 +145,8 @@ pub enum Expr<'ast> {
     Bool(bool, Span), // "true", "false"
     // Member access: expr.field
     Member { object: ExprRef<'ast>, field: &'ast str, field_span: Span, span: Span },
+    // Null literal
+    Null(Span),
 }
 
 /// Represents a block of statements, which can be nested.
@@ -584,6 +586,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             | Token::String(..)
             | Token::True
             | Token::False
+            | Token::Null
             | Token::Identifier(..)
             | Token::Not
             | Token::LParen => Some(self.parse_expression(0)),
@@ -639,7 +642,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             self.parse_expression(0)
         } else {
             // Oh, maybe uninitialized ?
-            self.alloc(Expr::Number("0", var_span))
+            self.alloc(Expr::Null(var_span))
         };
 
         let end = self.cur.span.end;
@@ -839,6 +842,12 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 let value = matches!(&self.cur.token, Token::True);
                 let expr = self.alloc(Expr::Bool(value, s));
                 self.bump(); // consume boolean
+                expr
+            }
+            Token::Null => {
+                let s = self.cur.span;
+                let expr = self.alloc(Expr::Null(s));
+                self.bump(); // consume null
                 expr
             }
             Token::Identifier(v) => {
@@ -1090,6 +1099,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             Expr::Number(.., span) => *span,
             Expr::String { span, .. } => *span,
             Expr::Bool(.., span) => *span,
+            Expr::Null(span) => *span,
             Expr::Var(.., span) => *span,
             Expr::Binary { span, .. } => *span,
             Expr::Unary { span, .. } => *span,

@@ -10,7 +10,7 @@ make bar get "hello"
 make baz get true
 ```
 
-You can also declare a variable without an initial value. That creates an uninitialized variable with dynamic typing:
+You can also declare a variable without an initial value. That creates an uninitialized variable whose value is `null`:
 
 ```naijascript
 make foo

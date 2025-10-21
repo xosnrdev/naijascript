@@ -522,6 +522,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             "pass" => Token::Pass,
             "true" => Token::True,
             "false" => Token::False,
+            "null" => Token::Null,
             "do" => Token::Do,
             "return" => Token::Return,
             // Is it an identifier ?

@@ -1,0 +1,22 @@
+make foo
+shout(typeof(foo))
+
+make foo get null
+shout(foo)
+
+make baz get null
+
+shout(foo na baz)
+shout(foo na 0)
+shout(foo na "")
+shout(foo na false)
+
+if to say(not null) start
+    shout("null is falsy")
+end
+
+do do_nothing() start
+    # no return statement
+end
+
+shout(typeof(do_nothing()))

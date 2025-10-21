@@ -49,6 +49,7 @@ enum ValueType {
     Bool,
     Array,
     Dynamic,
+    Null,
 }
 
 impl fmt::Display for ValueType {
@@ -59,6 +60,7 @@ impl fmt::Display for ValueType {
             ValueType::Bool => write!(f, "boolean"),
             ValueType::Array => write!(f, "array"),
             ValueType::Dynamic => write!(f, "dynamic"),
+            ValueType::Null => write!(f, "null"),
         }
     }
 }
@@ -70,6 +72,7 @@ impl From<BuiltinReturnType> for ValueType {
             BuiltinReturnType::String => ValueType::String,
             BuiltinReturnType::Bool => ValueType::Bool,
             BuiltinReturnType::Array => ValueType::Array,
+            BuiltinReturnType::Null => ValueType::Null,
         }
     }
 }
@@ -80,6 +83,7 @@ struct FunctionSig<'ast> {
     name: &'ast str,
     param_names: &'ast [&'ast str],
     name_span: &'ast Span,
+    return_type: ValueType,
 }
 
 /// An arena-backed semantic analyzer.
@@ -343,11 +347,13 @@ impl<'ast> Resolver<'ast> {
             }
         }
 
+        let return_type = self.infer_function_return_type(body);
+
         // Add function to current function scope
         self.function_scopes
             .last_mut()
             .expect("function scope stack should never be empty")
-            .push(FunctionSig { name, name_span, param_names: params.params });
+            .push(FunctionSig { name, name_span, param_names: params.params, return_type });
 
         // Set current function context for return validation
         let prev_function = self.current_function;
@@ -398,10 +404,11 @@ impl<'ast> Resolver<'ast> {
     fn check_boolean_expr(&mut self, expr: ExprRef<'ast>) {
         let expr_type = self.infer_expr_type(expr);
         if let Some(t) = expr_type
-            && !matches!(t, ValueType::Bool | ValueType::Dynamic)
+            && !matches!(t, ValueType::Bool | ValueType::Null | ValueType::Dynamic)
         {
             let span = match expr {
                 Expr::Number(.., span) => *span,
+                Expr::Null(span) => *span,
                 Expr::String { span, .. } => *span,
                 Expr::Bool(.., span) => *span,
                 Expr::Var(.., span) => *span,
@@ -424,7 +431,7 @@ impl<'ast> Resolver<'ast> {
     fn check_expr(&mut self, expr: ExprRef<'ast>) {
         match expr {
             // Literals are always valid since they represent concrete values
-            Expr::Number(..) | Expr::Bool(..) => {}
+            Expr::Number(..) | Expr::Bool(..) | Expr::Null(..) => {}
             Expr::String { parts, span } => {
                 if let StringParts::Interpolated(segments) = parts {
                     for segment in *segments {
@@ -543,6 +550,8 @@ impl<'ast> Resolver<'ast> {
                         (Some(ValueType::Number), Some(ValueType::Number))
                         | (Some(ValueType::String), Some(ValueType::String))
                         | (Some(ValueType::Bool), Some(ValueType::Bool))
+                        | (Some(ValueType::Null), ..)
+                        | (.., Some(ValueType::Null))
                         | (Some(ValueType::Dynamic), ..)
                         | (.., Some(ValueType::Dynamic)) => {}
                         _ => self.emit_error(
@@ -558,6 +567,8 @@ impl<'ast> Resolver<'ast> {
                     },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
                         (Some(ValueType::Bool), Some(ValueType::Bool))
+                        | (Some(ValueType::Null), ..)
+                        | (.., Some(ValueType::Null))
                         | (Some(ValueType::Dynamic), ..)
                         | (.., Some(ValueType::Dynamic)) => {}
                         _ => {
@@ -579,7 +590,10 @@ impl<'ast> Resolver<'ast> {
                 match op {
                     // Unary not requires a boolean operand or dynamic type
                     UnaryOp::Not => {
-                        if t != Some(ValueType::Bool) && t != Some(ValueType::Dynamic) {
+                        if t != Some(ValueType::Bool)
+                            && t != Some(ValueType::Null)
+                            && t != Some(ValueType::Dynamic)
+                        {
                             self.emit_error(
                                 *span,
                                 SemanticError::TypeMismatch,
@@ -683,7 +697,7 @@ impl<'ast> Resolver<'ast> {
                                 ValueType::Number => {
                                     NumberBuiltin::from_name(field).map(MemberBuiltin::Number)
                                 }
-                                ValueType::Bool | ValueType::Dynamic => None,
+                                ValueType::Bool | ValueType::Null | ValueType::Dynamic => None,
                             };
 
                             if let Some(builtin) = builtin {
@@ -734,6 +748,7 @@ impl<'ast> Resolver<'ast> {
     fn infer_expr_type(&self, expr: ExprRef<'ast>) -> Option<ValueType> {
         match expr {
             Expr::Number(..) => Some(ValueType::Number),
+            Expr::Null(..) => Some(ValueType::Null),
             Expr::String { .. } => Some(ValueType::String),
             Expr::Bool(..) => Some(ValueType::Bool),
             Expr::Array { .. } => Some(ValueType::Array),
@@ -776,12 +791,16 @@ impl<'ast> Resolver<'ast> {
                         (ValueType::Number, ValueType::Number)
                         | (ValueType::String, ValueType::String)
                         | (ValueType::Bool, ValueType::Bool)
+                        | (ValueType::Null, ..)
+                        | (.., ValueType::Null)
                         | (ValueType::Dynamic, ..)
                         | (.., ValueType::Dynamic) => Some(ValueType::Bool),
                         _ => None,
                     },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
                         (ValueType::Bool, ValueType::Bool)
+                        | (ValueType::Null, ..)
+                        | (.., ValueType::Null)
                         | (ValueType::Dynamic, ..)
                         | (.., ValueType::Dynamic) => Some(ValueType::Bool),
                         _ => None,
@@ -792,7 +811,7 @@ impl<'ast> Resolver<'ast> {
                 let t = self.infer_expr_type(expr)?;
                 match op {
                     UnaryOp::Not => {
-                        if t == ValueType::Bool {
+                        if t == ValueType::Bool || t == ValueType::Null {
                             Some(ValueType::Bool)
                         } else {
                             None
@@ -816,10 +835,8 @@ impl<'ast> Resolver<'ast> {
                 Expr::Var(func_name, ..) => {
                     if let Some(builtin) = GlobalBuiltin::from_name(func_name) {
                         Some(ValueType::from(builtin.return_type()))
-                    } else if self.lookup_func(func_name).is_some() {
-                        Some(ValueType::Dynamic)
                     } else {
-                        None
+                        self.lookup_func(func_name).map(|func_sig| func_sig.return_type)
                     }
                 }
                 Expr::Member { field, .. } => {
@@ -831,6 +848,66 @@ impl<'ast> Resolver<'ast> {
                 }
                 _ => None,
             },
+        }
+    }
+
+    fn infer_function_return_type(&self, body: BlockRef<'ast>) -> ValueType {
+        let mut return_types = Vec::new_in(self.arena);
+        self.collect_return_types(body, &mut return_types);
+
+        if return_types.is_empty() {
+            return ValueType::Null;
+        }
+
+        let first_type = return_types[0];
+        if return_types.iter().all(|t| *t == first_type) { first_type } else { ValueType::Dynamic }
+    }
+
+    fn collect_return_types(
+        &self,
+        block: BlockRef<'ast>,
+        return_types: &mut Vec<ValueType, &'ast Arena>,
+    ) {
+        for stmt in block.stmts {
+            self.collect_return_types_from_stmt(stmt, return_types);
+        }
+    }
+
+    fn collect_return_types_from_stmt(
+        &self,
+        stmt: StmtRef<'ast>,
+        return_types: &mut Vec<ValueType, &'ast Arena>,
+    ) {
+        match stmt {
+            Stmt::Return { expr, .. } => {
+                if let Some(expr_ref) = expr {
+                    if let Some(typ) = self.infer_expr_type(expr_ref) {
+                        return_types.push(typ);
+                    } else {
+                        return_types.push(ValueType::Dynamic);
+                    }
+                } else {
+                    return_types.push(ValueType::Null);
+                }
+            }
+            Stmt::If { then_b, else_b, .. } => {
+                self.collect_return_types(then_b, return_types);
+                if let Some(eb) = else_b {
+                    self.collect_return_types(eb, return_types);
+                }
+            }
+            Stmt::Loop { body, .. } => {
+                self.collect_return_types(body, return_types);
+            }
+            Stmt::Block { block, .. } => {
+                self.collect_return_types(block, return_types);
+            }
+            Stmt::FunctionDef { body, .. } => {
+                // For nested functions we don't collect its returns
+                // as they don't affect the outer function's return type
+                self.collect_return_types(body, return_types);
+            }
+            _ => {}
         }
     }
 }

@@ -14,6 +14,7 @@
 - [Strings](STRINGS.md)
 - [Booleans](BOOLEANS.md)
 - [Arrays](ARRAYS.md)
+- [Null](NULL.md)
 
 # Control Flow
 
