@@ -503,7 +503,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         vec![Label {
                             span,
                             message: ArenaCow::Owned(arena_format!(
-                                &self.arena,
+                                self.arena,
                                 "`{t}` na reserved keyword"
                             )),
                         }],
@@ -572,7 +572,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
 
         Some(self.alloc(Stmt::FunctionDef {
             name,
-            name_span,
+            name_span: Range::from(do_span.start..rparen_span.end),
             params,
             body,
             span: Range::from(start..end),
