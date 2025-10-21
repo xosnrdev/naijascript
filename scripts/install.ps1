@@ -33,6 +33,7 @@ $installRoot = Join-Path $env:USERPROFILE $installDirName
 $binRoot = Join-Path $installRoot 'bin'
 $binPath = Join-Path $binRoot $binExecutable
 $configFile = Join-Path $installRoot 'config.toml'
+$versionDir = Join-Path $installRoot 'versions'
 $repo = 'xosnrdev/naijascript'
 
 Write-Info 'Checking environment...'
@@ -106,6 +107,7 @@ try {
   }
 
   Move-Item -LiteralPath $tmpBin -Destination $binPath -Force
+  Move-Item -LiteralPath $binExecutable -Destination (Join-Path $versionDir ($latestTag.Substring(1))) -Force
 
   if ($latestTag.startsWith("v")) {
     $configVersion = $latestTag.Substring(1)
