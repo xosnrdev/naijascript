@@ -88,9 +88,7 @@ try {
   Write-Info 'Installing binary...'
   Expand-Archive $assetName -DestinationPath . -Force
 
-  if (-not (Test-Path -Path $binRoot)) {
-    New-Item -ItemType Directory -Path $binRoot | Out-Null
-  }
+  New-Item -ItemType Directory -Path $binRoot -Force | Out-Null
 
   $tmpBin = Join-Path ([System.IO.Path]::GetDirectoryName([System.IO.Path]::GetTempFileName())) "${binExecutable}"
   Copy-Item -LiteralPath $binExecutable -Destination $tmpBin -Force
@@ -121,9 +119,7 @@ try {
 
   Write-Info "Setting default version to '$configVersion'..."
   $configDir = Split-Path -Path $configFile -Parent
-  if (-not (Test-Path -Path $configDir)) {
-    New-Item -ItemType Directory -Path $configDir | Out-Null
-  }
+  New-Item -ItemType Directory -Path $configDir -Force | Out-Null
   "default = `"$configVersion`"`n" | Set-Content -Path $configFile -Encoding UTF8
 
   Write-Info 'Configuring user environment...'
