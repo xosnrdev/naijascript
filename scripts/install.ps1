@@ -19,6 +19,12 @@ function Write-Warn {
   Write-Host " $Message"
 }
 
+function Write-Hint {
+  param([string]$Message)
+  Write-Host 'hint:' -ForegroundColor Cyan -NoNewline
+  Write-Host " $Message"
+}
+
 function Write-Error {
   param([string]$Message)
   Write-Host 'error:' -ForegroundColor Red -NoNewline
@@ -133,6 +139,8 @@ try {
     if (-not ($env:Path.Split(';') -contains $binRoot)) {
       $env:Path = "$binRoot;$env:Path"
     }
+
+    Write-Hint 'You may need to restart your terminal for PATH changes to take effect.'
   }
 
   Write-Host ''
