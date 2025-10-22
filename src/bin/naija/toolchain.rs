@@ -603,23 +603,22 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
     #[cfg(unix)]
     {
         let script_contents = format!(
-            "
-            #!/bin/sh\n\
-            set -eu\n\
-            sleep 2\n\
-            BIN_ROOT=\"{bin_root}\"\n\
-            PATTERN=\"export PATH=\\\"$BIN_ROOT:\\$PATH\\\"\"\n\
-            for PROFILE in \"$HOME/.zshrc\" \"$HOME/.bashrc\" \"$HOME/.profile\"; do\n\
-                if [ -f \"$PROFILE\" ]; then\n\
-                    TMP=$(mktemp)\n\
-                    grep -F -v \"$PATTERN\" \"$PROFILE\" >\"$TMP\" || true\n\
-                    mv \"$TMP\" \"$PROFILE\"\n\
-                fi\n\
-            done\n\
-            rm -rf \"{root_dir}\"\n\
-            rm -f \"{link_path}\"\n\
-            rm -f \"$0\"\n
-        "
+            r#"
+                #!/bin/sh
+                set -eu
+                sleep 2
+                PATTERN="export PATH=\"${bin_root}:\$PATH\""
+                for PROFILE in "${{HOME}}/.zshrc" "${{HOME}}/.bashrc" "${{HOME}}/.profile"; do
+                    if [ -f "${{PROFILE}}" ]; then
+                        TMP=$(mktemp)
+                        grep -F -v "${{PATTERN}}" "${{PROFILE}}" > "${{TMP}}" || true
+                        mv "${{TMP}}" "${{PROFILE}}"
+                    fi
+                done
+                rm -rf "{root_dir}"
+                rm -f "{link_path}"
+                rm -f "$0"
+            "#
         );
         script
             .write_all(script_contents.as_bytes())
@@ -631,16 +630,15 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
     #[cfg(windows)]
     {
         let script_contents = format!(
-            "
-            @echo off\r\n\
-            setlocal\r\n\
-            timeout /t 3 /nobreak >nul\r\n\
-            set \"BIN_ROOT={bin_root}\"\r\n\
-            powershell -NoProfile -ExecutionPolicy Bypass -Command \"$binRoot = $env:BIN_ROOT; $profilePath = $PROFILE; if (Test-Path $profilePath) {{ $pattern = [regex]::Escape($binRoot) + ';`$env:Path'; $content = Get-Content $profilePath; $filtered = $content | Where-Object {{ $_ -notmatch $pattern }}; if ($filtered.Count -ne $content.Count) {{ $filtered | Set-Content -Path $profilePath -Encoding UTF8 }} }}; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if ($userPath) {{ $parts = $userPath.Split(';') | Where-Object {{ $_ -and $_.TrimEnd('\\') -ne $binRoot.TrimEnd('\\') }}; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }}\"\r\n\
-            rmdir /s /q \"{root_dir}\"\r\n\
-            if exist \"{link_path}\" del \"{link_path}\"\r\n\
-            del \"%~f0\"\r\n
-        "
+            r#"
+                @echo off
+                setlocal
+                timeout /t 3 /nobreak >nul
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "$binRoot = $env:{bin_root}; $profilePath = $PROFILE; if (Test-Path $profilePath) {{ $pattern = [regex]::Escape($binRoot) + ';`$env:Path'; $content = Get-Content $profilePath; $filtered = $content | Where-Object {{ $_ -notmatch $pattern }}; if ($filtered.Count -ne $content.Count) {{ $filtered | Set-Content -Path $profilePath -Encoding UTF8 }} }}; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if ($userPath) {{ $parts = $userPath.Split(';') | Where-Object {{ $_ -and $_.TrimEnd('\\') -ne $binRoot.TrimEnd('\\') }}; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }}"
+                rmdir /s /q "{root_dir}"
+                if exist "{link_path}" del "{link_path}"
+                del "%~f0"
+            "#
         );
         script
             .write_all(script_contents.as_bytes())
@@ -735,11 +733,13 @@ fn try_build_symlink_script(bin_path: &Path) -> Result<(PathBuf, PathBuf), Strin
             .map_err(report_error!("Failed to create symlink to version"))?;
 
         let script_content = format!(
-            "#!/bin/sh\n\
-            set -eu\n\
-            sleep 2\n\
-            mv -f \"{}\" \"{}\"\n\
-            rm -f \"$0\"\n",
+            r#"
+                #!/bin/sh
+                set -eu
+                sleep 2
+                mv -f "{}" "{}"
+                rm -f "$0"
+            "#,
             temp_path_buf.to_string_lossy(),
             link.to_string_lossy()
         );
@@ -765,10 +765,12 @@ fn try_build_symlink_script(bin_path: &Path) -> Result<(PathBuf, PathBuf), Strin
         })?;
 
         let script_content = format!(
-            "@echo off\r\n\
-            timeout /t 3 /nobreak >nul\r\n\
-            move /Y \"{}\" \"{}\"\r\n\
-            del \"%~f0\"\r\n",
+            r#"
+                @echo off
+                timeout /t 3 /nobreak >nul
+                move /Y "{}" "{}"
+                del "%~f0"
+            "#,
             temp_path_buf.to_string_lossy(),
             link.to_string_lossy()
         );
