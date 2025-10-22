@@ -107,13 +107,18 @@ try {
   }
 
   Move-Item -LiteralPath $tmpBin -Destination $binPath -Force
-  Move-Item -LiteralPath $binExecutable -Destination (Join-Path $versionDir ($latestTag.Substring(1))) -Force
 
   if ($latestTag.startsWith("v")) {
     $configVersion = $latestTag.Substring(1)
-  } else {
+  }
+  else {
     $configVersion = $latestTag
   }
+
+  $versionBinPath = Join-Path $versionDir $configVersion
+  New-Item -ItemType Directory -Path $versionBinPath -Force | Out-Null
+  Move-Item -LiteralPath $binExecutable -Destination $versionBinPath -Force
+
   Write-Info "Setting default version to '$configVersion'..."
   $configDir = Split-Path -Path $configFile -Parent
   if (-not (Test-Path -Path $configDir)) {
