@@ -634,7 +634,7 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
             "
             @echo off\r\n\
             setlocal\r\n\
-            timeout /t 2 /nobreak >nul\r\n\
+            timeout /t 3 /nobreak >nul\r\n\
             set \"BIN_ROOT={bin_root}\"\r\n\
             powershell -NoProfile -ExecutionPolicy Bypass -Command \"$binRoot = $env:BIN_ROOT; $profilePath = $PROFILE; if (Test-Path $profilePath) {{ $pattern = [regex]::Escape($binRoot) + ';`$env:Path'; $content = Get-Content $profilePath; $filtered = $content | Where-Object {{ $_ -notmatch $pattern }}; if ($filtered.Count -ne $content.Count) {{ $filtered | Set-Content -Path $profilePath -Encoding UTF8 }} }}; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if ($userPath) {{ $parts = $userPath.Split(';') | Where-Object {{ $_ -and $_.TrimEnd('\\') -ne $binRoot.TrimEnd('\\') }}; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }}\"\r\n\
             rmdir /s /q \"{root_dir}\"\r\n\
@@ -766,7 +766,7 @@ fn try_build_symlink_script(bin_path: &Path) -> Result<(PathBuf, PathBuf), Strin
 
         let script_content = format!(
             "@echo off\r\n\
-            timeout /t 2 /nobreak >nul\r\n\
+            timeout /t 3 /nobreak >nul\r\n\
             move /Y \"{}\" \"{}\"\r\n\
             del \"%~f0\"\r\n",
             temp_path_buf.to_string_lossy(),
