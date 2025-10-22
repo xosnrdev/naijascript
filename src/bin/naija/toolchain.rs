@@ -518,7 +518,7 @@ fn uninstall_all() -> Result<(), String> {
     match spawn_result {
         Ok(_) => {
             print_success!("Uninstall complete.");
-            print_hint!("You may need to restart your terminal for changes to take effect.");
+            print_hint!("You may need to restart your terminal for PATH changes to take effect.");
             std::process::exit(0)
         }
         Err(err) => {
@@ -603,21 +603,22 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
     #[cfg(unix)]
     {
         let script_contents = format!(
-            "#!/bin/sh\n\
-set -eu\n\
-sleep 2\n\
-BIN_ROOT=\"{bin_root}\"\n\
-PATTERN=\"export PATH=\\\"$BIN_ROOT:\\$PATH\\\"\"\n\
-for PROFILE in \"$HOME/.zshrc\" \"$HOME/.bashrc\" \"$HOME/.profile\"; do\n\
-    if [ -f \"$PROFILE\" ]; then\n\
-        TMP=$(mktemp)\n\
-        grep -F -v \"$PATTERN\" \"$PROFILE\" >\"$TMP\" || true\n\
-        mv \"$TMP\" \"$PROFILE\"\n\
-    fi\n\
-done\n\
-rm -rf \"{root_dir}\"\n\
-rm -f \"{link_path}\"\n\
-rm -f \"$0\"\n"
+            r#"
+                #!/bin/sh
+                set -eu
+                sleep 2
+                PATTERN="export PATH=\"${bin_root}:\$PATH\""
+                for PROFILE in "${{HOME}}/.zshrc" "${{HOME}}/.bashrc" "${{HOME}}/.profile"; do
+                    if [ -f "${{PROFILE}}" ]; then
+                        TMP=$(mktemp)
+                        grep -F -v "${{PATTERN}}" "${{PROFILE}}" > "${{TMP}}" || true
+                        mv "${{TMP}}" "${{PROFILE}}"
+                    fi
+                done
+                rm -rf "{root_dir}"
+                rm -f "{link_path}"
+                rm -f "$0"
+            "#
         );
         script
             .write_all(script_contents.as_bytes())
@@ -629,21 +630,22 @@ rm -f \"$0\"\n"
     #[cfg(windows)]
     {
         let script_contents = format!(
-            "@echo off\r\n\
-setlocal\r\n\
-timeout /t 2 /nobreak >nul\r\n\
-set \"BIN_ROOT={bin_root}\"\r\n\
-powershell -NoProfile -ExecutionPolicy Bypass -Command \"$binRoot = $env:BIN_ROOT; $profilePath = $PROFILE; if (Test-Path $profilePath) {{ $pattern = [regex]::Escape($binRoot) + ';`$env:Path'; $content = Get-Content $profilePath; $filtered = $content | Where-Object {{ $_ -notmatch $pattern }}; if ($filtered.Count -ne $content.Count) {{ $filtered | Set-Content -Path $profilePath -Encoding UTF8 }} }}; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if ($userPath) {{ $parts = $userPath.Split(';') | Where-Object {{ $_ -and $_.TrimEnd('\\') -ne $binRoot.TrimEnd('\\') }}; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }}\"\r\n\
-rmdir /s /q \"{root_dir}\"\r\n\
-if exist \"{link_path}\" del \"{link_path}\"\r\n\
-del \"%~f0\"\r\n"
+            r#"
+                @echo off
+                setlocal
+                timeout /t 3 /nobreak >nul
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "$binRoot = $env:{bin_root}; $profilePath = $PROFILE; if (Test-Path $profilePath) {{ $pattern = [regex]::Escape($binRoot) + ';`$env:Path'; $content = Get-Content $profilePath; $filtered = $content | Where-Object {{ $_ -notmatch $pattern }}; if ($filtered.Count -ne $content.Count) {{ $filtered | Set-Content -Path $profilePath -Encoding UTF8 }} }}; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if ($userPath) {{ $parts = $userPath.Split(';') | Where-Object {{ $_ -and $_.TrimEnd('\\') -ne $binRoot.TrimEnd('\\') }}; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }}"
+                rmdir /s /q "{root_dir}"
+                if exist "{link_path}" del "{link_path}"
+                del "%~f0"
+            "#
         );
         script
             .write_all(script_contents.as_bytes())
             .map_err(report_error!("Failed to write uninstall script"))?;
     }
 
-    script.as_file().sync_all().map_err(report_error!("Failed to persist uninstall script"))?;
+    script.as_file().sync_all().map_err(report_error!("Failed to sync uninstall script"))?;
     script.into_temp_path().keep().map_err(report_error!("Failed to persist uninstall script"))
 }
 
@@ -662,14 +664,43 @@ pub fn set_default_version(version: &str) -> Result<(), String> {
     fs::write(&config_path, format!("default = \"{version}\"\n"))
         .map_err(report_error!("Failed to write config file"))?;
     let bin_path = version_dir(&version).join(bin_name());
-    try_symlink_bin_path(&bin_path).inspect_err(|_err| {
-        let _ = fs::remove_file(&config_path);
-    })?;
-    print_success!("Default version set to '{version}'");
-    Ok(())
+    let (temp_path_buf, script_path) = try_build_symlink_script(&bin_path)?;
+    let spawn_result = {
+        #[cfg(unix)]
+        {
+            Command::new("sh")
+                .arg(&script_path)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+        }
+        #[cfg(windows)]
+        {
+            Command::new("cmd")
+                .arg("/C")
+                .arg(&script_path)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+        }
+    };
+
+    match spawn_result {
+        Ok(_) => {
+            print_success!("Default version set to '{version}'");
+            std::process::exit(0)
+        }
+        Err(err) => {
+            let _ = fs::remove_file(&temp_path_buf);
+            let _ = fs::remove_file(&script_path);
+            Err(report_error!("Failed to replace existing symlink")(err))
+        }
+    }
 }
 
-fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
+fn try_build_symlink_script(bin_path: &Path) -> Result<(PathBuf, PathBuf), String> {
     if !bin_path.exists() {
         return Err(format!("Binary path '{}' does not exist", bin_path.display()));
     }
@@ -690,9 +721,34 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
     let temp_path_buf = temp_path.to_path_buf();
     temp_path.close().map_err(report_error!("Failed to reserve temporary symlink location"))?;
 
+    let mut script = Builder::new()
+        .prefix("naija-symlink-")
+        .suffix(if cfg!(windows) { ".bat" } else { ".sh" })
+        .tempfile_in(env::temp_dir())
+        .map_err(report_error!("Failed to create symlink script"))?;
+
     #[cfg(unix)]
-    os::unix::fs::symlink(bin_path, &temp_path_buf)
-        .map_err(report_error!("Failed to create symlink to version"))?;
+    {
+        os::unix::fs::symlink(bin_path, &temp_path_buf)
+            .map_err(report_error!("Failed to create symlink to version"))?;
+
+        let script_content = format!(
+            r#"
+                #!/bin/sh
+                set -eu
+                sleep 2
+                mv -f "{}" "{}"
+                rm -f "$0"
+            "#,
+            temp_path_buf.to_string_lossy(),
+            link.to_string_lossy()
+        );
+        script
+            .write_all(script_content.as_bytes())
+            .map_err(report_error!("Failed to write symlink script"))?;
+        fs::set_permissions(script.path(), fs::Permissions::from_mode(0o700))
+            .map_err(report_error!("Failed to set symlink script executable"))?;
+    }
 
     #[cfg(windows)]
     {
@@ -707,18 +763,28 @@ fn try_symlink_bin_path(bin_path: &Path) -> Result<(), String> {
             }
             report_error!("Failed to create symlink to version")(err)
         })?;
-    }
 
-    if let Err(err) = fs::rename(&temp_path_buf, &link) {
-        if err.kind() == io::ErrorKind::AlreadyExists {
-            let _ = fs::remove_file(&link);
-            fs::rename(&temp_path_buf, &link)
-                .map_err(report_error!("Failed to replace existing symlink"))?;
-        }
-        let _ = fs::remove_file(&temp_path_buf);
-        return Err(report_error!("Failed to replace symlink")(err));
+        let script_content = format!(
+            r#"
+                @echo off
+                timeout /t 3 /nobreak >nul
+                move /Y "{}" "{}"
+                del "%~f0"
+            "#,
+            temp_path_buf.to_string_lossy(),
+            link.to_string_lossy()
+        );
+        script
+            .write_all(script_content.as_bytes())
+            .map_err(report_error!("Failed to write symlink script"))?;
     }
-    Ok(())
+    script.as_file().sync_all().map_err(report_error!("Failed to sync symlink script"))?;
+    let script = script
+        .into_temp_path()
+        .keep()
+        .map_err(report_error!("Failed to persist symlink script"))?;
+
+    Ok((temp_path_buf, script))
 }
 
 fn get_bin_root() -> PathBuf {
