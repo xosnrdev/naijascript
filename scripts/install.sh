@@ -119,7 +119,7 @@ if ! echo ":${PATH}:" | grep -q ":${BIN_ROOT}:"; then
 	if ! grep -q "export PATH=\"${BIN_ROOT}:\$PATH\"" "${PROFILE}" 2>/dev/null; then
 		printf "\nexport PATH=\"%s:\$PATH\"\n\n" "${BIN_ROOT}" >>"${PROFILE}"
 		info "Added '${BIN_ROOT}' to PATH in '${PROFILE}'."
-		hint "Restart your terminal or run 'source ${PROFILE}' to apply the changes."
+		hint "Restart your terminal or run 'source ${PROFILE}' for PATH changes to take effect."
 	fi
 fi
 

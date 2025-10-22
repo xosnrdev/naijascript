@@ -19,6 +19,12 @@ function Write-Warn {
   Write-Host " $Message"
 }
 
+function Write-Hint {
+  param([string]$Message)
+  Write-Host 'hint:' -ForegroundColor Cyan -NoNewline
+  Write-Host " $Message"
+}
+
 function Write-Error {
   param([string]$Message)
   Write-Host 'error:' -ForegroundColor Red -NoNewline
@@ -88,9 +94,7 @@ try {
   Write-Info 'Installing binary...'
   Expand-Archive $assetName -DestinationPath . -Force
 
-  if (-not (Test-Path -Path $binRoot)) {
-    New-Item -ItemType Directory -Path $binRoot | Out-Null
-  }
+  New-Item -ItemType Directory -Path $binRoot -Force | Out-Null
 
   $tmpBin = Join-Path ([System.IO.Path]::GetDirectoryName([System.IO.Path]::GetTempFileName())) "${binExecutable}"
   Copy-Item -LiteralPath $binExecutable -Destination $tmpBin -Force
@@ -107,18 +111,21 @@ try {
   }
 
   Move-Item -LiteralPath $tmpBin -Destination $binPath -Force
-  Move-Item -LiteralPath $binExecutable -Destination (Join-Path $versionDir ($latestTag.Substring(1))) -Force
 
   if ($latestTag.startsWith("v")) {
     $configVersion = $latestTag.Substring(1)
-  } else {
+  }
+  else {
     $configVersion = $latestTag
   }
+
+  $versionBinPath = Join-Path $versionDir $configVersion
+  New-Item -ItemType Directory -Path $versionBinPath -Force | Out-Null
+  Move-Item -LiteralPath $binExecutable -Destination $versionBinPath -Force
+
   Write-Info "Setting default version to '$configVersion'..."
   $configDir = Split-Path -Path $configFile -Parent
-  if (-not (Test-Path -Path $configDir)) {
-    New-Item -ItemType Directory -Path $configDir | Out-Null
-  }
+  New-Item -ItemType Directory -Path $configDir -Force | Out-Null
   "default = `"$configVersion`"`n" | Set-Content -Path $configFile -Encoding UTF8
 
   Write-Info 'Configuring user environment...'
@@ -132,6 +139,8 @@ try {
     if (-not ($env:Path.Split(';') -contains $binRoot)) {
       $env:Path = "$binRoot;$env:Path"
     }
+
+    Write-Hint 'You may need to restart your terminal for PATH changes to take effect.'
   }
 
   Write-Host ''
