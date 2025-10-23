@@ -634,7 +634,8 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
                 @echo off
                 setlocal
                 timeout /t 3 /nobreak >nul
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "$binRoot = $env:{bin_root}; $profilePath = $PROFILE; if (Test-Path $profilePath) {{ $pattern = [regex]::Escape($binRoot) + ';`$env:Path'; $content = Get-Content $profilePath; $filtered = $content | Where-Object {{ $_ -notmatch $pattern }}; if ($filtered.Count -ne $content.Count) {{ $filtered | Set-Content -Path $profilePath -Encoding UTF8 }} }}; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if ($userPath) {{ $parts = $userPath.Split(';') | Where-Object {{ $_ -and $_.TrimEnd('\\') -ne $binRoot.TrimEnd('\\') }}; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }}"
+                set BIN_ROOT={bin_root}
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "$binRoot = $env:BIN_ROOT; $profilePath = $PROFILE; if (Test-Path $profilePath) {{ $pattern = [regex]::Escape($binRoot) + ';`$env:Path'; $content = Get-Content $profilePath; $filtered = $content | Where-Object {{ $_ -notmatch $pattern }}; if ($filtered.Count -ne $content.Count) {{ $filtered | Set-Content -Path $profilePath -Encoding UTF8 }} }}; $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if ($userPath) {{ $parts = $userPath.Split(';') | Where-Object {{ $_ -and $_.TrimEnd('\\') -ne $binRoot.TrimEnd('\\') }}; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }}"
                 rmdir /s /q "{root_dir}"
                 if exist "{link_path}" del "{link_path}"
                 del "%~f0"
