@@ -1,5 +1,6 @@
 mod array;
 mod number;
+mod replace;
 mod string;
 mod tw;
 
@@ -7,6 +8,7 @@ use std::{fmt, io};
 
 pub use array::*;
 pub use number::*;
+pub use replace::*;
 pub use string::*;
 pub use tw::*;
 
