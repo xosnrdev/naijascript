@@ -126,7 +126,7 @@ impl StringBuiltin {
         new: &str,
         arena: &'arena Arena,
     ) -> ArenaString<'arena> {
-        ArenaString::from_str(arena, &s.replace(old, new))
+        super::replace(arena, s, old, new)
     }
 
     #[inline]
