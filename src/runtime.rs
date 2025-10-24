@@ -106,8 +106,10 @@ struct ActivationRecord<'arena, 'src> {
 // Controls how function execution should proceed after statements
 #[derive(Debug, Clone, PartialEq)]
 enum ExecFlow<'arena, 'src> {
-    Return(Value<'arena, 'src>),
     Continue,
+    Return(Value<'arena, 'src>),
+    Break,
+    LoopContinue,
 }
 
 /// The runtime interface for NaijaScript using arena-allocated AST.
@@ -229,6 +231,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     }
                     match self.exec_block_with_flow(body)? {
                         ExecFlow::Continue => continue,
+                        ExecFlow::Break => break,
+                        ExecFlow::LoopContinue => continue,
                         flow @ ExecFlow::Return(..) => return Ok(flow),
                     }
                 }
@@ -245,6 +249,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     if let Some(expr_ref) = expr { self.eval_expr(expr_ref)? } else { Value::Null };
                 Ok(ExecFlow::Return(val))
             }
+            Stmt::Break { .. } => Ok(ExecFlow::Break),
+            Stmt::Continue { .. } => Ok(ExecFlow::LoopContinue),
             Stmt::Expression { expr, .. } => {
                 self.eval_expr(expr)?;
                 Ok(ExecFlow::Continue)
@@ -261,7 +267,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         for stmt in block.stmts {
             match self.exec_stmt(stmt)? {
                 ExecFlow::Continue => continue,
-                flow @ ExecFlow::Return(..) => {
+                flow @ (ExecFlow::Return(..) | ExecFlow::Break | ExecFlow::LoopContinue) => {
                     self.env.pop(); // exit block scope before returning
                     return Ok(flow);
                 }
@@ -496,6 +502,11 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         let val = match self.exec_block_with_flow(func_def.body)? {
             ExecFlow::Continue => Value::Null,
             ExecFlow::Return(val) => val,
+            ExecFlow::Break | ExecFlow::LoopContinue => {
+                unreachable!(
+                    "Break/Continue should be caught by loop, not escape to function boundary"
+                )
+            }
         };
 
         // We remove the activation record from the call stack

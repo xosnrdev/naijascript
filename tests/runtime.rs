@@ -77,6 +77,82 @@ fn loop_execution() {
 }
 
 #[test]
+fn test_break_exits_loop() {
+    assert_runtime!(
+        r#"
+        make i get 0
+        jasi (i small pass 10) start
+            if to say (i na 5) start
+                comot
+            end
+            i get i add 1
+        end
+        shout(i)
+        "#,
+        output: vec![Value::Number(5.0)]
+    );
+}
+
+#[test]
+fn test_continue_skips_iteration() {
+    assert_runtime!(
+        r#"
+        make sum get 0
+        make i get 0
+        jasi (i small pass 10) start
+            i get i add 1
+            if to say (i mod 2 na 0) start
+                next
+            end
+            sum get sum add i
+        end
+        shout(sum)
+        "#,
+        output: vec![Value::Number(25.0)]  // 1+3+5+7+9 = 25
+    );
+}
+
+#[test]
+fn test_break_in_nested_block() {
+    assert_runtime!(
+        r#"
+        make i get 0
+        jasi (i small pass 10) start
+            start
+                if to say (i na 3) start
+                    comot
+                end
+            end
+            i get i add 1
+        end
+        shout(i)
+        "#,
+        output: vec![Value::Number(3.0)]
+    );
+}
+
+#[test]
+fn test_continue_in_nested_block() {
+    assert_runtime!(
+        r#"
+        make count get 0
+        make i get 0
+        jasi (i small pass 5) start
+            i get i add 1
+            start
+                if to say (i na 2) start
+                    next
+                end
+            end
+            count get count add 1
+        end
+        shout(count)
+        "#,
+        output: vec![Value::Number(4.0)]
+    );
+}
+
+#[test]
 fn division_by_zero() {
     assert_runtime!("shout(1 divide 0)", error: RuntimeErrorKind::DivisionByZero);
 }

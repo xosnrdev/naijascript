@@ -7,6 +7,8 @@ statement       = assignment
                 | expression_statement
                 | if_statement
                 | loop_statement
+                | break_statement
+                | continue_statement
                 | block
                 | function_def
                 | return_statement
@@ -29,6 +31,9 @@ else_clause     = "if not so" block
                 | "if to say" "(" expression ")" block [ else_clause ] ;
 
 loop_statement  = "jasi" "(" expression ")" block ;
+
+break_statement    = "comot" ;
+continue_statement = "next" ;
 
 block           = "start" statement_list "end" ;
 

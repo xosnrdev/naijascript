@@ -33,14 +33,16 @@ pub enum Token<'arena, 'input> {
     Not, // "not" - logical not
 
     // Control flow
-    Jasi,  // "jasi" - while loop construct (Nigerian slang for "keep going")
+    Jasi,  // "jasi" - while loop construct
     Start, // "start" - block beginning
     End,   // "end" - block ending
+    Comot, // "comot" - break
+    Next,  // "next" - continue
 
     // Comparison operators
-    Na,        // "na" - equality (Nigerian slang for "is")
-    Pass,      // "pass" - greater than (Nigerian slang for "exceeds")
-    SmallPass, // "small pass" - less than (Nigerian slang for "smaller than")
+    Na,        // "na" - equality
+    Pass,      // "pass" - greater than
+    SmallPass, // "small pass" - less than
 
     // Conditional constructs
     IfToSay, // "if to say" - if statement
@@ -86,6 +88,8 @@ impl<'arena, 'input> std::fmt::Display for Token<'arena, 'input> {
             Token::Jasi => write!(f, "jasi"),
             Token::Start => write!(f, "start"),
             Token::End => write!(f, "end"),
+            Token::Comot => write!(f, "comot"),
+            Token::Next => write!(f, "next"),
             Token::Na => write!(f, "na"),
             Token::Pass => write!(f, "pass"),
             Token::SmallPass => write!(f, "small pass"),
@@ -120,6 +124,8 @@ impl<'arena, 'input> Token<'arena, 'input> {
                 | Token::Jasi
                 | Token::Start
                 | Token::End
+                | Token::Comot
+                | Token::Next
                 | Token::Na
                 | Token::Pass
                 | Token::SmallPass

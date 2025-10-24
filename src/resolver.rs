@@ -97,6 +97,9 @@ pub struct Resolver<'ast> {
     // Track current function context for return statement validation
     current_function: Option<&'ast str>,
 
+    // Track loop nesting depth (0 = not in loop)
+    in_loop: usize,
+
     /// Collection of semantic errors found during analysis
     pub errors: Diagnostics<'ast>,
 
@@ -111,6 +114,7 @@ impl<'ast> Resolver<'ast> {
             variable_scopes: Vec::new_in(arena),
             function_scopes: Vec::new_in(arena),
             current_function: None,
+            in_loop: 0,
             errors: Diagnostics::new(arena),
             arena,
         }
@@ -154,6 +158,8 @@ impl<'ast> Resolver<'ast> {
                     Stmt::Block { span, .. } => span,
                     Stmt::FunctionDef { span, .. } => span,
                     Stmt::Return { span, .. } => span,
+                    Stmt::Break { span } => span,
+                    Stmt::Continue { span } => span,
                     Stmt::Expression { span, .. } => span,
                 };
 
@@ -238,7 +244,9 @@ impl<'ast> Resolver<'ast> {
             Stmt::Loop { cond, body, .. } => {
                 self.check_expr(cond);
                 self.check_boolean_expr(cond);
+                self.in_loop += 1;
                 self.check_block(body);
+                self.in_loop -= 1;
             }
             // Handle nested blocks
             Stmt::Block { block, .. } => {
@@ -262,6 +270,30 @@ impl<'ast> Resolver<'ast> {
             }
             Stmt::Return { expr, span } => {
                 self.check_return_stmt(*expr, span);
+            }
+            Stmt::Break { span } => {
+                if self.in_loop == 0 {
+                    self.emit_error(
+                        *span,
+                        SemanticError::UnreachableCode,
+                        vec![Label {
+                            span: *span,
+                            message: ArenaCow::Borrowed("`comot` statement outside loop body"),
+                        }],
+                    );
+                }
+            }
+            Stmt::Continue { span } => {
+                if self.in_loop == 0 {
+                    self.emit_error(
+                        *span,
+                        SemanticError::UnreachableCode,
+                        vec![Label {
+                            span: *span,
+                            message: ArenaCow::Borrowed("`next` statement outside loop body"),
+                        }],
+                    );
+                }
             }
             Stmt::Expression { expr, .. } => {
                 self.check_expr(expr);
