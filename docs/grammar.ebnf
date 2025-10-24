@@ -67,11 +67,14 @@ factor          = "not" factor
                 | number
                 | string
                 | boolean
+                | null
                 | array ;
 
 array           = "[" [ expression { "," expression } [ "," ] ] "]" ;
 
 boolean         = "true" | "false" ;
+
+null            = "null" ;
 
 string          = "\"" { string_char } "\"" ;
 string_char     = ? any character except "\"" or "\\" ?
