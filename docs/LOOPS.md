@@ -59,6 +59,54 @@ jasi (foo small pass 101) start
 end
 ```
 
-## Limitations
+## Loop Control Flow
 
-The current loop construct `jasi` lacks support for common loop control flows such as `break` and `continue`, as well as higher-level loop constructs common in most programming languages, like `for` or `foreach`. These features are planned for a future release to make looping more expressive and concise.
+### Break Statement (`comot`)
+
+Exit the innermost loop immediately:
+
+```naijascript
+make i get 0
+jasi (i small pass 10) start
+    if to say (i na 5) start
+        comot  # Exit loop when i reaches 5
+    end
+    shout(i)
+    i get i add 1
+end
+# Prints: 0, 1, 2, 3, 4
+```
+
+### Continue Statement (`next`)
+
+Skip to the next iteration of the innermost loop:
+
+```naijascript
+make i get 0
+jasi (i small pass 5) start
+    i get i add 1
+    if to say (i mod 2 na 0) start
+        next  # Skip even numbers
+    end
+    shout(i)
+end
+# Prints: 1, 3, 5
+```
+
+### Nested Loops
+
+`comot` and `next` affect only the innermost loop:
+
+```naijascript
+make outer get 0
+jasi (outer small pass 3) start
+    make inner get 0
+    jasi (inner small pass 3) start
+        if to say (inner na 1) start
+            comot  # Exits inner loop only
+        end
+        inner get inner add 1
+    end
+    outer get outer add 1
+end
+```
