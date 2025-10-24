@@ -91,7 +91,7 @@ jobs:
           fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ steps.artifact_info.outputs.artifact_name }}
           path: ${{ steps.artifact_info.outputs.artifact_name }}.*
