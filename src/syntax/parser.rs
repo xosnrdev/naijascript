@@ -119,6 +119,13 @@ pub enum Stmt<'ast> {
         expr: Option<ExprRef<'ast>>,
         span: Span,
     },
+    // Loop control flow statements
+    Break {
+        span: Span,
+    },
+    Continue {
+        span: Span,
+    },
     // Expression statement (e.g., function calls)
     Expression {
         expr: ExprRef<'ast>,
@@ -266,6 +273,8 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 | Token::Return
                 | Token::Identifier(..)
                 | Token::Start
+                | Token::Comot
+                | Token::Next
         ) {
             match self.parse_statement() {
                 Some(stmt) => stmts.push(stmt),
@@ -309,6 +318,8 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 | Token::Jasi
                 | Token::Do
                 | Token::Return
+                | Token::Comot
+                | Token::Next
         ) {
             self.bump();
         }
@@ -323,6 +334,16 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             Token::Make => self.parse_assignment(start),
             Token::IfToSay => self.parse_if(start),
             Token::Jasi => self.parse_loop(start),
+            Token::Comot => {
+                self.bump(); // consume `comot`
+                let end = self.cur.span.end;
+                Some(self.alloc(Stmt::Break { span: Range::from(start..end) }))
+            }
+            Token::Next => {
+                self.bump(); // consume `next`
+                let end = self.cur.span.end;
+                Some(self.alloc(Stmt::Continue { span: Range::from(start..end) }))
+            }
             // Parse a standalone or nested block as a statement
             Token::Start => {
                 self.bump(); // consume `start` block

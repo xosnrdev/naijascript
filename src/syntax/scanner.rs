@@ -518,6 +518,8 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
             "jasi" => Token::Jasi,
             "start" => Token::Start,
             "end" => Token::End,
+            "comot" => Token::Comot,
+            "next" => Token::Next,
             "na" => Token::Na,
             "pass" => Token::Pass,
             "true" => Token::True,

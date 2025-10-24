@@ -70,6 +70,16 @@ fn test_string_number_comparison_in_loop() {
 }
 
 #[test]
+fn test_break_outside_loop() {
+    assert_resolve!("comot", SemanticError::UnreachableCode);
+}
+
+#[test]
+fn test_continue_outside_loop() {
+    assert_resolve!("next", SemanticError::UnreachableCode);
+}
+
+#[test]
 fn test_string_modulus() {
     assert_resolve!(r#"make x get "foo" mod "bar""#, SemanticError::TypeMismatch);
 }
