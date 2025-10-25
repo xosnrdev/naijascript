@@ -60,13 +60,17 @@ static mut MEMCHR2_DISPATCH: unsafe fn(
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 unsafe fn memchr2_dispatch(needle1: u8, needle2: u8, beg: *const u8, end: *const u8) -> *const u8 {
-    let func = if is_x86_feature_detected!("avx2") { memchr2_avx2 } else { memchr2_fallback };
+    let func = if is_x86_feature_detected!("avx2") {
+        memchr2_avx2
+    } else if is_x86_feature_detected!("avx512bw") {
+        memchr2_avx512bw
+    } else {
+        memchr2_fallback
+    };
     unsafe { MEMCHR2_DISPATCH = func };
     unsafe { func(needle1, needle2, beg, end) }
 }
 
-// FWIW, I found that adding support for AVX512 was not useful at the time,
-// as it only marginally improved file load performance by <5%.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 unsafe fn memchr2_avx2(needle1: u8, needle2: u8, mut beg: *const u8, end: *const u8) -> *const u8 {
@@ -93,6 +97,42 @@ unsafe fn memchr2_avx2(needle1: u8, needle2: u8, mut beg: *const u8, end: *const
 
             beg = beg.add(32);
             remaining -= 32;
+        }
+
+        memchr2_fallback(needle1, needle2, beg, end)
+    }
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx512bw")]
+unsafe fn memchr2_avx512bw(
+    needle1: u8,
+    needle2: u8,
+    mut beg: *const u8,
+    end: *const u8,
+) -> *const u8 {
+    unsafe {
+        #[cfg(target_arch = "x86")]
+        use std::arch::x86::*;
+        #[cfg(target_arch = "x86_64")]
+        use std::arch::x86_64::*;
+
+        let n1 = _mm512_set1_epi8(needle1 as i8);
+        let n2 = _mm512_set1_epi8(needle2 as i8);
+        let mut remaining = end.offset_from_unsigned(beg);
+
+        while remaining >= 64 {
+            let v = _mm512_loadu_si512(beg as *const _);
+            let a = _mm512_cmpeq_epi8_mask(v, n1);
+            let b = _mm512_cmpeq_epi8_mask(v, n2);
+            let m = a | b;
+
+            if m != 0 {
+                return beg.add(m.trailing_zeros() as usize);
+            }
+
+            beg = beg.add(64);
+            remaining -= 64;
         }
 
         memchr2_fallback(needle1, needle2, beg, end)
