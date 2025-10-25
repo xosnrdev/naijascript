@@ -6,10 +6,6 @@
 
 A scripting language interpreter inspired by the expressive linguistics of Naija (Nigerian Pidgin English).
 
-> [!WARNING]
->
-> This project is **experimental** and may be subjected to breaking changes.
-
 ## Motivation
 
 Programming should not require abandoning your cultural identity.

@@ -576,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "naijascript"
-version = "0.11.8"
+version = "1.0.0"
 dependencies = [
  "ansi-to-html",
  "clap",
