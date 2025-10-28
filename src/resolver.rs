@@ -728,22 +728,6 @@ impl<'ast> Resolver<'ast> {
                         self.check_expr(object);
 
                         if let Some(receiver_type) = self.infer_expr_type(object) {
-                            // Is it a dynamic type ?
-                            if receiver_type == ValueType::Dynamic {
-                                self.emit_error(
-                                    *span,
-                                    SemanticError::TypeMismatch,
-                                    vec![Label {
-                                        span: *span,
-                                        message: ArenaCow::Owned(arena_format!(
-                                            self.arena,
-                                            "Method `{field}` no dey for {receiver_type} type",
-                                        )),
-                                    }],
-                                );
-                                return;
-                            }
-
                             let builtin = match receiver_type {
                                 ValueType::String => {
                                     StringBuiltin::from_name(field).map(MemberBuiltin::String)
@@ -776,17 +760,20 @@ impl<'ast> Resolver<'ast> {
                                     );
                                 }
                             } else {
-                                self.emit_error(
-                                    *span,
-                                    SemanticError::UndeclaredIdentifier,
-                                    vec![Label {
-                                        span: *span,
-                                        message: ArenaCow::Owned(arena_format!(
-                                            self.arena,
-                                            "Method `{field}` no dey for {receiver_type} type",
-                                        )),
-                                    }],
-                                );
+                                // We defer method validation at runtime for dynamic receivers
+                                if receiver_type != ValueType::Dynamic {
+                                    self.emit_error(
+                                        *span,
+                                        SemanticError::UndeclaredIdentifier,
+                                        vec![Label {
+                                            span: *span,
+                                            message: ArenaCow::Owned(arena_format!(
+                                                self.arena,
+                                                "Method `{field}` no dey for {receiver_type} type",
+                                            )),
+                                        }],
+                                    );
+                                }
                             }
                         }
                     }
