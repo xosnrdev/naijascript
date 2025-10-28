@@ -4,6 +4,7 @@ use std::fmt::{self, Write};
 use std::io;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
+use crate::arena_format;
 use crate::builtins::{
     ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
 };
@@ -20,6 +21,8 @@ pub enum RuntimeErrorKind {
     DivisionByZero,
     StackOverflow,
     IndexOutOfBounds,
+    /// Type mismatch error that can't be caught in semantic analysis
+    TypeMismatch,
     InvalidIndex,
 }
 
@@ -30,6 +33,7 @@ impl AsStr for RuntimeErrorKind {
             RuntimeErrorKind::DivisionByZero => "Division by zero",
             RuntimeErrorKind::StackOverflow => "Stack overflow",
             RuntimeErrorKind::IndexOutOfBounds => "Index out of bounds",
+            RuntimeErrorKind::TypeMismatch => "Type mismatch",
             RuntimeErrorKind::InvalidIndex => "Invalid index",
         }
     }
@@ -49,6 +53,23 @@ struct RuntimeError {
     kind: RuntimeErrorKind,
     // Reference to the source span.
     span: Span,
+    name: String,
+    ty: &'static str,
+}
+
+impl RuntimeError {
+    fn new(kind: RuntimeErrorKind, span: Span) -> Self {
+        Self { kind, span, name: String::new(), ty: "" }
+    }
+
+    fn new_with_extras(
+        kind: RuntimeErrorKind,
+        span: Span,
+        name: impl Into<String>,
+        ty: &'static str,
+    ) -> Self {
+        Self { kind, span, name: name.into(), ty }
+    }
 }
 
 // Maximum recursion depth to prevent stack overflow
@@ -169,6 +190,15 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     RuntimeErrorKind::IndexOutOfBounds => vec![Label {
                         span: err.span,
                         message: ArenaCow::Borrowed("Index value don pass array length"),
+                    }],
+                    RuntimeErrorKind::TypeMismatch => vec![Label {
+                        span: err.span,
+                        message: ArenaCow::Owned(arena_format!(
+                            self.arena,
+                            "Method `{}` no dey for `{}` type",
+                            err.name,
+                            err.ty
+                        )),
                     }],
                     RuntimeErrorKind::InvalidIndex => vec![Label {
                         span: err.span,
@@ -327,10 +357,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                             BinaryOp::Times => Ok(Value::Number(lv * rv)),
                             BinaryOp::Divide | BinaryOp::Mod => {
                                 if rv == 0.0 {
-                                    Err(RuntimeError {
-                                        kind: RuntimeErrorKind::DivisionByZero,
-                                        span: *span,
-                                    })
+                                    Err(RuntimeError::new(RuntimeErrorKind::DivisionByZero, *span))
                                 } else {
                                     let n = if *op == BinaryOp::Divide { lv / rv } else { lv % rv };
                                     Ok(Value::Number(n))
@@ -423,26 +450,17 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let index_number = match index_value {
                     Value::Number(n) => n,
                     _ => {
-                        return Err(RuntimeError {
-                            kind: RuntimeErrorKind::InvalidIndex,
-                            span: *index_span,
-                        });
+                        return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span));
                     }
                 };
 
                 if !index_number.is_finite() || index_number.fract() != 0.0 {
-                    return Err(RuntimeError {
-                        kind: RuntimeErrorKind::InvalidIndex,
-                        span: *index_span,
-                    });
+                    return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span));
                 }
 
                 let idx = index_number as isize;
                 if idx < 0 || idx >= items.len() as isize {
-                    return Err(RuntimeError {
-                        kind: RuntimeErrorKind::IndexOutOfBounds,
-                        span: *index_span,
-                    });
+                    return Err(RuntimeError::new(RuntimeErrorKind::IndexOutOfBounds, *index_span));
                 }
 
                 Ok(items[idx as usize].clone())
@@ -462,7 +480,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
         // Handle member method calls
         if let Expr::Member { object, field, .. } = callee {
-            return self.eval_member_call(object, field, args);
+            return self.eval_member_call(object, field, args, *span);
         }
 
         let func_name = match callee {
@@ -479,7 +497,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
         // We check for recursion depth
         if self.call_stack.len() >= MAX_CALL_DEPTH {
-            return Err(RuntimeError { kind: RuntimeErrorKind::StackOverflow, span: *span });
+            return Err(RuntimeError::new(RuntimeErrorKind::StackOverflow, *span));
         }
 
         // We evaluate all arguments eagerly (left-to-right evaluation order)
@@ -541,7 +559,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             GlobalBuiltin::ReadLine => {
                 let prompt = arg_values[0].to_string();
                 let s = GlobalBuiltin::read_line(&prompt, self.arena)
-                    .map_err(|err| RuntimeError { kind: RuntimeErrorKind::from(err), span })?;
+                    .map_err(|err| RuntimeError::new(err.into(), span))?;
                 Ok(Value::Str(ArenaCow::owned(s)))
             }
             GlobalBuiltin::ToString => {
@@ -556,22 +574,36 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         object: ExprRef<'src>,
         field: &'src str,
         args: &'src ArgList<'src>,
+        span: Span,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
-        let builtin = MemberBuiltin::from_name(field)
-            .expect("Semantic analysis guarantees valid method name");
+        let receiver = self.eval_expr(object)?;
+        let builtin = match MemberBuiltin::from_name(field) {
+            Some(b) => b,
+            None => {
+                return Err(RuntimeError::new_with_extras(
+                    RuntimeErrorKind::TypeMismatch,
+                    span,
+                    field,
+                    GlobalBuiltin::type_of(&receiver),
+                ));
+            }
+        };
+
         if builtin.requires_mut_receiver() {
-            return self.eval_member_call_mut(object, field, args);
+            return self.eval_member_call_mut(object, field, args, span);
         }
 
-        let receiver = self.eval_expr(object)?;
         match receiver {
             Value::Str(s) => self.eval_string_member_call(s, field, args),
             Value::Number(n) => self.eval_number_member_call(n, field),
             Value::Array(arr) => self.eval_array_member_call(&arr, field),
             Value::Bool(..) => unimplemented!("Boolean methods not implemented yet"),
-            Value::Null => {
-                unreachable!("Semantic analysis guarantees no method calls on null values")
-            }
+            Value::Null => Err(RuntimeError::new_with_extras(
+                RuntimeErrorKind::TypeMismatch,
+                span,
+                field,
+                GlobalBuiltin::type_of(&receiver),
+            )),
         }
     }
 
@@ -580,48 +612,65 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         receiver: ExprRef<'src>,
         field: &'src str,
         args: &'src ArgList<'src>,
+        span: Span,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
-        let array_builtin = ArrayBuiltin::from_name(field)
-            .expect("Semantic analysis guarantees valid array method");
+        let receiver_value = self.eval_expr(receiver)?;
+        let array_builtin = match ArrayBuiltin::from_name(field) {
+            Some(b) => b,
+            None => {
+                return Err(RuntimeError::new_with_extras(
+                    RuntimeErrorKind::TypeMismatch,
+                    span,
+                    field,
+                    GlobalBuiltin::type_of(&receiver_value),
+                ));
+            }
+        };
 
         match array_builtin {
             ArrayBuiltin::Push => {
                 let value = self.eval_expr(args.args[0])?;
 
                 if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
-                    let array = self.get_mutable_array(receiver)?;
+                    let array = self.get_mutable_array(receiver, span, field)?;
                     ArrayBuiltin::push(array, value);
                     Ok(Value::Array(array.clone()))
                 } else {
-                    let receiver_value = self.eval_expr(receiver)?;
                     match receiver_value {
                         Value::Array(mut arr) => {
                             ArrayBuiltin::push(&mut arr, value);
                             Ok(Value::Array(arr))
                         }
-                        _ => unreachable!("Semantic analysis guarantees array receiver"),
+                        _ => Err(RuntimeError::new_with_extras(
+                            RuntimeErrorKind::TypeMismatch,
+                            span,
+                            field,
+                            GlobalBuiltin::type_of(&receiver_value),
+                        )),
                     }
                 }
             }
             ArrayBuiltin::Pop => {
                 if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
-                    let array = self.get_mutable_array(receiver)?;
+                    let array = self.get_mutable_array(receiver, span, field)?;
                     ArrayBuiltin::pop(array);
                     Ok(Value::Array(array.clone()))
                 } else {
-                    let receiver_value = self.eval_expr(receiver)?;
                     match receiver_value {
                         Value::Array(mut arr) => {
                             ArrayBuiltin::pop(&mut arr);
                             Ok(Value::Array(arr))
                         }
-                        _ => unreachable!("Semantic analysis guarantees array receiver"),
+                        _ => Err(RuntimeError::new_with_extras(
+                            RuntimeErrorKind::TypeMismatch,
+                            span,
+                            field,
+                            GlobalBuiltin::type_of(&receiver_value),
+                        )),
                     }
                 }
             }
-            ArrayBuiltin::Len => {
-                unreachable!("Len does not require mutable access")
-            }
+            ArrayBuiltin::Len => unreachable!("Len does not require mutable access"),
         }
     }
 
@@ -714,6 +763,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     fn get_mutable_array(
         &mut self,
         object: ExprRef<'src>,
+        span: Span,
+        field: impl Into<String>,
     ) -> Result<&mut Vec<Value<'arena, 'src>, &'arena Arena>, RuntimeError> {
         match object {
             Expr::Var(name, ..) => {
@@ -722,7 +773,12 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     .expect("Semantic analysis guarantees variable exists");
                 match var {
                     Value::Array(arr) => Ok(arr),
-                    _ => unreachable!("Semantic analysis guarantees array receiver"),
+                    _ => Err(RuntimeError::new_with_extras(
+                        RuntimeErrorKind::TypeMismatch,
+                        span,
+                        field,
+                        GlobalBuiltin::type_of(var),
+                    )),
                 }
             }
             Expr::Index { .. } => {
@@ -742,29 +798,34 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     match slot {
                         Value::Array(items) => {
                             if *idx >= items.len() {
-                                return Err(RuntimeError {
-                                    kind: RuntimeErrorKind::IndexOutOfBounds,
-                                    span: *index_span,
-                                });
+                                return Err(RuntimeError::new(
+                                    RuntimeErrorKind::IndexOutOfBounds,
+                                    *index_span,
+                                ));
                             }
                             // SAFETY: idx >= 0 and < items.len()
                             slot = unsafe { items.get_unchecked_mut(*idx) };
                         }
                         _ => {
-                            return Err(RuntimeError {
-                                kind: RuntimeErrorKind::InvalidIndex,
-                                span: *index_span,
-                            });
+                            return Err(RuntimeError::new(
+                                RuntimeErrorKind::InvalidIndex,
+                                *index_span,
+                            ));
                         }
                     }
                 }
 
                 match slot {
                     Value::Array(arr) => Ok(arr),
-                    _ => unreachable!("Semantic analysis guarantees array receiver"),
+                    _ => Err(RuntimeError::new_with_extras(
+                        RuntimeErrorKind::TypeMismatch,
+                        span,
+                        field,
+                        GlobalBuiltin::type_of(slot),
+                    )),
                 }
             }
-            _ => unreachable!("Semantic analysis guarantees variable or index as receiver"),
+            _ => Err(RuntimeError::new(RuntimeErrorKind::TypeMismatch, span)),
         }
     }
 
@@ -841,10 +902,10 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             match slot {
                 Value::Array(items) => {
                     if *idx >= items.len() {
-                        return Err(RuntimeError {
-                            kind: RuntimeErrorKind::IndexOutOfBounds,
-                            span: *index_span,
-                        });
+                        return Err(RuntimeError::new(
+                            RuntimeErrorKind::IndexOutOfBounds,
+                            *index_span,
+                        ));
                     }
                     if is_last {
                         items[*idx] = value;
@@ -854,7 +915,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     slot = unsafe { items.get_unchecked_mut(*idx) };
                 }
                 _ => {
-                    return Err(RuntimeError { kind: RuntimeErrorKind::InvalidIndex, span });
+                    return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, span));
                 }
             }
         }
@@ -891,22 +952,16 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         let number = match value {
             Value::Number(n) => n,
             _ => {
-                return Err(RuntimeError {
-                    kind: RuntimeErrorKind::InvalidIndex,
-                    span: index_span,
-                });
+                return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, index_span));
             }
         };
 
         if !number.is_finite() || number.fract() != 0.0 {
-            return Err(RuntimeError { kind: RuntimeErrorKind::InvalidIndex, span: index_span });
+            return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, index_span));
         }
 
         if number < 0.0 {
-            return Err(RuntimeError {
-                kind: RuntimeErrorKind::IndexOutOfBounds,
-                span: index_span,
-            });
+            return Err(RuntimeError::new(RuntimeErrorKind::IndexOutOfBounds, index_span));
         }
 
         Ok(number as usize)
