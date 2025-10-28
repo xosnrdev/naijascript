@@ -584,7 +584,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     RuntimeErrorKind::TypeMismatch,
                     span,
                     field,
-                    value_type_name(&receiver),
+                    GlobalBuiltin::type_of(&receiver),
                 ));
             }
         };
@@ -602,7 +602,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 RuntimeErrorKind::TypeMismatch,
                 span,
                 field,
-                value_type_name(&receiver),
+                GlobalBuiltin::type_of(&receiver),
             )),
         }
     }
@@ -622,7 +622,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     RuntimeErrorKind::TypeMismatch,
                     span,
                     field,
-                    value_type_name(&receiver_value),
+                    GlobalBuiltin::type_of(&receiver_value),
                 ));
             }
         };
@@ -645,7 +645,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                             RuntimeErrorKind::TypeMismatch,
                             span,
                             field,
-                            value_type_name(&receiver_value),
+                            GlobalBuiltin::type_of(&receiver_value),
                         )),
                     }
                 }
@@ -665,7 +665,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                             RuntimeErrorKind::TypeMismatch,
                             span,
                             field,
-                            value_type_name(&receiver_value),
+                            GlobalBuiltin::type_of(&receiver_value),
                         )),
                     }
                 }
@@ -777,7 +777,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                         RuntimeErrorKind::TypeMismatch,
                         span,
                         field,
-                        value_type_name(var),
+                        GlobalBuiltin::type_of(var),
                     )),
                 }
             }
@@ -821,7 +821,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                         RuntimeErrorKind::TypeMismatch,
                         span,
                         field,
-                        value_type_name(slot),
+                        GlobalBuiltin::type_of(slot),
                     )),
                 }
             }
@@ -1020,15 +1020,5 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 .iter_mut()
                 .find_map(|(var, val)| if *var == name { Some(val) } else { None })
         })
-    }
-}
-
-fn value_type_name(v: &Value) -> &'static str {
-    match v {
-        Value::Str(_) => "string",
-        Value::Number(_) => "number",
-        Value::Bool(_) => "bool",
-        Value::Array(_) => "array",
-        Value::Null => "null",
     }
 }
