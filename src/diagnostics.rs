@@ -133,7 +133,7 @@ impl<'arena> Diagnostics<'arena> {
         let (line, col, line_start, line_end) = self.line_col_from_span(src, diag.span.start);
         let header = self.render_header(diag.severity, diag.code, diag.message);
         let location = self.render_location(filename, line, col, color);
-        let src_line = &src[line_start..line_end];
+        let src_line = self.expand_tabs(&src[line_start..line_end]);
         let gutter = self.render_gutter(line, color, gutter_width);
         let plain_gutter = self.render_plain_gutter(color, gutter_width);
         let caret_count = src[diag.span.start..diag.span.end.min(line_end)].chars().count().max(1);
@@ -152,9 +152,10 @@ impl<'arena> Diagnostics<'arena> {
         let mut label_lines = Vec::with_capacity_in(same_line_labels.len(), self.arena);
         for label in same_line_labels {
             // Convert absolute span to column position relative to line start
-            let lbl_col = label.span.start.saturating_sub(line_start) + 1;
-            let dash_count =
-                src[label.span.start..label.span.end.min(line_end)].chars().count().max(1);
+            let lbl_col = &src[line_start..label.span.start];
+            let lbl_col = Self::visual_col(lbl_col) + 1;
+            let dash_count = &src[label.span.start..label.span.end.min(line_end)];
+            let dash_count = Self::visual_col(dash_count).max(1);
             label_lines.push(self.render_label_line(
                 lbl_col,
                 dash_count,
@@ -169,11 +170,11 @@ impl<'arena> Diagnostics<'arena> {
         for label in cross_line_labels {
             let (label_line, label_col, label_line_start, label_line_end) =
                 self.line_col_from_span(src, label.span.start);
-            let label_src_line = &src[label_line_start..label_line_end];
+            let label_src_line = self.expand_tabs(&src[label_line_start..label_line_end]);
             let label_gutter = self.render_gutter(label_line, color, gutter_width);
             let line_display = format!("{label_gutter}{label_src_line}");
-            let dash_count =
-                src[label.span.start..label.span.end.min(label_line_end)].chars().count().max(1);
+            let dash_count = &src[label.span.start..label.span.end.min(label_line_end)];
+            let dash_count = Self::visual_col(dash_count).max(1);
             let label_underline =
                 self.render_label_line(label_col, dash_count, color, &label.message, &plain_gutter);
             cross_line_displays.push((line_display, label_underline));
@@ -298,7 +299,7 @@ impl<'arena> Diagnostics<'arena> {
         } else {
             src.len()
         };
-        let col = src[line_start..start].chars().count() + 1;
+        let col = Self::visual_col(&src[line_start..start]) + 1;
         (line_idx + 1, col, line_start, line_end)
     }
 
@@ -352,6 +353,32 @@ impl<'arena> Diagnostics<'arena> {
         }
         max_line.to_string().len()
     }
+
+    const TAB_WIDTH: usize = 4;
+
+    fn expand_tabs(&self, text: &str) -> ArenaString<'arena> {
+        let mut result = ArenaString::with_capacity_in(text.len() * 2, self.arena);
+        let mut col = 0;
+        for ch in text.chars() {
+            if ch == '\t' {
+                let spaces = Self::TAB_WIDTH - (col % Self::TAB_WIDTH);
+                for _ in 0..spaces {
+                    result.push(' ');
+                }
+                col += spaces;
+            } else {
+                result.push(ch);
+                col += 1;
+            }
+        }
+        result
+    }
+
+    fn visual_col(text: &str) -> usize {
+        text.chars().fold(0, |col, ch| {
+            if ch == '\t' { col + (Self::TAB_WIDTH - (col % Self::TAB_WIDTH)) } else { col + 1 }
+        })
+    }
 }
 
 /// Trait for error types that can be converted to display strings.
@@ -399,5 +426,25 @@ mod tests {
         let (line, col, ..) = diagnostics.line_col_from_span(src, 6);
         assert_eq!(line, 2);
         assert_eq!(col, 2); // 'á' in "bár" at character position 2
+    }
+
+    #[test]
+    fn test_tab_expansion() {
+        let src = "a\tb\tc";
+        let arena = Arena::new(KIBI).unwrap();
+        let diagnostics = Diagnostics::new(&arena);
+
+        let expanded = diagnostics.expand_tabs(src);
+        assert_eq!(expanded, "a   b   c");
+
+        let (_, col, ..) = diagnostics.line_col_from_span(src, 2); // Position after 'a' and tab
+        assert_eq!(col, 5); // 'b' should be at column 5 after tab expansion
+    }
+
+    #[test]
+    fn test_visual_column_calculation() {
+        let text = "a\tb\tc";
+        let col = Diagnostics::visual_col(text);
+        assert_eq!(col, 9); // 'c' should be at column 9 after tab expansion
     }
 }
