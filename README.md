@@ -29,7 +29,7 @@ This is more than syntax translation. It represents a fundamental shift toward i
 
 The language proves this philosophy through performance. In benchmarks, NaijaScript often outperforms JavaScript and Python in string manipulation, mathematical computation, and algorithmic tasks making cultural authenticity and technical excellence complementary goals.
 
-> This is a merge sort performance comparison of NaijaScript against Python
+> This is a merge sort performance comparison between NaijaScript and Python
 
 ![merge sort benchmark gif](./docs/merge_sort_benchmark.gif)
 
