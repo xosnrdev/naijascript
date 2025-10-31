@@ -139,12 +139,10 @@ impl<'arena> Diagnostics<'arena> {
         let caret_count = src[diag.span.start..diag.span.end.min(line_end)].chars().count().max(1);
         let caret_line = self.render_caret_line(col, caret_count, color, &plain_gutter);
 
-        // Partition labels based on whether they're on the same line as the main diagnostic.
-        // This affects how we render them - same-line labels appear as underlines below
-        // the source line, while cross-line labels get their own source context.
+        // Separate same-line labels from cross-line labels
         let (same_line_labels, cross_line_labels): (Vec<_>, Vec<_>) =
             diag.labels.iter().partition(|label| {
-                let (label_line, _, _, _) = self.line_col_from_span(src, label.span.start);
+                let (label_line, ..) = self.line_col_from_span(src, label.span.start);
                 label_line == line
             });
 
