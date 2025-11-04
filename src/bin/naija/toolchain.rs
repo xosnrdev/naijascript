@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::{env, fs, os};
 
+use minreq::Response;
 use sha2::{Digest, Sha256};
 #[cfg(unix)]
 use tar::Archive;
@@ -101,9 +102,8 @@ fn fetch_latest_version() -> Result<String, String> {
         .with_header("User-Agent", "naijascript")
         .send()
         .map_err(report_error!("Failed to fetch latest version"))?;
-    let status = res.status_code;
-    if !status.is_success() {
-        return Err(format!("Failed to fetch latest version (status code: {status})"));
+    if !ResponseExt(&res).is_ok() {
+        return Err(format!("Failed to fetch latest version (status code: {})", res.status_code));
     }
     let res = res.as_str().map_err(|err| err.to_string())?;
     let value = serde_json::from_str::<serde_json::Value>(res).map_err(|err| err.to_string())?;
@@ -228,9 +228,8 @@ fn download_and_install(version: &str, version_dir: &Path) -> Result<(), String>
         .with_header("User-Agent", "naijascript")
         .send()
         .map_err(report_error!("Failed to download binary"))?;
-    let status = res.status_code;
-    if !status.is_success() {
-        return Err(format!("Failed to download binary (status code: {status})"));
+    if !ResponseExt(&res).is_ok() {
+        return Err(format!("Failed to download binary (status code: {})", res.status_code));
     }
     let bytes = res.as_bytes();
 
@@ -243,9 +242,8 @@ fn download_and_install(version: &str, version_dir: &Path) -> Result<(), String>
         .with_header("User-Agent", "naijascript")
         .send()
         .map_err(report_error!("Failed to download checksum file"))?;
-    let status = res.status_code;
-    if !status.is_success() {
-        return Err(format!("Failed to download checksum file (status code: {status})"));
+    if !ResponseExt(&res).is_ok() {
+        return Err(format!("Failed to download checksum file (status code: {})", res.status_code));
     }
     let res = res.as_str().map_err(|err| err.to_string())?;
     let expected = res.split_whitespace().next().ok_or("Malformed checksum file")?;
@@ -393,9 +391,11 @@ pub fn fetch_available_version() -> Result<(), String> {
         .with_header("User-Agent", "naijascript")
         .send()
         .map_err(report_error!("Failed to fetch available versions"))?;
-    let status = res.status_code;
-    if !status.is_success() {
-        return Err(format!("Failed to fetch available versions (status code: {status})"));
+    if !ResponseExt(&res).is_ok() {
+        return Err(format!(
+            "Failed to fetch available versions (status code: {})",
+            res.status_code
+        ));
     }
     let res = res.as_str().map_err(|err| err.to_string())?;
     let value = serde_json::from_str::<serde_json::Value>(res).map_err(|err| err.to_string())?;
@@ -468,13 +468,11 @@ fn read_file_trimmed(path: &Path) -> Option<String> {
     })
 }
 
-trait StatusCodeExt {
-    fn is_success(&self) -> bool;
-}
+struct ResponseExt<'a>(&'a Response);
 
-impl StatusCodeExt for i32 {
-    fn is_success(&self) -> bool {
-        (200..300).contains(self)
+impl<'a> ResponseExt<'a> {
+    fn is_ok(&self) -> bool {
+        (200..300).contains(&self.0.status_code)
     }
 }
 
