@@ -1,0 +1,31 @@
+# Count Elements Greater Than Previous Average
+
+# Given an array of positive integers, return the number of elements that are strictly greater than the average of all previous elements. 
+# Skip the first element.
+
+do cegtpa(nums) start
+    make count get 0
+
+    make length get nums.len()
+    if to say(length small pass 1 or length na 1) start
+        return count
+    end
+
+    make running_sum get nums[0]
+    make i get 1
+
+    jasi(i small pass length) start
+        make avg get running_sum divide i
+        if to say(nums[i] pass avg) start
+            count get count add 1
+        end
+        running_sum get running_sum add nums[i]
+        i get i add 1
+    end
+
+    return count
+end
+
+shout(cegtpa([100, 200, 150, 300]))
+shout(cegtpa([0]))
+shout(cegtpa([1, 100]))
