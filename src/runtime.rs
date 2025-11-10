@@ -670,6 +670,26 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     }
                 }
             }
+            ArrayBuiltin::Reverse => {
+                if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
+                    let array = self.get_mutable_array(receiver, span, field)?;
+                    ArrayBuiltin::reverse(array);
+                    Ok(Value::Array(array.clone()))
+                } else {
+                    match receiver_value {
+                        Value::Array(mut arr) => {
+                            ArrayBuiltin::reverse(&mut arr);
+                            Ok(Value::Array(arr))
+                        }
+                        _ => Err(RuntimeError::new_with_extras(
+                            RuntimeErrorKind::TypeMismatch,
+                            span,
+                            field,
+                            GlobalBuiltin::type_of(&receiver_value),
+                        )),
+                    }
+                }
+            }
             ArrayBuiltin::Len => unreachable!("Len does not require mutable access"),
         }
     }
@@ -683,8 +703,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             .expect("Semantic analysis guarantees valid array method");
         match array_builtin {
             ArrayBuiltin::Len => Ok(Value::Number(ArrayBuiltin::len(array))),
-            ArrayBuiltin::Push | ArrayBuiltin::Pop => {
-                unreachable!("Push and Pop require mutable access")
+            ArrayBuiltin::Push | ArrayBuiltin::Pop | ArrayBuiltin::Reverse => {
+                unreachable!("Push, Pop, and Reverse require mutable access")
             }
         }
     }

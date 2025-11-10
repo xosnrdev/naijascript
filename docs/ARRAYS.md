@@ -40,5 +40,6 @@ Available methods and return types:
 | `len()`       | Number of elements in the array                | `Number` |
 | `push(value)` | Append value to the end of the array           | `Array`  |
 | `pop()`       | Removes the last element of the array (if any) | `Array`  |
+| `reverse()`   | Reverses the elements of the array in place    | `Array`  |
 
-Note: `push` and `pop` mutates the array and yields the array for chaining.
+Note: `push`, `pop`, and `reverse` mutates the array and yields the array for chaining.
