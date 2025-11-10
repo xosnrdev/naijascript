@@ -463,7 +463,9 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     return Err(RuntimeError::new(RuntimeErrorKind::IndexOutOfBounds, *index_span));
                 }
 
-                Ok(items[idx as usize].clone())
+                // SAFETY: `idx` is >= 0 and < items.len()
+                let slot = unsafe { items.get_unchecked(idx as usize) };
+                Ok(slot.clone())
             }
             Expr::Member { .. } => {
                 unreachable!("Semantic analysis guarantees member access is always a function call")
@@ -511,8 +513,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
         // We create a new activation record for the function call
         let mut local_vars = Vec::with_capacity_in(func_def.params.params.len(), self.arena);
-        for (param, arg) in func_def.params.params.iter().zip(arg_values.iter()) {
-            local_vars.push((*param, arg.clone()));
+        for (param, arg) in func_def.params.params.iter().zip(arg_values.into_iter()) {
+            local_vars.push((*param, arg));
         }
         self.call_stack.push(ActivationRecord { local_vars });
 
