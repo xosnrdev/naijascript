@@ -20,6 +20,8 @@ pub enum StringBuiltin {
     Trim,
     /// Convert a string to a number
     ToNumber,
+    /// Split a string into an array of substrings
+    Split,
 }
 
 impl Builtin for StringBuiltin {
@@ -30,7 +32,7 @@ impl Builtin for StringBuiltin {
             | StringBuiltin::ToLowercase
             | StringBuiltin::Trim
             | StringBuiltin::ToNumber => 0,
-            StringBuiltin::Find => 1,
+            StringBuiltin::Find | StringBuiltin::Split => 1,
             StringBuiltin::Slice | StringBuiltin::Replace => 2,
         }
     }
@@ -43,6 +45,7 @@ impl Builtin for StringBuiltin {
             | StringBuiltin::ToLowercase
             | StringBuiltin::Replace
             | StringBuiltin::Trim => ValueType::String,
+            StringBuiltin::Split => ValueType::Array,
         }
     }
 
@@ -56,6 +59,7 @@ impl Builtin for StringBuiltin {
             "replace" => Some(StringBuiltin::Replace),
             "trim" => Some(StringBuiltin::Trim),
             "to_number" => Some(StringBuiltin::ToNumber),
+            "split" => Some(StringBuiltin::Split),
             _ => None,
         }
     }
@@ -135,6 +139,15 @@ impl StringBuiltin {
     #[inline]
     pub fn to_number(s: &str) -> f64 {
         s.parse::<f64>().unwrap_or(f64::NAN)
+    }
+
+    #[inline]
+    pub fn split<'arena>(
+        s: &str,
+        pat: &str,
+        arena: &'arena Arena,
+    ) -> impl Iterator<Item = ArenaString<'arena>> {
+        s.split(pat).map(|s| ArenaString::from_str(arena, s))
     }
 }
 

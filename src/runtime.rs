@@ -102,7 +102,10 @@ impl fmt::Display for Value<'_, '_> {
                     if idx > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{item}")?;
+                    match item {
+                        Value::Str(s) => write!(f, r#""{s}""#)?,
+                        _ => write!(f, "{item}")?,
+                    }
                 }
                 write!(f, "]")
             }
@@ -734,6 +737,19 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 }
             }
             StringBuiltin::ToNumber => Ok(Value::Number(StringBuiltin::to_number(&s))),
+            StringBuiltin::Split => {
+                let pattern = self.eval_expr(args.args[0])?;
+                match pattern {
+                    Value::Str(pat) => {
+                        let mut collection =
+                            Vec::with_capacity_in(s.len() / pat.len().max(1) + 1, self.arena);
+                        StringBuiltin::split(&s, &pat, self.arena)
+                            .for_each(|s| collection.push(Value::Str(ArenaCow::Owned(s))));
+                        Ok(Value::Array(collection))
+                    }
+                    _ => unreachable!("Semantic analysis guarantees string arg"),
+                }
+            }
         }
     }
 
