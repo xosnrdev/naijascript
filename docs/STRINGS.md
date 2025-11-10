@@ -24,13 +24,14 @@ make bar get "Hello, {foo}!"
 
 Available methods and return types:
 
-| Method              | Description                                                                                                  | Returns  |
-| ------------------- | ------------------------------------------------------------------------------------------------------------ | -------- |
-| `len()`             | Number of Unicode code points in the string                                                                  | `Number` |
-| `slice(start, end)` | Substring from start (inclusive) to end (exclusive). start/end are floored; negative indexes count from end. | `String` |
-| `to_uppercase()`    | Convert to uppercase                                                                                         | `String` |
-| `to_lowercase()`    | Convert to lowercase                                                                                         | `String` |
-| `find(needle)`      | Index of first occurrence (0-based). Returns -1 if not found.                                                | `Number` |
-| `replace(old, new)` | Replace all occurrences of old with new                                                                      | `String` |
-| `trim()`            | Remove leading and trailing whitespace                                                                       | `String` |
-| `to_number()`       | Parse the string as a number, or NaN on failure                                                              | `Number` |
+| Method              | Description                                                                                                  | Returns         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------ | --------------- |
+| `len()`             | Number of Unicode code points in the string                                                                  | `Number`        |
+| `slice(start, end)` | Substring from start (inclusive) to end (exclusive). start/end are floored; negative indexes count from end. | `String`        |
+| `to_uppercase()`    | Convert to uppercase                                                                                         | `String`        |
+| `to_lowercase()`    | Convert to lowercase                                                                                         | `String`        |
+| `find(needle)`      | Index of first occurrence (0-based). Returns -1 if not found.                                                | `Number`        |
+| `replace(old, new)` | Replace all occurrences of old with new                                                                      | `String`        |
+| `trim()`            | Remove leading and trailing whitespace                                                                       | `String`        |
+| `to_number()`       | Parse the string as a number, or NaN on failure                                                              | `Number`        |
+| `split(pattern)`    | Split the string by the given pattern                                                                        | `Array<String>` |
