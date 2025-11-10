@@ -1,5 +1,6 @@
 use crate::arena::Arena;
-use crate::builtins::{Builtin, BuiltinReturnType};
+use crate::builtins::Builtin;
+use crate::resolver::ValueType;
 use crate::runtime::Value;
 
 /// Built-in array methods
@@ -25,12 +26,11 @@ impl Builtin for ArrayBuiltin {
         }
     }
 
-    fn return_type(&self) -> BuiltinReturnType {
+    fn return_type(&self) -> ValueType {
         match self {
-            ArrayBuiltin::Len => BuiltinReturnType::Number,
-            ArrayBuiltin::Push | ArrayBuiltin::Pop | ArrayBuiltin::Reverse => {
-                BuiltinReturnType::Array
-            }
+            ArrayBuiltin::Len => ValueType::Number,
+            ArrayBuiltin::Pop => ValueType::Dynamic,
+            ArrayBuiltin::Push | ArrayBuiltin::Reverse => ValueType::Null,
         }
     }
 

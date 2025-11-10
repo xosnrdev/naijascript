@@ -6,8 +6,7 @@ use std::fmt;
 use crate::arena::{Arena, ArenaCow};
 use crate::arena_format;
 use crate::builtins::{
-    ArrayBuiltin, Builtin, BuiltinReturnType, GlobalBuiltin, MemberBuiltin, NumberBuiltin,
-    StringBuiltin,
+    ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
 };
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::syntax::parser::{
@@ -43,7 +42,7 @@ impl AsStr for SemanticError {
 
 // Represents the value types in NaijaScript
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-enum ValueType {
+pub enum ValueType {
     Number,
     String,
     Bool,
@@ -61,18 +60,6 @@ impl fmt::Display for ValueType {
             ValueType::Array => write!(f, "array"),
             ValueType::Dynamic => write!(f, "dynamic"),
             ValueType::Null => write!(f, "null"),
-        }
-    }
-}
-
-impl From<BuiltinReturnType> for ValueType {
-    fn from(builtin_type: BuiltinReturnType) -> Self {
-        match builtin_type {
-            BuiltinReturnType::Number => ValueType::Number,
-            BuiltinReturnType::String => ValueType::String,
-            BuiltinReturnType::Bool => ValueType::Bool,
-            BuiltinReturnType::Array => ValueType::Array,
-            BuiltinReturnType::Null => ValueType::Null,
         }
     }
 }
@@ -878,14 +865,14 @@ impl<'ast> Resolver<'ast> {
             Expr::Call { callee, .. } => match callee {
                 Expr::Var(func_name, ..) => {
                     if let Some(builtin) = GlobalBuiltin::from_name(func_name) {
-                        Some(ValueType::from(builtin.return_type()))
+                        Some(builtin.return_type())
                     } else {
                         self.lookup_func(func_name).map(|func_sig| func_sig.return_type)
                     }
                 }
                 Expr::Member { field, .. } => {
                     if let Some(builtin) = MemberBuiltin::from_name(field) {
-                        Some(ValueType::from(builtin.return_type()))
+                        Some(builtin.return_type())
                     } else {
                         Some(ValueType::Dynamic)
                     }

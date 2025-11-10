@@ -1,4 +1,4 @@
-use crate::builtins::{Builtin, BuiltinReturnType};
+use crate::builtins::{Builtin, ValueType};
 
 /// Built-in number methods
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,8 +26,8 @@ impl Builtin for NumberBuiltin {
         }
     }
 
-    fn return_type(&self) -> BuiltinReturnType {
-        BuiltinReturnType::Number
+    fn return_type(&self) -> ValueType {
+        ValueType::Number
     }
 
     fn from_name(name: &str) -> Option<Self> {

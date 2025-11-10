@@ -14,29 +14,20 @@ pub use tw::*;
 
 use crate::arena::{Arena, ArenaString};
 use crate::arena_format;
+use crate::resolver::ValueType;
 use crate::runtime::Value;
 use crate::sys::{self, Stdin};
 
 /// Trait representing a built-in function in NaijaScript
 pub trait Builtin {
     fn arity(&self) -> usize;
-    fn return_type(&self) -> BuiltinReturnType;
+    fn return_type(&self) -> ValueType;
     fn from_name(name: &str) -> Option<Self>
     where
         Self: Sized;
     fn requires_mut_receiver(&self) -> bool {
         false
     }
-}
-
-/// Return types for built-in functions.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum BuiltinReturnType {
-    Number,
-    String,
-    Bool,
-    Array,
-    Null,
 }
 
 /// Enumeration of global built-in functions available in NaijaScript.
@@ -62,11 +53,11 @@ impl Builtin for GlobalBuiltin {
         }
     }
 
-    fn return_type(&self) -> BuiltinReturnType {
+    fn return_type(&self) -> ValueType {
         match self {
-            GlobalBuiltin::Shout => BuiltinReturnType::Null,
+            GlobalBuiltin::Shout => ValueType::Null,
             GlobalBuiltin::TypeOf | GlobalBuiltin::ReadLine | GlobalBuiltin::ToString => {
-                BuiltinReturnType::String
+                ValueType::String
             }
         }
     }
@@ -133,7 +124,7 @@ impl Builtin for MemberBuiltin {
         }
     }
 
-    fn return_type(&self) -> BuiltinReturnType {
+    fn return_type(&self) -> ValueType {
         match self {
             MemberBuiltin::String(b) => b.return_type(),
             MemberBuiltin::Array(b) => b.return_type(),

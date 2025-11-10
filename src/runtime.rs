@@ -590,7 +590,12 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         };
 
         if builtin.requires_mut_receiver() {
-            return self.eval_member_call_mut(object, field, args, span);
+            match builtin {
+                MemberBuiltin::Array(..) => {
+                    return self.eval_array_member_call_mut(object, field, args, span);
+                }
+                _ => unreachable!("Only array methods require mutable receiver"),
+            }
         }
 
         match receiver {
@@ -607,7 +612,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    fn eval_member_call_mut(
+    fn eval_array_member_call_mut(
         &mut self,
         receiver: ExprRef<'src>,
         field: &'src str,
@@ -615,6 +620,16 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         span: Span,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
         let receiver_value = self.eval_expr(receiver)?;
+
+        if !matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
+            return Err(RuntimeError::new_with_extras(
+                RuntimeErrorKind::TypeMismatch,
+                span,
+                field,
+                GlobalBuiltin::type_of(&receiver_value),
+            ));
+        }
+
         let array_builtin = match ArrayBuiltin::from_name(field) {
             Some(b) => b,
             None => {
@@ -630,67 +645,21 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         match array_builtin {
             ArrayBuiltin::Push => {
                 let value = self.eval_expr(args.args[0])?;
-
-                if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
-                    let array = self.get_mutable_array(receiver, span, field)?;
-                    ArrayBuiltin::push(array, value);
-                    Ok(Value::Array(array.clone()))
-                } else {
-                    match receiver_value {
-                        Value::Array(mut arr) => {
-                            ArrayBuiltin::push(&mut arr, value);
-                            Ok(Value::Array(arr))
-                        }
-                        _ => Err(RuntimeError::new_with_extras(
-                            RuntimeErrorKind::TypeMismatch,
-                            span,
-                            field,
-                            GlobalBuiltin::type_of(&receiver_value),
-                        )),
-                    }
-                }
+                let array = self.get_mutable_array(receiver, span, field)?;
+                ArrayBuiltin::push(array, value);
+                Ok(Value::Null)
             }
             ArrayBuiltin::Pop => {
-                if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
-                    let array = self.get_mutable_array(receiver, span, field)?;
-                    ArrayBuiltin::pop(array);
-                    Ok(Value::Array(array.clone()))
-                } else {
-                    match receiver_value {
-                        Value::Array(mut arr) => {
-                            ArrayBuiltin::pop(&mut arr);
-                            Ok(Value::Array(arr))
-                        }
-                        _ => Err(RuntimeError::new_with_extras(
-                            RuntimeErrorKind::TypeMismatch,
-                            span,
-                            field,
-                            GlobalBuiltin::type_of(&receiver_value),
-                        )),
-                    }
-                }
+                let array = self.get_mutable_array(receiver, span, field)?;
+                let popped = ArrayBuiltin::pop(array);
+                Ok(popped.unwrap_or(Value::Null))
             }
             ArrayBuiltin::Reverse => {
-                if matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
-                    let array = self.get_mutable_array(receiver, span, field)?;
-                    ArrayBuiltin::reverse(array);
-                    Ok(Value::Array(array.clone()))
-                } else {
-                    match receiver_value {
-                        Value::Array(mut arr) => {
-                            ArrayBuiltin::reverse(&mut arr);
-                            Ok(Value::Array(arr))
-                        }
-                        _ => Err(RuntimeError::new_with_extras(
-                            RuntimeErrorKind::TypeMismatch,
-                            span,
-                            field,
-                            GlobalBuiltin::type_of(&receiver_value),
-                        )),
-                    }
-                }
+                let array = self.get_mutable_array(receiver, span, field)?;
+                ArrayBuiltin::reverse(array);
+                Ok(Value::Null)
             }
-            ArrayBuiltin::Len => unreachable!("Len does not require mutable access"),
+            ArrayBuiltin::Len => unreachable!("Len does not require mutable receiver"),
         }
     }
 
@@ -704,7 +673,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         match array_builtin {
             ArrayBuiltin::Len => Ok(Value::Number(ArrayBuiltin::len(array))),
             ArrayBuiltin::Push | ArrayBuiltin::Pop | ArrayBuiltin::Reverse => {
-                unreachable!("Push, Pop, and Reverse require mutable access")
+                unreachable!("Push, Pop, and Reverse require mutable receiver")
             }
         }
     }
