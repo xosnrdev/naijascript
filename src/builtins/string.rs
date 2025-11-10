@@ -1,5 +1,5 @@
 use crate::arena::{Arena, ArenaString};
-use crate::builtins::{Builtin, BuiltinReturnType};
+use crate::builtins::{Builtin, ValueType};
 
 /// Built-in string methods
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,16 +35,14 @@ impl Builtin for StringBuiltin {
         }
     }
 
-    fn return_type(&self) -> BuiltinReturnType {
+    fn return_type(&self) -> ValueType {
         match self {
-            StringBuiltin::Len | StringBuiltin::Find | StringBuiltin::ToNumber => {
-                BuiltinReturnType::Number
-            }
+            StringBuiltin::Len | StringBuiltin::Find | StringBuiltin::ToNumber => ValueType::Number,
             StringBuiltin::Slice
             | StringBuiltin::ToUppercase
             | StringBuiltin::ToLowercase
             | StringBuiltin::Replace
-            | StringBuiltin::Trim => BuiltinReturnType::String,
+            | StringBuiltin::Trim => ValueType::String,
         }
     }
 
