@@ -1,7 +1,7 @@
 //! The runtime for NaijaScript.
 
 use std::fmt::{self, Write};
-use std::io;
+use std::{io, mem};
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
@@ -442,7 +442,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Expr::Index { array, index, index_span, .. } => {
                 let array_value = self.eval_expr(array)?;
                 let index_value = self.eval_expr(index)?;
-                let items = match array_value {
+                let mut items = match array_value {
                     Value::Array(items) => items,
                     _ => unreachable!("Semantic analysis guarantees only arrays can be indexed"),
                 };
@@ -464,8 +464,9 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 }
 
                 // SAFETY: `idx` is >= 0 and < items.len()
-                let slot = unsafe { items.get_unchecked(idx as usize) };
-                Ok(slot.clone())
+                let slot = unsafe { items.get_unchecked_mut(idx as usize) };
+                let slot = mem::replace(slot, Value::Null);
+                Ok(slot)
             }
             Expr::Member { .. } => {
                 unreachable!("Semantic analysis guarantees member access is always a function call")
@@ -549,8 +550,9 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
         match builtin {
             GlobalBuiltin::Shout => {
-                self.output.push(arg_values[0].clone());
-                GlobalBuiltin::shout(&arg_values[0]);
+                let argv = mem::replace(&mut arg_values[0], Value::Null);
+                GlobalBuiltin::shout(&argv);
+                self.output.push(argv);
                 Ok(Value::Null)
             }
 
