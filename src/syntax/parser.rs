@@ -845,7 +845,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let start = self.cur.span.start;
 
         // Parse the left-hand side (primary expression)
-        let lhs = match &self.cur.token {
+        let lhs = match mem::take(&mut self.cur.token) {
             Token::Number(n) => {
                 let s = self.cur.span;
                 let expr = self.alloc(Expr::Number(n, s));
@@ -854,13 +854,13 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             }
             Token::String(sval) => {
                 let s = self.cur.span;
-                let content = sval.clone();
+                let content = sval;
                 self.bump(); // consume string
                 self.parse_string_literal(content, s)
             }
-            Token::True | Token::False => {
+            tok @ (Token::True | Token::False) => {
                 let s = self.cur.span;
-                let value = matches!(&self.cur.token, Token::True);
+                let value = matches!(tok, Token::True);
                 let expr = self.alloc(Expr::Bool(value, s));
                 self.bump(); // consume boolean
                 expr
