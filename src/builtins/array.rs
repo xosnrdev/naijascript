@@ -11,6 +11,8 @@ pub enum ArrayBuiltin {
     Push,
     /// Pop a value from the end of an array
     Pop,
+    /// Reverse an array
+    Reverse,
 }
 
 impl Builtin for ArrayBuiltin {
@@ -19,13 +21,16 @@ impl Builtin for ArrayBuiltin {
             ArrayBuiltin::Len => 0,
             ArrayBuiltin::Push => 1,
             ArrayBuiltin::Pop => 0,
+            ArrayBuiltin::Reverse => 0,
         }
     }
 
     fn return_type(&self) -> BuiltinReturnType {
         match self {
             ArrayBuiltin::Len => BuiltinReturnType::Number,
-            ArrayBuiltin::Push | ArrayBuiltin::Pop => BuiltinReturnType::Array,
+            ArrayBuiltin::Push | ArrayBuiltin::Pop | ArrayBuiltin::Reverse => {
+                BuiltinReturnType::Array
+            }
         }
     }
 
@@ -34,12 +39,13 @@ impl Builtin for ArrayBuiltin {
             "len" => Some(ArrayBuiltin::Len),
             "push" => Some(ArrayBuiltin::Push),
             "pop" => Some(ArrayBuiltin::Pop),
+            "reverse" => Some(ArrayBuiltin::Reverse),
             _ => None,
         }
     }
 
     fn requires_mut_receiver(&self) -> bool {
-        matches!(self, ArrayBuiltin::Push | ArrayBuiltin::Pop)
+        matches!(self, ArrayBuiltin::Push | ArrayBuiltin::Pop | ArrayBuiltin::Reverse)
     }
 }
 
@@ -62,5 +68,10 @@ impl ArrayBuiltin {
         array: &mut Vec<Value<'arena, 'src>, &'arena Arena>,
     ) -> Option<Value<'arena, 'src>> {
         array.pop()
+    }
+
+    #[inline]
+    pub fn reverse<'arena, 'src>(array: &mut Vec<Value<'arena, 'src>, &'arena Arena>) {
+        array.reverse();
     }
 }
