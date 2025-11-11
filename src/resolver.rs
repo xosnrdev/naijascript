@@ -746,6 +746,26 @@ impl<'ast> Resolver<'ast> {
                                         }],
                                     );
                                 }
+
+                                // TODO: Extend Builtin trait with arg_types() method for generic argument type validation
+                                if matches!(builtin, MemberBuiltin::Array(ArrayBuiltin::Join))
+                                    && !args.args.is_empty()
+                                    && let Some(arg_ty) = self.infer_expr_type(args.args[0])
+                                    && arg_ty != ValueType::String
+                                    && arg_ty != ValueType::Dynamic
+                                {
+                                    self.emit_error(
+                                                    *span,
+                                                    SemanticError::TypeMismatch,
+                                                    vec![Label {
+                                                        span: *span,
+                                                        message: ArenaCow::Owned(arena_format!(
+                                                            self.arena,
+                                                            "Method `{field}` dey expect string but na {arg_ty} dey here",
+                                                        )),
+                                                    }],
+                                                );
+                                }
                             } else {
                                 // We defer method validation at runtime for dynamic receivers
                                 if receiver_type != ValueType::Dynamic {

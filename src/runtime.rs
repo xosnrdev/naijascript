@@ -608,7 +608,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         match receiver {
             Value::Str(s) => self.eval_string_member_call(s, field, args),
             Value::Number(n) => self.eval_number_member_call(n, field),
-            Value::Array(arr) => self.eval_array_member_call(&arr, field),
+            Value::Array(arr) => self.eval_array_member_call(&arr, field, args),
             Value::Bool(..) => unimplemented!("Boolean methods not implemented yet"),
             Value::Null => Err(RuntimeError::new_with_extras(
                 RuntimeErrorKind::TypeMismatch,
@@ -666,19 +666,31 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 ArrayBuiltin::reverse(array);
                 Ok(Value::Null)
             }
-            ArrayBuiltin::Len => unreachable!("Len does not require mutable receiver"),
+            ArrayBuiltin::Len | ArrayBuiltin::Join => {
+                unreachable!("Len and Join do not require mutable receiver")
+            }
         }
     }
 
     fn eval_array_member_call(
-        &self,
+        &mut self,
         array: &Vec<Value<'arena, 'src>, &'arena Arena>,
         field: &'src str,
+        args: &'src ArgList<'src>,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
         let array_builtin = ArrayBuiltin::from_name(field)
             .expect("Semantic analysis guarantees valid array method");
         match array_builtin {
             ArrayBuiltin::Len => Ok(Value::Number(ArrayBuiltin::len(array))),
+            ArrayBuiltin::Join => {
+                let sep = self.eval_expr(args.args[0])?;
+                let sep = match sep {
+                    Value::Str(s) => s,
+                    _ => unreachable!("Semantic analysis guarantees string arg"),
+                };
+                let result = ArrayBuiltin::join(array, &sep, self.arena);
+                Ok(Value::Str(ArenaCow::Owned(result)))
+            }
             ArrayBuiltin::Push | ArrayBuiltin::Pop | ArrayBuiltin::Reverse => {
                 unreachable!("Push, Pop, and Reverse require mutable receiver")
             }
