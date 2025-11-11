@@ -1,9 +1,11 @@
 //! The diagnostics system for NaijaScript.
 
+use std::fmt::Write;
 use std::range::Range;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
+use crate::helper::LenWriter;
 use crate::simd::memchr2;
 
 /// Byte-range span within source text.
@@ -349,7 +351,9 @@ impl<'arena> Diagnostics<'arena> {
                 max_line = max_line.max(label_line);
             }
         }
-        max_line.to_string().len()
+        let mut writer = LenWriter(0);
+        write!(writer, "{max_line}").unwrap();
+        writer.0
     }
 
     const TAB_WIDTH: usize = 4;

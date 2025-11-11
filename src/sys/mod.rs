@@ -22,6 +22,7 @@ use wasm::*;
 pub use windows::*;
 
 use crate::arena::{Arena, ArenaString};
+use crate::runtime::Value;
 
 #[cfg(unix)]
 pub type virtual_memory = UnixVirtualMemory;
@@ -71,8 +72,8 @@ pub trait Stdin {
     ///
     /// Unlike the `read_line` from [`std::io::stdin`] that's hardcoded to [`std::string::String`] type, this
     /// one allocates with [`ArenaString`].
-    fn read_line<'arena>(
-        prompt: &str,
+    fn read_line<'arena, 'src>(
+        prompt: &Value<'arena, 'src>,
         arena: &'arena Arena,
     ) -> Result<ArenaString<'arena>, io::Error>;
 }

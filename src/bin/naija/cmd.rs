@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
@@ -172,7 +173,7 @@ fn run_stdin(arena: &Arena) -> ExitCode {
     run_source("<stdin>", &src, arena)
 }
 
-fn report_result(result: Result<(), String>) -> ExitCode {
+fn report_result(result: Result<(), Cow<'static, str>>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {

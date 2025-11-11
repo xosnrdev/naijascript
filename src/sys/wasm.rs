@@ -4,6 +4,7 @@ use std::{io, mem};
 
 use super::{Stdin, VirtualMemory};
 use crate::arena::{Arena, ArenaString};
+use crate::runtime::Value;
 
 pub struct WasmVirtualMemory;
 
@@ -28,8 +29,8 @@ impl VirtualMemory for WasmVirtualMemory {
 pub struct WasmStdin;
 
 impl Stdin for WasmStdin {
-    fn read_line<'arena>(
-        _prompt: &str,
+    fn read_line<'arena, 'src>(
+        _prompt: &Value<'arena, 'src>,
         _arena: &'arena Arena,
     ) -> Result<ArenaString<'arena>, io::Error> {
         Err(io::Error::new(io::ErrorKind::Unsupported, "Dis platform lack I/O support"))
