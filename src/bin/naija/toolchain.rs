@@ -622,7 +622,7 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, Cow<'static, s
                 #!/bin/sh
                 set -eu
                 sleep 2
-                PATTERN="export PATH=\"${bin_root}:\$PATH\""
+                PATTERN="export PATH=\"{bin_root}:\$PATH"\"
                 for PROFILE in "${{HOME}}/.zshrc" "${{HOME}}/.bashrc" "${{HOME}}/.profile"; do
                     if [ -f "${{PROFILE}}" ]; then
                         TMP=$(mktemp)
