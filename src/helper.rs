@@ -8,3 +8,27 @@ impl fmt::Write for LenWriter {
         Ok(())
     }
 }
+
+// Represents the value types in NaijaScript
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ValueType {
+    Number,
+    String,
+    Bool,
+    Array,
+    Dynamic,
+    Null,
+}
+
+impl fmt::Display for ValueType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ValueType::Number => write!(f, "number"),
+            ValueType::String => write!(f, "string"),
+            ValueType::Bool => write!(f, "boolean"),
+            ValueType::Array => write!(f, "array"),
+            ValueType::Dynamic => write!(f, "dynamic"),
+            ValueType::Null => write!(f, "null"),
+        }
+    }
+}

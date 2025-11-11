@@ -14,7 +14,7 @@ pub use tw::*;
 
 use crate::arena::{Arena, ArenaString};
 use crate::arena_format;
-use crate::resolver::ValueType;
+use crate::helper::ValueType;
 use crate::runtime::Value;
 use crate::sys::{self, Stdin};
 
