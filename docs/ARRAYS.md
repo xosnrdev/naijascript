@@ -35,11 +35,12 @@ nested[0][1] get 9          # nested becomes [[1,9], [3,4]]
 
 Available methods and return types:
 
-| Method        | Description                                    | Returns   |
-| ------------- | ---------------------------------------------- | --------- |
-| `len()`       | Number of elements in the array                | `Number`  |
-| `push(value)` | Append value to the end of the array           | `Null`    |
-| `pop()`       | Removes the last element of the array (if any) | `Dynamic` |
-| `reverse()`   | Reverses the elements of the array in place    | `Null`    |
+| Method            | Description                                    | Returns   |
+| ----------------- | ---------------------------------------------- | --------- |
+| `len()`           | Number of elements in the array                | `Number`  |
+| `push(value)`     | Append value to the end of the array           | `Null`    |
+| `pop()`           | Removes the last element of the array (if any) | `Dynamic` |
+| `reverse()`       | Reverses the elements of the array in place    | `Null`    |
+| `join(separator)` | Joins elements into a string with separator    | `String`  |
 
 Note: Dynamic type holds any value that is known only at runtime.
