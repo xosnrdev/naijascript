@@ -255,7 +255,7 @@ fn download_and_install(version: &str, version_dir: &Path) -> Result<(), Cow<'st
             res.status_code
         )));
     }
-    let res = res.as_str().map_err(|err| err.to_string())?;
+    let res = res.as_str().map_err(|err| Cow::Owned(err.to_string()))?;
     let expected = res.split_whitespace().next().ok_or("Malformed checksum file")?;
     let mut hasher = Sha256::new();
     hasher.update(bytes);
