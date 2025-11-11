@@ -9,6 +9,7 @@ use crate::builtins::{
     ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
 };
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
+use crate::helper::LenWriter;
 use crate::syntax::parser::{
     ArgList, BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts,
     StringSegment, UnaryOp,
@@ -386,19 +387,21 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                         },
                         (Value::Str(ls), Value::Number(n)) => {
                             assert!(matches!(op, BinaryOp::Add));
-                            let num_str = n.to_string();
+                            let mut writer = LenWriter(0);
+                            write!(writer, "{n}").unwrap();
                             let mut s =
-                                ArenaString::with_capacity_in(ls.len() + num_str.len(), self.arena);
+                                ArenaString::with_capacity_in(ls.len() + writer.0, self.arena);
                             s.push_str(&ls);
-                            s.push_str(&num_str);
+                            write!(s, "{n}").unwrap();
                             Ok(Value::Str(ArenaCow::Owned(s)))
                         }
                         (Value::Number(n), Value::Str(rs)) => {
                             assert!(matches!(op, BinaryOp::Add));
-                            let num_str = n.to_string();
+                            let mut writer = LenWriter(0);
+                            write!(writer, "{n}").unwrap();
                             let mut s =
-                                ArenaString::with_capacity_in(num_str.len() + rs.len(), self.arena);
-                            s.push_str(&num_str);
+                                ArenaString::with_capacity_in(writer.0 + rs.len(), self.arena);
+                            write!(s, "{n}").unwrap();
                             s.push_str(&rs);
                             Ok(Value::Str(ArenaCow::Owned(s)))
                         }
@@ -564,8 +567,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 Ok(Value::Str(ArenaCow::borrowed(t)))
             }
             GlobalBuiltin::ReadLine => {
-                let prompt = arg_values[0].to_string();
-                let s = GlobalBuiltin::read_line(&prompt, self.arena)
+                let s = GlobalBuiltin::read_line(&arg_values[0], self.arena)
                     .map_err(|err| RuntimeError::new(err.into(), span))?;
                 Ok(Value::Str(ArenaCow::owned(s)))
             }

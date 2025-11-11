@@ -12,6 +12,7 @@ use windows_sys::Win32::System::Memory;
 use super::{Stdin, VirtualMemory};
 use crate::KIBI;
 use crate::arena::{Arena, ArenaString};
+use crate::runtime::Value;
 use crate::simd::memchr;
 
 pub struct WindowsVirtualMemory;
@@ -76,8 +77,8 @@ const fn gle_to_apperr(gle: u32) -> u32 {
 pub struct WindowsStdin;
 
 impl Stdin for WindowsStdin {
-    fn read_line<'arena>(
-        prompt: &str,
+    fn read_line<'arena, 'src>(
+        prompt: &Value<'arena, 'src>,
         arena: &'arena Arena,
     ) -> Result<ArenaString<'arena>, io::Error> {
         print!("{prompt}");

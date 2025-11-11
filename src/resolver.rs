@@ -1,7 +1,6 @@
 //! The resolver (semantic analyzer) for NaijaScript.
 
 use std::collections::HashSet;
-use std::fmt;
 
 use crate::arena::{Arena, ArenaCow};
 use crate::arena_format;
@@ -9,6 +8,7 @@ use crate::builtins::{
     ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
 };
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
+use crate::helper::ValueType;
 use crate::syntax::parser::{
     BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts, StringSegment,
     UnaryOp,
@@ -36,30 +36,6 @@ impl AsStr for SemanticError {
             SemanticError::FunctionCallArity => "Invalid parameter count",
             SemanticError::UnreachableCode => "Unreachable code",
             SemanticError::ReservedKeyword => "Use of reserved keyword",
-        }
-    }
-}
-
-// Represents the value types in NaijaScript
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ValueType {
-    Number,
-    String,
-    Bool,
-    Array,
-    Dynamic,
-    Null,
-}
-
-impl fmt::Display for ValueType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ValueType::Number => write!(f, "number"),
-            ValueType::String => write!(f, "string"),
-            ValueType::Bool => write!(f, "boolean"),
-            ValueType::Array => write!(f, "array"),
-            ValueType::Dynamic => write!(f, "dynamic"),
-            ValueType::Null => write!(f, "null"),
         }
     }
 }

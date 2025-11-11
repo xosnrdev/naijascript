@@ -10,6 +10,7 @@ use std::slice;
 use super::{Stdin, VirtualMemory};
 use crate::KIBI;
 use crate::arena::{Arena, ArenaString};
+use crate::runtime::Value;
 use crate::simd::memchr;
 
 #[cfg(target_os = "netbsd")]
@@ -66,8 +67,8 @@ impl VirtualMemory for UnixVirtualMemory {
 pub struct UnixStdin;
 
 impl Stdin for UnixStdin {
-    fn read_line<'arena>(
-        prompt: &str,
+    fn read_line<'arena, 'src>(
+        prompt: &Value<'arena, 'src>,
         arena: &'arena Arena,
     ) -> Result<ArenaString<'arena>, io::Error> {
         print!("{prompt}");

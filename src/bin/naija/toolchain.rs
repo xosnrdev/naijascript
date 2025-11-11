@@ -21,7 +21,7 @@ use zip::ZipArchive;
 
 macro_rules! report_error {
     ($msg:expr) => {
-        |err| format!("{}: {err}", $msg)
+        |err| Cow::Owned(format!("{}: {err}", $msg))
     };
 }
 
@@ -59,7 +59,7 @@ macro_rules! print_error {
 const REPO: &str = "xosnrdev/naijascript";
 const ASSET_PREFIX: &str = "naija";
 
-pub fn install_version(versions: &[String]) -> Result<(), String> {
+pub fn install_version(versions: &[String]) -> Result<(), Cow<'static, str>> {
     for version in versions.iter().map(|s| s.to_ascii_lowercase()).collect::<HashSet<_>>() {
         let version = {
             let version = resolve_version(&version)?;
@@ -95,7 +95,7 @@ fn resolve_version<'a>(version: &'a str) -> Result<Cow<'a, str>, String> {
     }
 }
 
-fn fetch_latest_version() -> Result<String, String> {
+fn fetch_latest_version() -> Result<String, Cow<'static, str>> {
     print_info!("Fetching latest version...");
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
     let res = minreq::get(url)
@@ -103,11 +103,15 @@ fn fetch_latest_version() -> Result<String, String> {
         .send()
         .map_err(report_error!("Failed to fetch latest version"))?;
     if !ResponseExt(&res).is_ok() {
-        return Err(format!("Failed to fetch latest version (status code: {})", res.status_code));
+        return Err(Cow::Owned(format!(
+            "Failed to fetch latest version (status code: {})",
+            res.status_code
+        )));
     }
-    let res = res.as_str().map_err(|err| err.to_string())?;
-    let value = serde_json::from_str::<serde_json::Value>(res).map_err(|err| err.to_string())?;
-    extract_tag_names(&[value]).next().ok_or_else(|| "Failed to fetch latest version".to_string())
+    let res = res.as_str().map_err(|err| Cow::Owned(err.to_string()))?;
+    let value = serde_json::from_str::<serde_json::Value>(res)
+        .map_err(|err| Cow::Owned(err.to_string()))?;
+    extract_tag_names(&[value]).next().ok_or(Cow::Borrowed("Failed to fetch latest version"))
 }
 
 fn extract_tag_names(releases: &[serde_json::Value]) -> impl Iterator<Item = String> {
@@ -179,13 +183,13 @@ fn home_dir() -> PathBuf {
         .unwrap_or_else(|| panic!("{home} should be set"))
 }
 
-fn create_dir(path: &Path) -> Result<(), String> {
+fn create_dir(path: &Path) -> Result<(), Cow<'static, str>> {
     print_info!("Creating directory '{}'...", path.display());
     // `std::fs::create_dir_all` is idempotent we can call it without checking if the directory exists
     fs::create_dir_all(path).map_err(report_error!("Failed to create directory"))
 }
 
-fn remove_path(path: &Path) -> Result<(), String> {
+fn remove_path(path: &Path) -> Result<(), Cow<'static, str>> {
     print_info!("Removing path '{}'...", path.display());
     let ft = match fs::symlink_metadata(path) {
         Ok(m) => m.file_type(),
@@ -212,10 +216,10 @@ fn remove_path(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn download_and_install(version: &str, version_dir: &Path) -> Result<(), String> {
+fn download_and_install(version: &str, version_dir: &Path) -> Result<(), Cow<'static, str>> {
     let (os, arch) = get_platform();
     if os == "unknown" || arch == "unknown" {
-        return Err("Unsupported platform".to_string());
+        return Err(Cow::Borrowed("Unsupported platform"));
     }
     let version =
         if version.starts_with('v') { version.to_string() } else { format!("v{version}") };
@@ -229,7 +233,10 @@ fn download_and_install(version: &str, version_dir: &Path) -> Result<(), String>
         .send()
         .map_err(report_error!("Failed to download binary"))?;
     if !ResponseExt(&res).is_ok() {
-        return Err(format!("Failed to download binary (status code: {})", res.status_code));
+        return Err(Cow::Owned(format!(
+            "Failed to download binary (status code: {})",
+            res.status_code
+        )));
     }
     let bytes = res.as_bytes();
 
@@ -243,7 +250,10 @@ fn download_and_install(version: &str, version_dir: &Path) -> Result<(), String>
         .send()
         .map_err(report_error!("Failed to download checksum file"))?;
     if !ResponseExt(&res).is_ok() {
-        return Err(format!("Failed to download checksum file (status code: {})", res.status_code));
+        return Err(Cow::Owned(format!(
+            "Failed to download checksum file (status code: {})",
+            res.status_code
+        )));
     }
     let res = res.as_str().map_err(|err| err.to_string())?;
     let expected = res.split_whitespace().next().ok_or("Malformed checksum file")?;
@@ -251,7 +261,9 @@ fn download_and_install(version: &str, version_dir: &Path) -> Result<(), String>
     hasher.update(bytes);
     let actual = format!("{:x}", hasher.finalize());
     if actual != expected {
-        return Err("Checksum verification failed: archive is corrupted or tampered".to_string());
+        return Err(Cow::Borrowed(
+            "Checksum verification failed: archive is corrupted or tampered",
+        ));
     }
     let bin_name = bin_name();
     let out_path = version_dir.join(bin_name);
@@ -263,9 +275,9 @@ fn extract_bin_from_archive(
     bin_name: &str,
     out_path: &Path,
     ext: &str,
-) -> Result<(), String> {
+) -> Result<(), Cow<'static, str>> {
     print_info!("Extracting binary from archive...");
-    let parent = out_path.parent().ok_or("Invalid output path")?;
+    let parent = out_path.parent().ok_or(Cow::Borrowed("Invalid output path"))?;
     let cursor = Cursor::new(bytes);
     #[cfg(unix)]
     extract_bin(bin_name, out_path, ext, parent, cursor)?;
@@ -281,9 +293,11 @@ fn extract_bin(
     ext: &str,
     parent: &Path,
     cursor: Cursor<&[u8]>,
-) -> Result<(), String> {
+) -> Result<(), Cow<'static, str>> {
     if ext != "tar.xz" {
-        return Err(format!("Unsupported archive format '{ext}' for Unix installation"));
+        return Err(Cow::Owned(format!(
+            "Unsupported archive format '{ext}' for Unix installation"
+        )));
     }
     let decoder = XzDecoder::new(cursor);
     let mut archive = Archive::new(decoder);
@@ -324,9 +338,11 @@ fn extract_bin(
     ext: &str,
     parent: &Path,
     cursor: Cursor<&[u8]>,
-) -> Result<(), String> {
+) -> Result<(), Cow<'static, str>> {
     if ext != "zip" {
-        return Err(format!("Unsupported archive format '{ext}' for Windows installation"));
+        return Err(Cow::Owned(format!(
+            "Unsupported archive format '{ext}' for Windows installation"
+        )));
     }
     let mut archive =
         ZipArchive::new(cursor).map_err(report_error!("Failed to read ZIP archive"))?;
@@ -354,7 +370,7 @@ fn extract_bin(
     Ok(())
 }
 
-pub fn list_installed_version() -> Result<(), String> {
+pub fn list_installed_version() -> Result<(), Cow<'static, str>> {
     let mut versions = Vec::new();
     match fs::read_dir(versions_dir()) {
         Ok(entries) => {
@@ -384,7 +400,7 @@ pub fn list_installed_version() -> Result<(), String> {
     Ok(())
 }
 
-pub fn fetch_available_version() -> Result<(), String> {
+pub fn fetch_available_version() -> Result<(), Cow<'static, str>> {
     print_info!("Fetching available versions...");
     let url = format!("https://api.github.com/repos/{REPO}/releases");
     let res = minreq::get(url)
@@ -392,14 +408,15 @@ pub fn fetch_available_version() -> Result<(), String> {
         .send()
         .map_err(report_error!("Failed to fetch available versions"))?;
     if !ResponseExt(&res).is_ok() {
-        return Err(format!(
+        return Err(Cow::Owned(format!(
             "Failed to fetch available versions (status code: {})",
             res.status_code
-        ));
+        )));
     }
-    let res = res.as_str().map_err(|err| err.to_string())?;
-    let value = serde_json::from_str::<serde_json::Value>(res).map_err(|err| err.to_string())?;
-    let releases = value.as_array().ok_or("Expected array of releases")?;
+    let res = res.as_str().map_err(|err| Cow::Owned(err.to_string()))?;
+    let value = serde_json::from_str::<serde_json::Value>(res)
+        .map_err(|err| Cow::Owned(err.to_string()))?;
+    let releases = value.as_array().ok_or(Cow::Borrowed("Expected array of releases"))?;
     let versions: Vec<String> = extract_tag_names(releases).collect();
     if versions.is_empty() {
         print_info!("No available versions found");
@@ -412,7 +429,7 @@ pub fn fetch_available_version() -> Result<(), String> {
     Ok(())
 }
 
-pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), String> {
+pub fn uninstall_version(versions: &[String], all: bool) -> Result<(), Cow<'static, str>> {
     if all {
         return uninstall_all();
     }
@@ -476,7 +493,7 @@ impl<'a> ResponseExt<'a> {
     }
 }
 
-fn uninstall_all() -> Result<(), String> {
+fn uninstall_all() -> Result<(), Cow<'static, str>> {
     let root_dir = naijascript_dir();
 
     if !try_confirm_uninstall(&root_dir)? {
@@ -526,7 +543,7 @@ fn uninstall_all() -> Result<(), String> {
     }
 }
 
-fn try_confirm_uninstall(root_dir: &Path) -> Result<bool, String> {
+fn try_confirm_uninstall(root_dir: &Path) -> Result<bool, Cow<'static, str>> {
     print_warn!("This will remove all installed versions in '{}'", root_dir.display());
     print_warn!("Type 'y' or 'yes' to continue");
     print!("> ");
@@ -549,7 +566,7 @@ fn try_purge_stale_versions(
     default_version_dir: Option<&Path>,
     root_dir: &Path,
     versions_dir: &Path,
-) -> Result<(), String> {
+) -> Result<(), Cow<'static, str>> {
     print_info!("Purging stale versions...");
     default_version_dir.map_or(Ok(()), |dir| {
         let staging_dir = Builder::new()
@@ -586,7 +603,7 @@ fn try_purge_stale_versions(
     })
 }
 
-fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
+fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, Cow<'static, str>> {
     let bin_root = get_bin_root();
     let link_path = bin_root.join(bin_name());
     let link_path = link_path.to_string_lossy();
@@ -648,7 +665,7 @@ fn try_build_uninstall_script(root_dir: &Path) -> Result<PathBuf, String> {
     script.into_temp_path().keep().map_err(report_error!("Failed to persist uninstall script"))
 }
 
-pub fn set_default_version(version: &str) -> Result<(), String> {
+pub fn set_default_version(version: &str) -> Result<(), Cow<'static, str>> {
     let version = {
         let version = resolve_version(version)?;
         normalize_version(&version)
@@ -699,9 +716,9 @@ pub fn set_default_version(version: &str) -> Result<(), String> {
     }
 }
 
-fn try_build_symlink_script(bin_path: &Path) -> Result<(PathBuf, PathBuf), String> {
+fn try_build_symlink_script(bin_path: &Path) -> Result<(PathBuf, PathBuf), Cow<'static, str>> {
     if !bin_path.exists() {
-        return Err(format!("Binary path '{}' does not exist", bin_path.display()));
+        return Err(Cow::Owned(format!("Binary path '{}' does not exist", bin_path.display())));
     }
 
     print_info!("Creating symlink to '{}'", bin_path.display());
@@ -753,12 +770,13 @@ fn try_build_symlink_script(bin_path: &Path) -> Result<(PathBuf, PathBuf), Strin
     {
         os::windows::fs::symlink_file(bin_path, &temp_path_buf).map_err(|err| {
             if err.raw_os_error() == Some(1314) {
-                return r#"Failed to create symlink: Windows denied the request (OS error 1314).
+                return Cow::Borrowed(
+                    r#"Failed to create symlink: Windows denied the request (OS error 1314).
 
                 You can fix this by either: 
                 1. Enabling Developer Mode in Windows Settings, or 
-                2. Re-running this command from an elevated (Administrator) terminal."#
-                    .to_string();
+                2. Re-running this command from an elevated (Administrator) terminal."#,
+                );
             }
             report_error!("Failed to create symlink to version")(err)
         })?;

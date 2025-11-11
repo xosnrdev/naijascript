@@ -14,7 +14,7 @@ pub use tw::*;
 
 use crate::arena::{Arena, ArenaString};
 use crate::arena_format;
-use crate::resolver::ValueType;
+use crate::helper::ValueType;
 use crate::runtime::Value;
 use crate::sys::{self, Stdin};
 
@@ -99,8 +99,8 @@ impl GlobalBuiltin {
     }
 
     #[inline]
-    pub fn read_line<'arena>(
-        prompt: &str,
+    pub fn read_line<'arena, 'src>(
+        prompt: &Value<'arena, 'src>,
         arena: &'arena Arena,
     ) -> Result<ArenaString<'arena>, io::Error> {
         sys::stdin::read_line(prompt, arena)

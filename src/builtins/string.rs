@@ -1,5 +1,6 @@
 use crate::arena::{Arena, ArenaString};
-use crate::builtins::{Builtin, ValueType};
+use crate::builtins::Builtin;
+use crate::helper::ValueType;
 
 /// Built-in string methods
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
