@@ -1,0 +1,18 @@
+[package]
+name = "wasm"
+version = "0.1.0"
+edition = "2024"
+authors = ["Success Kingsley <xosnrdev@gmail.com>"]
+description = "WASM bindings for The NaijaScript Interpreter"
+repository = "https://github.com/xosnrdev/naijascript"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ansi-to-html = "0.2.2"
+html-escape = "0.2.13" 
+naijascript = { path = "../" }
+wasm-bindgen = "0.2.100"

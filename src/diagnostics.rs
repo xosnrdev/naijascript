@@ -101,20 +101,13 @@ impl<'arena> Diagnostics<'arena> {
         print!("{ansi}");
     }
 
-    /// Report all collected diagnostics as HTML for the web.
-    #[cfg(target_family = "wasm")]
-    pub fn report_html(&self, src: &str, filename: &str) -> String {
-        let ansi = self.render_ansi(src, filename);
-        ansi_to_html::convert(&ansi).unwrap()
-    }
-
     /// Check if there are any error-level diagnostics
     pub fn has_errors(&self) -> bool {
         self.diagnostics.iter().any(|d| d.severity == Severity::Error)
     }
 
-    // Render all diagnostics as a single ANSI string
-    fn render_ansi(&self, src: &str, filename: &str) -> ArenaString<'arena> {
+    /// Render all diagnostics as a single ANSI string
+    pub fn render_ansi(&self, src: &str, filename: &str) -> ArenaString<'arena> {
         let mut buf = ArenaString::new_in(self.arena);
         let gutter_width = self.compute_gutter_width(&self.diagnostics, src);
         for diag in &self.diagnostics {
