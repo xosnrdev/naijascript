@@ -6,9 +6,10 @@
 
 # The backtrace for rust is almost as large as the entire binary.
 # = Huge reduction in binary size by removing all that.
-[unstable]
-build-std = ["std", "panic_abort"]
-build-std-features = ["optimize_for_size"]
+[profile.release]
+panic = "immediate-abort"
 
-[build-std-features]
-rustflags = ["-Zunstable-options", "-Cpanic=immediate-abort"]
+[unstable]
+panic-immediate-abort = true
+build-std = ["std", "panic_abort"]
+build-std-features = ["default", "optimize_for_size"]
