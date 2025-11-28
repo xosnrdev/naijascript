@@ -281,7 +281,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         }
 
         let end = self.cur.span.end;
-        let stmts = self.arena.vec_into_slice(stmts);
+        let stmts = Arena::vec_into_slice(stmts);
         self.alloc(Block { stmts, span: Range::from(start..end) })
     }
 
@@ -296,7 +296,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         }
 
         let end = self.cur.span.end;
-        let stmts = self.arena.vec_into_slice(stmts);
+        let stmts = Arena::vec_into_slice(stmts);
         self.alloc(Block { stmts, span: Range::from(start..end) })
     }
 
@@ -583,8 +583,8 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             );
         }
 
-        let params = self.arena.vec_into_slice(params);
-        let param_spans = self.arena.vec_into_slice(param_spans);
+        let params = Arena::vec_into_slice(params);
+        let param_spans = Arena::vec_into_slice(param_spans);
 
         let params = self.alloc(ParamList { params, param_spans });
         let end = self.cur.span.end;
@@ -929,7 +929,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     self.cur.span.end
                 };
 
-                let elements = self.arena.vec_into_slice(elements);
+                let elements = Arena::vec_into_slice(elements);
                 self.alloc(Expr::Array { elements, span: Range::from(start..end) })
             }
             _ => {
@@ -1038,7 +1038,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         }],
                     );
                 }
-                let args = self.arena.vec_into_slice(args);
+                let args = Arena::vec_into_slice(args);
                 let args = self.alloc(ArgList { args });
                 let end = self.cur.span.end;
                 lhs = self.alloc(Expr::Call {
@@ -1149,7 +1149,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             return self.alloc(Expr::String { parts: StringParts::Static(s), span });
         }
 
-        let s = self.arena.vec_into_slice(segments);
+        let s = Arena::vec_into_slice(segments);
         self.alloc(Expr::String { parts: StringParts::Interpolated(s), span })
     }
 

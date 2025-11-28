@@ -109,7 +109,8 @@ impl Arena {
         self.delegate_target().alloc_uninit_slice(count)
     }
 
-    pub fn vec_into_slice<'a, T: Copy>(&'a self, vec: Vec<T, &'a Self>) -> &'a [T] {
+    #[must_use]
+    pub fn vec_into_slice<T: Copy>(vec: Vec<T, &Self>) -> &[T] {
         #[allow(clippy::missing_transmute_annotations)]
         let vec = unsafe { mem::transmute(vec) };
         bump::Arena::vec_into_slice(vec)
