@@ -54,6 +54,7 @@ impl Default for Arena {
 }
 
 impl Arena {
+    #[must_use]
     pub const fn empty() -> Self {
         Self::Owned { arena: bump::Arena::empty() }
     }
@@ -111,7 +112,7 @@ impl Arena {
     pub fn vec_into_slice<'a, T: Copy>(&'a self, vec: Vec<T, &'a Self>) -> &'a [T] {
         #[allow(clippy::missing_transmute_annotations)]
         let vec = unsafe { mem::transmute(vec) };
-        self.delegate_target().vec_into_slice(vec)
+        bump::Arena::vec_into_slice(vec)
     }
 }
 

@@ -20,30 +20,29 @@ pub struct WindowsVirtualMemory;
 impl VirtualMemory for WindowsVirtualMemory {
     unsafe fn reserve(size: usize) -> Result<NonNull<u8>, u32> {
         unsafe {
-            let mut _base = null_mut();
+            #[allow(unused)]
+            let mut base = null_mut();
 
             // In debug builds, we use fixed addresses to aid in debugging.
             // Makes it possible to immediately tell which address space a pointer belongs to.
             #[cfg(all(debug_assertions, not(target_pointer_width = "32")))]
             {
-                static mut S_BASE_GEN: usize = 0x0000100000000000; // 16 TiB
-                S_BASE_GEN += 0x0000001000000000; // 64 GiB
-                _base = S_BASE_GEN as *mut _;
+                static mut S_BASE_GEN: usize = 0x0000_1000_0000_0000; // 16 TiB
+                S_BASE_GEN += 0x0000_0010_0000_0000; // 64 GiB
+                base = S_BASE_GEN as *mut _;
             }
 
-            check_ptr_return(Memory::VirtualAlloc(
-                _base,
-                size,
-                Memory::MEM_RESERVE,
-                Memory::PAGE_READWRITE,
-            ) as *mut u8)
+            check_ptr_return(
+                Memory::VirtualAlloc(base, size, Memory::MEM_RESERVE, Memory::PAGE_READWRITE)
+                    .cast::<u8>(),
+            )
         }
     }
 
     unsafe fn commit(base: NonNull<u8>, size: usize) -> Result<(), u32> {
         unsafe {
             check_ptr_return(Memory::VirtualAlloc(
-                base.as_ptr() as *mut _,
+                base.as_ptr().cast(),
                 size,
                 Memory::MEM_COMMIT,
                 Memory::PAGE_READWRITE,
@@ -56,7 +55,7 @@ impl VirtualMemory for WindowsVirtualMemory {
         unsafe {
             // NOTE: `VirtualFree` fails if the pointer isn't
             // a valid base address or if the size isn't zero.
-            Memory::VirtualFree(base.as_ptr() as *mut _, 0, Memory::MEM_RELEASE);
+            Memory::VirtualFree(base.as_ptr().cast(), 0, Memory::MEM_RELEASE);
         }
     }
 }
@@ -71,14 +70,14 @@ fn get_last_error() -> u32 {
 }
 
 const fn gle_to_apperr(gle: u32) -> u32 {
-    if gle == 0 { 0x8000FFFF } else { 0x80070000 | gle }
+    if gle == 0 { 0x8000_FFFF } else { 0x8007_0000 | gle }
 }
 
 pub struct WindowsStdin;
 
 impl Stdin for WindowsStdin {
-    fn read_line<'arena, 'src>(
-        prompt: &Value<'arena, 'src>,
+    fn read_line<'arena>(
+        prompt: &Value<'arena, '_>,
         arena: &'arena Arena,
     ) -> Result<ArenaString<'arena>, io::Error> {
         print!("{prompt}");
@@ -88,7 +87,7 @@ impl Stdin for WindowsStdin {
     }
 }
 
-fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, io::Error> {
+fn read_line_console(arena: &Arena) -> Result<ArenaString<'_>, io::Error> {
     let hconsoleinput = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
     if hconsoleinput == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
@@ -104,6 +103,7 @@ fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>
             buf16.reserve_exact(cap - buf16.capacity());
         }
 
+        #[allow(clippy::cast_possible_truncation)]
         let nnumberofcharstoread = (cap - total) as u32;
         let base = buf16.as_ptr();
         let mut lpnumberofcharsread = 0;
@@ -113,7 +113,7 @@ fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>
                 hconsoleinput,
                 base.add(total) as *mut _,
                 nnumberofcharstoread,
-                &mut lpnumberofcharsread,
+                &raw mut lpnumberofcharsread,
                 null_mut(),
             )
         };
@@ -134,10 +134,10 @@ fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>
             total = scan_start + pos;
             break;
         }
-        if let Some(pos) = hay.iter().position(|&c| c == (b'\n' as u16)) {
+        if let Some(pos) = hay.iter().position(|&c| c == u16::from(b'\n')) {
             let pos = scan_start + pos;
             // Check for and strip the preceding Carriage Return for CRLF endings
-            if pos > 0 && unsafe { *base.add(pos - 1) } == (b'\r' as u16) {
+            if pos > 0 && unsafe { *base.add(pos - 1) } == u16::from(b'\r') {
                 total = pos - 1;
             } else {
                 total = pos;
@@ -165,7 +165,7 @@ fn read_line_console<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>
     Ok(buf)
 }
 
-fn read_line_pipe<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, io::Error> {
+fn read_line_pipe(arena: &Arena) -> Result<ArenaString<'_>, io::Error> {
     let hfile = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
     if hfile == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
@@ -182,15 +182,16 @@ fn read_line_pipe<'arena>(arena: &'arena Arena) -> Result<ArenaString<'arena>, i
         }
 
         let base = buf.as_ptr();
+        #[allow(clippy::cast_possible_truncation)]
         let nnumberofbytestoread = (cap - total) as u32;
         let mut lpnumberofbytesread = 0;
 
         let n = unsafe {
             ReadFile(
                 hfile,
-                base.add(total) as *mut _,
+                base.add(total).cast_mut(),
                 nnumberofbytestoread,
-                &mut lpnumberofbytesread,
+                &raw mut lpnumberofbytesread,
                 null_mut(),
             )
         };
@@ -228,6 +229,6 @@ fn is_console() -> bool {
             return false;
         }
         let mut lpmode = 0;
-        GetConsoleMode(hconsolehandle, &mut lpmode) != 0
+        GetConsoleMode(hconsolehandle, &raw mut lpmode) != 0
     }
 }

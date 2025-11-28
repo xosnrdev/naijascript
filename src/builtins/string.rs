@@ -68,6 +68,8 @@ impl Builtin for StringBuiltin {
 
 impl StringBuiltin {
     #[inline]
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
     pub fn len(s: &str) -> f64 {
         s.chars().count() as f64
     }
@@ -79,7 +81,8 @@ impl StringBuiltin {
         end: f64,
         arena: &'arena Arena,
     ) -> ArenaString<'arena> {
-        let len = s.chars().count() as isize;
+        let len = s.chars().count().cast_signed();
+        #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
         let (mut start, mut end) = (start.floor() as isize, end.floor() as isize);
 
         if start < 0 {
@@ -98,8 +101,11 @@ impl StringBuiltin {
             return ArenaString::from_str(arena, s);
         }
 
-        let mut buffer = ArenaString::with_capacity_in((end - start) as usize, arena);
-        s.chars().skip(start as usize).take((end - start) as usize).for_each(|ch| buffer.push(ch));
+        let mut buffer = ArenaString::with_capacity_in((end - start).cast_unsigned(), arena);
+        s.chars()
+            .skip(start.cast_unsigned())
+            .take((end - start).cast_unsigned())
+            .for_each(|ch| buffer.push(ch));
         buffer
     }
 
@@ -118,7 +124,9 @@ impl StringBuiltin {
     }
 
     #[inline]
+    #[must_use]
     pub fn find(haystack: &str, needle: &str) -> f64 {
+        #[allow(clippy::cast_precision_loss)]
         super::find(haystack, needle).map_or(-1.0, |v| v as f64)
     }
 
@@ -138,6 +146,7 @@ impl StringBuiltin {
     }
 
     #[inline]
+    #[must_use]
     pub fn to_number(s: &str) -> f64 {
         s.parse::<f64>().unwrap_or(f64::NAN)
     }

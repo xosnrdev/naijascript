@@ -6,12 +6,12 @@ use naijascript::diagnostics::AsStr;
 use naijascript::runtime::{Runtime, RuntimeErrorKind, Value};
 
 mod common;
-use crate::common::_parse_from_src;
+use crate::common::parse_from_src;
 
 macro_rules! assert_runtime {
     ($src:expr, output: $expected:expr) => {{
         let arena = Arena::new(KIBI).unwrap();
-        let mut parser = _parse_from_src($src, &arena);
+        let mut parser = parse_from_src($src, &arena);
         let (root, err) = parser.parse_program();
         assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
         let mut resolver = naijascript::resolver::Resolver::new(&arena);
@@ -27,7 +27,7 @@ macro_rules! assert_runtime {
     }};
     ($src:expr, error: $err:expr) => {{
         let arena = naijascript::arena::Arena::new(4 * KIBI).unwrap();
-        let mut parser = _parse_from_src($src, &arena);
+        let mut parser = parse_from_src($src, &arena);
         let (root, err) = parser.parse_program();
         assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
         let mut runtime = Runtime::new(&arena);
@@ -79,7 +79,7 @@ fn loop_execution() {
 #[test]
 fn test_break_exits_loop() {
     assert_runtime!(
-        r#"
+        r"
         make i get 0
         jasi (i small pass 10) start
             if to say (i na 5) start
@@ -88,7 +88,7 @@ fn test_break_exits_loop() {
             i get i add 1
         end
         shout(i)
-        "#,
+        ",
         output: vec![Value::Number(5.0)]
     );
 }
@@ -96,7 +96,7 @@ fn test_break_exits_loop() {
 #[test]
 fn test_continue_skips_iteration() {
     assert_runtime!(
-        r#"
+        r"
         make sum get 0
         make i get 0
         jasi (i small pass 10) start
@@ -107,7 +107,7 @@ fn test_continue_skips_iteration() {
             sum get sum add i
         end
         shout(sum)
-        "#,
+        ",
         output: vec![Value::Number(25.0)]  // 1+3+5+7+9 = 25
     );
 }
@@ -115,7 +115,7 @@ fn test_continue_skips_iteration() {
 #[test]
 fn test_break_in_nested_block() {
     assert_runtime!(
-        r#"
+        r"
         make i get 0
         jasi (i small pass 10) start
             start
@@ -126,7 +126,7 @@ fn test_break_in_nested_block() {
             i get i add 1
         end
         shout(i)
-        "#,
+        ",
         output: vec![Value::Number(3.0)]
     );
 }
@@ -134,7 +134,7 @@ fn test_break_in_nested_block() {
 #[test]
 fn test_continue_in_nested_block() {
     assert_runtime!(
-        r#"
+        r"
         make count get 0
         make i get 0
         jasi (i small pass 5) start
@@ -147,7 +147,7 @@ fn test_continue_in_nested_block() {
             count get count add 1
         end
         shout(count)
-        "#,
+        ",
         output: vec![Value::Number(4.0)]
     );
 }
@@ -477,12 +477,12 @@ fn control_flow_else_return_type() {
 #[test]
 fn do_sum() {
     assert_runtime!(
-        r#"
+        r"
         do sum(a) start
             return a add 5
         end
         shout(sum(5))
-        "#,
+        ",
         output: vec![Value::Number(10.0)]
     );
 }

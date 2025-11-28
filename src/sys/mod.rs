@@ -15,7 +15,7 @@ use std::io;
 use std::ptr::NonNull;
 
 #[cfg(unix)]
-use unix::*;
+use unix::{UnixStdin, UnixVirtualMemory};
 #[cfg(target_family = "wasm")]
 use wasm::*;
 #[cfg(windows)]
@@ -72,8 +72,8 @@ pub trait Stdin {
     ///
     /// Unlike the `read_line` from [`std::io::stdin`] that's hardcoded to [`std::string::String`] type, this
     /// one allocates with [`ArenaString`].
-    fn read_line<'arena, 'src>(
-        prompt: &Value<'arena, 'src>,
+    fn read_line<'arena>(
+        prompt: &Value<'arena, '_>,
         arena: &'arena Arena,
     ) -> Result<ArenaString<'arena>, io::Error>;
 }

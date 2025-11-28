@@ -169,7 +169,7 @@ impl Arena {
         unsafe { slice::from_raw_parts_mut(ptr.cast().as_ptr(), count) }
     }
 
-    pub fn vec_into_slice<'a, T: Copy>(&'a self, mut vec: Vec<T, &'a Self>) -> &'a [T] {
+    pub fn vec_into_slice<T: Copy>(mut vec: Vec<T, &Self>) -> &[T] {
         if vec.is_empty() {
             return &[];
         }

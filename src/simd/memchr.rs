@@ -7,6 +7,7 @@ use std::ptr;
 /// Returns the index of the first occurrence of `needle` in the
 /// `haystack`. If not found, `haystack.len()` is returned. `offset`
 /// specifies the index to start searching from.
+#[must_use]
 pub fn memchr(needle: u8, haystack: &[u8], offset: usize) -> usize {
     unsafe {
         let beg = haystack.as_ptr();
@@ -69,15 +70,17 @@ unsafe fn memchr_avx2(needle: u8, mut beg: *const u8, end: *const u8) -> *const 
         #[cfg(target_arch = "x86")]
         use std::arch::x86::*;
         #[cfg(target_arch = "x86_64")]
-        use std::arch::x86_64::*;
+        use std::arch::x86_64::{
+            _mm256_cmpeq_epi8, _mm256_loadu_si256, _mm256_movemask_epi8, _mm256_set1_epi8,
+        };
 
-        let n = _mm256_set1_epi8(needle as i8);
+        let n = _mm256_set1_epi8(needle.cast_signed());
         let mut remaining = end.offset_from_unsigned(beg);
 
         while remaining >= 32 {
-            let v = _mm256_loadu_si256(beg as *const _);
+            let v = _mm256_loadu_si256(beg.cast());
             let a = _mm256_cmpeq_epi8(v, n);
-            let m = _mm256_movemask_epi8(a) as u32;
+            let m = _mm256_movemask_epi8(a).cast_unsigned();
 
             if m != 0 {
                 return beg.add(m.trailing_zeros() as usize);
@@ -98,13 +101,13 @@ unsafe fn memchr_avx512bw(needle: u8, mut beg: *const u8, end: *const u8) -> *co
         #[cfg(target_arch = "x86")]
         use std::arch::x86::*;
         #[cfg(target_arch = "x86_64")]
-        use std::arch::x86_64::*;
+        use std::arch::x86_64::{_mm512_cmpeq_epi8_mask, _mm512_loadu_si512, _mm512_set1_epi8};
 
-        let n = _mm512_set1_epi8(needle as i8);
+        let n = _mm512_set1_epi8(needle.cast_signed());
         let mut remaining = end.offset_from_unsigned(beg);
 
         while remaining >= 64 {
-            let v = _mm512_loadu_si512(beg as *const _);
+            let v = _mm512_loadu_si512(beg.cast());
             let m = _mm512_cmpeq_epi8_mask(v, n);
 
             if m != 0 {
@@ -140,7 +143,7 @@ unsafe fn memchr_lasx(needle: u8, mut beg: *const u8, end: *const u8) -> *const 
     unsafe {
         use std::arch::loongarch64::*;
 
-        let n = lasx_xvreplgr2vr_b(needle as i32);
+        let n = lasx_xvreplgr2vr_b(needle.cast_signed());
 
         let off = beg.align_offset(32);
         if off != 0 && off < end.offset_from_unsigned(beg) {
@@ -148,7 +151,7 @@ unsafe fn memchr_lasx(needle: u8, mut beg: *const u8, end: *const u8) -> *const 
         }
 
         while end.offset_from_unsigned(beg) >= 32 {
-            let v = lasx_xvld::<0>(beg as *const _);
+            let v = lasx_xvld::<0>(beg.cast());
             let a = lasx_xvseq_b(v, n);
             let m = lasx_xvmskltz_b(a);
             let l = lasx_xvpickve2gr_wu::<0>(m);
@@ -156,7 +159,7 @@ unsafe fn memchr_lasx(needle: u8, mut beg: *const u8, end: *const u8) -> *const 
             let m = (h << 16) | l;
 
             if m != 0 {
-                return beg.add(m.trailing_zeros() as usize);
+                return beg.add(m.trailing_zeros().cast_unsigned());
             }
 
             beg = beg.add(32);
@@ -180,13 +183,13 @@ unsafe fn memchr_lsx(needle: u8, mut beg: *const u8, end: *const u8) -> *const u
         }
 
         while end.offset_from_unsigned(beg) >= 16 {
-            let v = lsx_vld::<0>(beg as *const _);
+            let v = lsx_vld::<0>(beg.cast());
             let a = lsx_vseq_b(v, n);
             let c = lsx_vmskltz_b(a);
             let m = lsx_vpickve2gr_wu::<0>(c);
 
             if m != 0 {
-                return beg.add(m.trailing_zeros() as usize);
+                return beg.add(m.trailing_zeros().cast_unsigned());
             }
 
             beg = beg.add(16);
@@ -199,13 +202,16 @@ unsafe fn memchr_lsx(needle: u8, mut beg: *const u8, end: *const u8) -> *const u
 #[cfg(target_arch = "aarch64")]
 unsafe fn memchr_neon(needle: u8, mut beg: *const u8, end: *const u8) -> *const u8 {
     unsafe {
-        use std::arch::aarch64::*;
+        use std::arch::aarch64::{
+            vceqq_u8, vdupq_n_u8, vget_lane_u64, vld1q_u8, vreinterpret_u64_u8,
+            vreinterpretq_u16_u8, vshrn_n_u16,
+        };
 
         if end.offset_from_unsigned(beg) >= 16 {
             let n = vdupq_n_u8(needle);
 
             loop {
-                let v = vld1q_u8(beg as *const _);
+                let v = vld1q_u8(beg.cast());
                 let a = vceqq_u8(v, n);
 
                 // https://community.arm.com/arm-community-blogs/b/servers-and-cloud-computing-blog/posts/porting-x86-vector-bitmask-optimizations-to-arm-neon

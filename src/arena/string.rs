@@ -48,6 +48,8 @@ impl<'a> ArenaString<'a> {
     /// If the entire string is valid, it returns `Ok(text)`.
     /// Otherwise, it returns `Err(ArenaString)` with all invalid sequences replaced with U+FFFD.
     pub fn from_utf8_lossy<'s>(arena: &'a Arena, text: &'s [u8]) -> Result<&'s str, Self> {
+        const REPLACEMENT: &str = "\u{FFFD}";
+
         let mut iter = text.utf8_chunks();
         let Some(mut chunk) = iter.next() else {
             return Ok("");
@@ -58,8 +60,6 @@ impl<'a> ArenaString<'a> {
             debug_assert_eq!(valid.len(), text.len());
             return Ok(unsafe { str::from_utf8_unchecked(text) });
         }
-
-        const REPLACEMENT: &str = "\u{FFFD}";
 
         let mut res = Self::new_in(arena);
         res.reserve(text.len());
@@ -88,21 +88,25 @@ impl<'a> ArenaString<'a> {
     }
 
     /// It's empty.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.vec.is_empty()
     }
 
     /// It's lengthy.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.vec.len()
     }
 
     /// It's capacatity.
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.vec.capacity()
     }
 
     /// It's a [`String`], now it's a [`str`]. Wow!
+    #[must_use]
     pub fn as_str(&self) -> &str {
         unsafe { str::from_utf8_unchecked(self.vec.as_slice()) }
     }
@@ -113,6 +117,7 @@ impl<'a> ArenaString<'a> {
     }
 
     /// Now it's bytes!
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.vec.as_slice()
     }
@@ -129,12 +134,12 @@ impl<'a> ArenaString<'a> {
     /// Reserves *additional* memory. For you old folks out there (totally not me),
     /// this is different from C++'s `reserve` which reserves a total size.
     pub fn reserve(&mut self, additional: usize) {
-        self.vec.reserve(additional)
+        self.vec.reserve(additional);
     }
 
     /// Just like [`ArenaString::reserve`], but it doesn't overallocate.
     pub fn reserve_exact(&mut self, additional: usize) {
-        self.vec.reserve_exact(additional)
+        self.vec.reserve_exact(additional);
     }
 
     /// Now it's small! Alarming!
@@ -142,17 +147,17 @@ impl<'a> ArenaString<'a> {
     /// *Do not* call this unless this string is the last thing on the arena.
     /// Arenas are stacks, they can't deallocate what's in the middle.
     pub fn shrink_to_fit(&mut self) {
-        self.vec.shrink_to_fit()
+        self.vec.shrink_to_fit();
     }
 
     /// To no surprise, this clears the string.
     pub fn clear(&mut self) {
-        self.vec.clear()
+        self.vec.clear();
     }
 
     /// Append some text.
     pub fn push_str(&mut self, string: &str) {
-        self.vec.extend_from_slice(string.as_bytes())
+        self.vec.extend_from_slice(string.as_bytes());
     }
 
     /// Append a single character.
@@ -200,12 +205,12 @@ impl<'a> ArenaString<'a> {
             Bound::Included(&n) => assert!(self.is_char_boundary(n)),
             Bound::Excluded(&n) => assert!(self.is_char_boundary(n + 1)),
             Bound::Unbounded => {}
-        };
+        }
         match range.end_bound() {
             Bound::Included(&n) => assert!(self.is_char_boundary(n + 1)),
             Bound::Excluded(&n) => assert!(self.is_char_boundary(n)),
             Bound::Unbounded => {}
-        };
+        }
         unsafe { self.as_mut_vec() }.replace_range(range, replace_with.as_bytes());
     }
 

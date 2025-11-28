@@ -8,13 +8,14 @@ const SIMD_THRESHOLD: usize = 16;
 
 /// Two-Way string matching with SIMD acceleration.
 ///
-/// This implementation is neither textbook nor novel.  
+/// This implementation is neither textbook nor novel.\
 /// It combines critical factorization, period analysis, and SIMD byte scanning
-/// to achieve practical speedups on real-world haystacks.  
+/// to achieve practical speedups on real-world haystacks.\
 /// Benchmarks show that the performance gains outweigh the added complexity
 /// compared to the standard [`std::str::find`].
 ///
 /// See [`twoway`](https://docs.rs/crate/twoway/latest/source/src/tw.rs) for reference.
+#[must_use]
 pub fn find(haystack: &str, needle: &str) -> Option<usize> {
     let (h, n) = (haystack.as_bytes(), needle.as_bytes());
     let (hlen, nlen) = (h.len(), n.len());
@@ -30,9 +31,8 @@ pub fn find(haystack: &str, needle: &str) -> Option<usize> {
         let index = memchr(n[0], h, 0);
         if index < hlen {
             return Some(index);
-        } else {
-            return None;
         }
+        return None;
     }
 
     if nlen == 2 {

@@ -39,6 +39,7 @@ pub fn init(capacity: usize) -> Result<(), u32> {
 /// # Safety
 ///
 /// If your function takes an [`Arena`] argument, you **MUST** pass it to `scratch_arena` as `Some(&arena)`.
+#[must_use]
 pub fn scratch_arena(conflict: Option<&Arena>) -> ScratchArena<'static> {
     unsafe {
         #[cfg(test)]
@@ -49,9 +50,9 @@ pub fn scratch_arena(conflict: Option<&Arena>) -> ScratchArena<'static> {
         }
 
         #[cfg(debug_assertions)]
-        let conflict = conflict.map(|a| a.delegate_target_unchecked());
+        let conflict = conflict.map(super::debug::Arena::delegate_target_unchecked);
 
-        let index = opt_ptr_eq(conflict, Some(&S_SCRATCH[0])) as usize;
+        let index = usize::from(opt_ptr_eq(conflict, Some(&S_SCRATCH[0])));
         let arena = &S_SCRATCH[index];
         ScratchArena::new(arena)
     }
@@ -115,13 +116,11 @@ impl Deref for ScratchArena<'_> {
 
 /// Surprisingly, there's no way in Rust to do a `ptr::eq` on `Option<&T>`.
 /// Uses `unsafe` so that the debug performance isn't too bad.
-#[inline(always)]
 #[allow(clippy::ptr_eq)]
 pub fn opt_ptr_eq<T>(a: Option<&T>, b: Option<&T>) -> bool {
     opt_ptr(a) == opt_ptr(b)
 }
 
-#[inline(always)]
 #[allow(clippy::ptr_eq)]
 fn opt_ptr<T>(a: Option<&T>) -> *const T {
     unsafe { mem::transmute(a) }

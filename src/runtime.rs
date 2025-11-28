@@ -1,4 +1,4 @@
-//! The runtime for NaijaScript.
+//! The runtime for `NaijaScript`.
 
 use std::fmt::{self, Write};
 use std::{io, mem};
@@ -75,6 +75,8 @@ impl RuntimeError {
 
 // Maximum recursion depth to prevent stack overflow
 const MAX_CALL_DEPTH: usize = 512;
+// Epsilon used for approximate floating-point equality checks
+const FLOAT_EQ_EPS: f64 = 1e-12;
 
 /// The value types our runtime can work with at runtime.
 #[derive(Debug, Clone, PartialEq)]
@@ -137,7 +139,7 @@ enum ExecFlow<'arena, 'src> {
     LoopContinue,
 }
 
-/// The runtime interface for NaijaScript using arena-allocated AST.
+/// The runtime interface for `NaijaScript` using arena-allocated AST.
 pub struct Runtime<'arena, 'src> {
     // Variable scopes, each Vec is a scope, inner Vec is variables in that scope
     env: Vec<Vec<(&'src str, Value<'arena, 'src>), &'arena Arena>, &'arena Arena>,
@@ -170,7 +172,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    /// Executes a NaijaScript program starting from the root block.
+    /// Executes a `NaijaScript` program starting from the root block.
     pub fn run(&mut self, root: BlockRef<'src>) -> &Diagnostics<'arena> {
         self.env.push(Vec::new_in(self.arena)); // enter global scope
 
@@ -264,9 +266,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                         break;
                     }
                     match self.exec_block_with_flow(body)? {
-                        ExecFlow::Continue => continue,
                         ExecFlow::Break => break,
-                        ExecFlow::LoopContinue => continue,
+                        ExecFlow::Continue | ExecFlow::LoopContinue => {}
                         flow @ ExecFlow::Return(..) => return Ok(flow),
                     }
                 }
@@ -300,7 +301,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         self.env.push(Vec::new_in(self.arena)); // enter new block scope
         for stmt in block.stmts {
             match self.exec_stmt(stmt)? {
-                ExecFlow::Continue => continue,
+                ExecFlow::Continue => {}
                 flow @ (ExecFlow::Return(..) | ExecFlow::Break | ExecFlow::LoopContinue) => {
                     self.env.pop(); // exit block scope before returning
                     return Ok(flow);
@@ -317,7 +318,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Expr::Number(n, ..) => Ok(Value::Number(
                 n.parse::<f64>().expect("Scanner should guarantee valid number format"),
             )),
-            Expr::String { parts, .. } => self.eval_string_expr(parts),
+            Expr::String { parts, .. } => Ok(self.eval_string_expr(parts)),
             Expr::Bool(b, ..) => Ok(Value::Bool(*b)),
             Expr::Null(..) => Ok(Value::Null),
             Expr::Var(v, ..) => {
@@ -367,7 +368,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                                     Ok(Value::Number(n))
                                 }
                             }
-                            BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
+                            BinaryOp::Eq => Ok(Value::Bool((lv - rv).abs() <= FLOAT_EQ_EPS)),
                             BinaryOp::Gt => Ok(Value::Bool(lv > rv)),
                             BinaryOp::Lt => Ok(Value::Bool(lv < rv)),
                             _ => unreachable!("Semantic analysis guarantees valid number ops"),
@@ -407,7 +408,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                         }
                         (Value::Bool(lv), Value::Bool(rv)) => match op {
                             BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
-                            BinaryOp::Gt => Ok(Value::Bool(lv & !rv)), // false < true
+                            BinaryOp::Gt => Ok(Value::Bool(lv && !rv)), // false < true
                             BinaryOp::Lt => Ok(Value::Bool(!lv & rv)),
                             _ => unreachable!("Semantic analysis guarantees valid bool ops"),
                         },
@@ -417,8 +418,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                             _ => unreachable!("Semantic analysis guarantees valid null ops"),
                         },
                         (Value::Null, ..) | (.., Value::Null) => match op {
-                            BinaryOp::Eq => Ok(Value::Bool(false)),
-                            BinaryOp::Gt | BinaryOp::Lt => Ok(Value::Bool(false)),
+                            BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => Ok(Value::Bool(false)),
                             _ => unreachable!("Semantic analysis guarantees valid null ops"),
                         },
                         _ => {
@@ -448,29 +448,26 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Expr::Index { array, index, index_span, .. } => {
                 let array_value = self.eval_expr(array)?;
                 let index_value = self.eval_expr(index)?;
-                let mut items = match array_value {
-                    Value::Array(items) => items,
-                    _ => unreachable!("Semantic analysis guarantees only arrays can be indexed"),
+                let Value::Array(mut items) = array_value else {
+                    unreachable!("Semantic analysis guarantees only arrays can be indexed")
                 };
 
-                let index_number = match index_value {
-                    Value::Number(n) => n,
-                    _ => {
-                        return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span));
-                    }
+                let Value::Number(index_number) = index_value else {
+                    return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span));
                 };
 
                 if !index_number.is_finite() || index_number.fract() != 0.0 {
                     return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span));
                 }
 
+                #[allow(clippy::cast_possible_truncation)]
                 let idx = index_number as isize;
-                if idx < 0 || idx >= items.len() as isize {
+                if idx < 0 || idx >= items.len().cast_signed() {
                     return Err(RuntimeError::new(RuntimeErrorKind::IndexOutOfBounds, *index_span));
                 }
 
                 // SAFETY: `idx` is >= 0 and < items.len()
-                let slot = unsafe { items.get_unchecked_mut(idx as usize) };
+                let slot = unsafe { items.get_unchecked_mut(idx.cast_unsigned()) };
                 let slot = mem::replace(slot, Value::Null);
                 Ok(slot)
             }
@@ -586,16 +583,14 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         span: Span,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
         let receiver = self.eval_expr(object)?;
-        let builtin = match MemberBuiltin::from_name(field) {
-            Some(b) => b,
-            None => {
-                return Err(RuntimeError::new_with_extras(
-                    RuntimeErrorKind::TypeMismatch,
-                    span,
-                    field,
-                    GlobalBuiltin::type_of(&receiver),
-                ));
-            }
+
+        let Some(builtin) = MemberBuiltin::from_name(field) else {
+            return Err(RuntimeError::new_with_extras(
+                RuntimeErrorKind::TypeMismatch,
+                span,
+                field,
+                GlobalBuiltin::type_of(&receiver),
+            ));
         };
 
         if builtin.requires_mut_receiver() {
@@ -608,8 +603,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
 
         match receiver {
-            Value::Str(s) => self.eval_string_member_call(s, field, args),
-            Value::Number(n) => self.eval_number_member_call(n, field),
+            Value::Str(s) => self.eval_string_member_call(&s, field, args),
+            Value::Number(n) => Ok(Self::eval_number_member_call(n, field)),
             Value::Array(arr) => self.eval_array_member_call(&arr, field, args),
             Value::Bool(..) => unimplemented!("Boolean methods not implemented yet"),
             Value::Null => Err(RuntimeError::new_with_extras(
@@ -639,16 +634,13 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             ));
         }
 
-        let array_builtin = match ArrayBuiltin::from_name(field) {
-            Some(b) => b,
-            None => {
-                return Err(RuntimeError::new_with_extras(
-                    RuntimeErrorKind::TypeMismatch,
-                    span,
-                    field,
-                    GlobalBuiltin::type_of(&receiver_value),
-                ));
-            }
+        let Some(array_builtin) = ArrayBuiltin::from_name(field) else {
+            return Err(RuntimeError::new_with_extras(
+                RuntimeErrorKind::TypeMismatch,
+                span,
+                field,
+                GlobalBuiltin::type_of(&receiver_value),
+            ));
         };
 
         match array_builtin {
@@ -686,9 +678,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             ArrayBuiltin::Len => Ok(Value::Number(ArrayBuiltin::len(array))),
             ArrayBuiltin::Join => {
                 let sep = self.eval_expr(args.args[0])?;
-                let sep = match sep {
-                    Value::Str(s) => s,
-                    _ => unreachable!("Semantic analysis guarantees string arg"),
+                let Value::Str(sep) = sep else {
+                    unreachable!("Semantic analysis guarantees string arg")
                 };
                 let result = ArrayBuiltin::join(array, &sep, self.arena);
                 Ok(Value::Str(ArenaCow::Owned(result)))
@@ -701,41 +692,41 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn eval_string_member_call(
         &mut self,
-        s: ArenaCow<'arena, 'src>,
+        s: &ArenaCow<'arena, 'src>,
         field: &'src str,
         args: &'src ArgList<'src>,
     ) -> Result<Value<'arena, 'src>, RuntimeError> {
         let string_builtin = StringBuiltin::from_name(field)
             .expect("Semantic analysis guarantees valid string method");
         match string_builtin {
-            StringBuiltin::Len => Ok(Value::Number(StringBuiltin::len(&s))),
+            StringBuiltin::Len => Ok(Value::Number(StringBuiltin::len(s))),
             StringBuiltin::Slice => {
                 let start = self.eval_expr(args.args[0])?;
                 let end = self.eval_expr(args.args[1])?;
                 match (start, end) {
                     (Value::Number(start), Value::Number(end)) => {
-                        let s = StringBuiltin::slice(&s, start, end, self.arena);
+                        let s = StringBuiltin::slice(s, start, end, self.arena);
                         Ok(Value::Str(ArenaCow::Owned(s)))
                     }
                     _ => unreachable!("Semantic analysis guarantees number args"),
                 }
             }
             StringBuiltin::ToUppercase => {
-                let s = StringBuiltin::to_uppercase(&s, self.arena);
+                let s = StringBuiltin::to_uppercase(s, self.arena);
                 Ok(Value::Str(ArenaCow::Owned(s)))
             }
             StringBuiltin::ToLowercase => {
-                let s = StringBuiltin::to_lowercase(&s, self.arena);
+                let s = StringBuiltin::to_lowercase(s, self.arena);
                 Ok(Value::Str(ArenaCow::Owned(s)))
             }
             StringBuiltin::Trim => {
-                let s = StringBuiltin::trim(&s, self.arena);
+                let s = StringBuiltin::trim(s, self.arena);
                 Ok(Value::Str(ArenaCow::Owned(s)))
             }
             StringBuiltin::Find => {
                 let needle = self.eval_expr(args.args[0])?;
                 match needle {
-                    Value::Str(n) => Ok(Value::Number(StringBuiltin::find(&s, &n))),
+                    Value::Str(n) => Ok(Value::Number(StringBuiltin::find(s, &n))),
                     _ => unreachable!("Semantic analysis guarantees string arg"),
                 }
             }
@@ -744,20 +735,20 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let new = self.eval_expr(args.args[1])?;
                 match (old, new) {
                     (Value::Str(o), Value::Str(n)) => {
-                        let result = StringBuiltin::replace(&s, &o, &n, self.arena);
+                        let result = StringBuiltin::replace(s, &o, &n, self.arena);
                         Ok(Value::Str(ArenaCow::Owned(result)))
                     }
                     _ => unreachable!("Semantic analysis guarantees string args"),
                 }
             }
-            StringBuiltin::ToNumber => Ok(Value::Number(StringBuiltin::to_number(&s))),
+            StringBuiltin::ToNumber => Ok(Value::Number(StringBuiltin::to_number(s))),
             StringBuiltin::Split => {
                 let pattern = self.eval_expr(args.args[0])?;
                 match pattern {
                     Value::Str(pat) => {
                         let mut collection =
                             Vec::with_capacity_in(s.len() / pat.len().max(1) + 1, self.arena);
-                        StringBuiltin::split(&s, &pat, self.arena)
+                        StringBuiltin::split(s, &pat, self.arena)
                             .for_each(|s| collection.push(Value::Str(ArenaCow::Owned(s))));
                         Ok(Value::Array(collection))
                     }
@@ -767,19 +758,15 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    fn eval_number_member_call(
-        &mut self,
-        n: f64,
-        field: &'src str,
-    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+    fn eval_number_member_call(n: f64, field: &'src str) -> Value<'arena, 'src> {
         let number_builtin = NumberBuiltin::from_name(field)
             .expect("Semantic analysis guarantees valid number method");
         match number_builtin {
-            NumberBuiltin::Abs => Ok(Value::Number(NumberBuiltin::abs(n))),
-            NumberBuiltin::Sqrt => Ok(Value::Number(NumberBuiltin::sqrt(n))),
-            NumberBuiltin::Floor => Ok(Value::Number(NumberBuiltin::floor(n))),
-            NumberBuiltin::Ceil => Ok(Value::Number(NumberBuiltin::ceil(n))),
-            NumberBuiltin::Round => Ok(Value::Number(NumberBuiltin::round(n))),
+            NumberBuiltin::Abs => Value::Number(NumberBuiltin::abs(n)),
+            NumberBuiltin::Sqrt => Value::Number(NumberBuiltin::sqrt(n)),
+            NumberBuiltin::Floor => Value::Number(NumberBuiltin::floor(n)),
+            NumberBuiltin::Ceil => Value::Number(NumberBuiltin::ceil(n)),
+            NumberBuiltin::Round => Value::Number(NumberBuiltin::round(n)),
         }
     }
 
@@ -817,7 +804,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     .lookup_var_mut(base_var)
                     .expect("Semantic analysis guarantees variable exists");
 
-                for (idx, index_span) in evaluated_indices.iter() {
+                for (idx, index_span) in &evaluated_indices {
                     match slot {
                         Value::Array(items) => {
                             if *idx >= items.len() {
@@ -852,12 +839,9 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    fn eval_string_expr(
-        &mut self,
-        parts: &StringParts<'src>,
-    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+    fn eval_string_expr(&mut self, parts: &StringParts<'src>) -> Value<'arena, 'src> {
         match parts {
-            StringParts::Static(content) => Ok(Value::Str(ArenaCow::borrowed(content))),
+            StringParts::Static(content) => Value::Str(ArenaCow::borrowed(content)),
             StringParts::Interpolated(segments) => {
                 let mut result = ArenaString::with_capacity_in(segments.len(), self.arena);
                 for segment in *segments {
@@ -871,7 +855,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                         }
                     }
                 }
-                Ok(Value::Str(ArenaCow::owned(result)))
+                Value::Str(ArenaCow::owned(result))
             }
         }
     }
@@ -972,11 +956,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         index_span: Span,
     ) -> Result<usize, RuntimeError> {
         let value = self.eval_expr(index_expr)?;
-        let number = match value {
-            Value::Number(n) => n,
-            _ => {
-                return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, index_span));
-            }
+        let Value::Number(number) = value else {
+            return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, index_span));
         };
 
         if !number.is_finite() || number.fract() != 0.0 {
@@ -987,6 +968,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             return Err(RuntimeError::new(RuntimeErrorKind::IndexOutOfBounds, index_span));
         }
 
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         Ok(number as usize)
     }
 
@@ -997,7 +979,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn lookup_var_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
         if let Some(activation) = self.call_stack.last_mut() {
-            for (var, val) in activation.local_vars.iter_mut() {
+            for (var, val) in &mut activation.local_vars {
                 if *var == name {
                     return Some(val);
                 }

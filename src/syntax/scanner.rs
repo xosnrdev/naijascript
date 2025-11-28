@@ -1,4 +1,4 @@
-//! The lexer (or scanner) for NaijaScript.
+//! The lexer (or scanner) for `NaijaScript`.
 
 use std::range::Range;
 
@@ -9,7 +9,7 @@ use crate::simd::memchr2;
 use crate::syntax::token::{SpannedToken, Token};
 
 /// Represents errors that can occur during lexical analysis.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum LexError {
     UnexpectedChar,
     InvalidNumber,
@@ -30,7 +30,7 @@ impl AsStr for LexError {
     }
 }
 
-/// The interface for the NaijaScript lexer.
+/// The interface for the `NaijaScript` lexer.
 pub struct Lexer<'arena, 'input> {
     /// Collection of errors encountered during scanning
     pub errors: Diagnostics<'arena>,
@@ -106,11 +106,10 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                     // Avoid splitting across byte boundaries
                     self.pos += len;
                     continue;
-                } else {
-                    // Not a valid UTF-8 sequence ?
-                    self.pos += 1;
-                    continue;
                 }
+                // Not a valid UTF-8 sequence ?
+                self.pos += 1;
+                continue;
             }
             // Likely an unexpected character ?
             self.emit_error(
@@ -251,12 +250,10 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 self.pos = line_end;
                 if has_escape {
                     return Token::String(ArenaCow::Owned(buffer));
-                } else {
-                    // SAFETY: beg..line_end is valid UTF-8 because we only process valid string content
-                    let s =
-                        unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..line_end)) };
-                    return Token::String(ArenaCow::Borrowed(s));
                 }
+                // SAFETY: beg..line_end is valid UTF-8 because we only process valid string content
+                let s = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..line_end)) };
+                return Token::String(ArenaCow::Borrowed(s));
             }
 
             // We don't have a closing quote or escape sequence
@@ -280,12 +277,11 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                     }
                     self.pos = pos + 1;
                     return Token::String(ArenaCow::Owned(buffer));
-                } else {
-                    // SAFETY: beg..pos is valid UTF-8 because we only process valid string content
-                    let s = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..pos)) };
-                    self.pos = pos + 1;
-                    return Token::String(ArenaCow::Borrowed(s));
                 }
+                // SAFETY: beg..pos is valid UTF-8 because we only process valid string content
+                let s = unsafe { str::from_utf8_unchecked(self.src.get_unchecked(beg..pos)) };
+                self.pos = pos + 1;
+                return Token::String(ArenaCow::Borrowed(s));
             } else if c == b'\\' {
                 has_escape = true;
                 if buffer.is_empty() {
@@ -534,18 +530,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                 // - The rest can be letters, digits, or underscores.
                 let mut bytes = other.bytes();
                 if let Some(first) = bytes.next() {
-                    if !Self::is_alpha_or_underscore(first) {
-                        self.emit_error(
-                            Range::from(start..self.pos),
-                            LexError::InvalidIdentifier,
-                            vec![Label {
-                                span: Range::from(start..self.pos),
-                                message: ArenaCow::Borrowed(
-                                    "Identifier must start with letter or underscore",
-                                ),
-                            }],
-                        );
-                    } else {
+                    if Self::is_alpha_or_underscore(first) {
                         // Invalid chars in the rest of the identifier ?
                         for b in bytes {
                             if !b.is_ascii_alphanumeric() && b != b'_' {
@@ -562,6 +547,17 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
                                 break;
                             }
                         }
+                    } else {
+                        self.emit_error(
+                            Range::from(start..self.pos),
+                            LexError::InvalidIdentifier,
+                            vec![Label {
+                                span: Range::from(start..self.pos),
+                                message: ArenaCow::Borrowed(
+                                    "Identifier must start with letter or underscore",
+                                ),
+                            }],
+                        );
                     }
                 }
                 Token::Identifier(other)

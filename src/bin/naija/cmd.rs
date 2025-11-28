@@ -153,7 +153,7 @@ fn run_stdin(arena: &Arena) -> ExitCode {
         match reader.read(&mut chunk) {
             Ok(0) => break,
             Ok(n) => buf.extend_from_slice(&chunk[..n]),
-            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
             Err(err) => {
                 print_error!("Failed to read from stdin: {err}");
                 return ExitCode::FAILURE;

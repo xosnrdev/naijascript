@@ -1,4 +1,4 @@
-//! The syntax parser for NaijaScript.
+//! The syntax parser for `NaijaScript`.
 
 use std::range::Range;
 use std::{mem, slice};
@@ -65,7 +65,7 @@ pub enum StringSegment<'ast> {
     Variable(&'ast str),
 }
 
-/// Represents a statement in NaijaScript.
+/// Represents a statement in `NaijaScript`.
 #[derive(Debug)]
 pub enum Stmt<'ast> {
     // Function definition: do <name>(<params>?) start ... end
@@ -133,7 +133,7 @@ pub enum Stmt<'ast> {
     },
 }
 
-/// Represents an expression in NaijaScript.
+/// Represents an expression in `NaijaScript`.
 #[derive(Debug)]
 pub enum Expr<'ast> {
     // Array indexing: expr[expr]
@@ -210,7 +210,7 @@ impl AsStr for SyntaxError {
 /// in one big notebook [`arena::Arena`].
 ///
 /// We use a hybrid approach, combining recursive-descent with Pratt parsing for
-/// expressions. See [https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html]
+/// expressions. See [<https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html>]
 pub struct Parser<'src, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>>
 where
     'src: 'ast,
@@ -276,10 +276,8 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 | Token::Comot
                 | Token::Next
         ) {
-            match self.parse_statement() {
-                Some(stmt) => stmts.push(stmt),
-                None => self.synchronize(),
-            }
+            let stmt = self.parse_statement();
+            stmts.push(stmt);
         }
 
         let end = self.cur.span.end;
@@ -293,10 +291,8 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let mut stmts = Vec::new_in(self.arena);
 
         while !matches!(self.cur.token, Token::EOF | Token::End) {
-            match self.parse_statement() {
-                Some(stmt) => stmts.push(stmt),
-                None => self.synchronize(),
-            }
+            let stmt = self.parse_statement();
+            stmts.push(stmt);
         }
 
         let end = self.cur.span.end;
@@ -326,7 +322,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
     }
 
     #[inline]
-    fn parse_statement(&mut self) -> Option<StmtRef<'ast>> {
+    fn parse_statement(&mut self) -> StmtRef<'ast> {
         let start = self.cur.span.start;
         match &self.cur.token {
             Token::Do => self.parse_function_def(start),
@@ -337,12 +333,12 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             Token::Comot => {
                 self.bump(); // consume `comot`
                 let end = self.cur.span.end;
-                Some(self.alloc(Stmt::Break { span: Range::from(start..end) }))
+                self.alloc(Stmt::Break { span: Range::from(start..end) })
             }
             Token::Next => {
                 self.bump(); // consume `next`
                 let end = self.cur.span.end;
-                Some(self.alloc(Stmt::Continue { span: Range::from(start..end) }))
+                self.alloc(Stmt::Continue { span: Range::from(start..end) })
             }
             // Parse a standalone or nested block as a statement
             Token::Start => {
@@ -361,7 +357,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     );
                 }
                 let end = self.cur.span.end;
-                Some(self.alloc(Stmt::Block { block: block_ref, span: Range::from(start..end) }))
+                self.alloc(Stmt::Block { block: block_ref, span: Range::from(start..end) })
             }
             Token::Identifier(var) => {
                 let var = *var;
@@ -376,17 +372,17 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     let value_expr = self.parse_expression(0);
                     let end = self.cur.span.end;
                     match expr {
-                        Expr::Var(name, span) => Some(self.alloc(Stmt::AssignExisting {
+                        Expr::Var(name, span) => self.alloc(Stmt::AssignExisting {
                             var: name,
                             var_span: *span,
                             expr: value_expr,
                             span: Range::from(start..end),
-                        })),
-                        Expr::Index { .. } => Some(self.alloc(Stmt::AssignIndex {
+                        }),
+                        Expr::Index { .. } => self.alloc(Stmt::AssignIndex {
                             target: expr,
                             expr: value_expr,
                             span: Range::from(start..end),
-                        })),
+                        }),
                         _ => {
                             self.emit_error(
                                 Range::from(start..end),
@@ -398,12 +394,13 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                                     ),
                                 }],
                             );
-                            None
+                            let expr = self.alloc(Expr::Null(Range::default()));
+                            self.alloc(Stmt::Expression { expr, span: Range::default() })
                         }
                     }
                 } else {
                     let end = self.cur.span.end;
-                    Some(self.alloc(Stmt::Expression { expr, span: Range::from(start..end) }))
+                    self.alloc(Stmt::Expression { expr, span: Range::from(start..end) })
                 }
             }
             _ => {
@@ -415,12 +412,14 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                         message: ArenaCow::Borrowed("I dey expect statement"),
                     }],
                 );
-                None
+
+                let expr = self.alloc(Expr::Null(Range::default()));
+                self.alloc(Stmt::Expression { expr, span: Range::default() })
             }
         }
     }
 
-    fn parse_function_def(&mut self, start: usize) -> Option<StmtRef<'ast>> {
+    fn parse_function_def(&mut self, start: usize) -> StmtRef<'ast> {
         let do_span = self.cur.span;
         self.bump(); // consume `do`
 
@@ -474,7 +473,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     message: ArenaCow::Borrowed("I dey expect `(` after function name"),
                 }],
             );
-            return None;
         }
 
         let mut params = Vec::new_in(self.arena);
@@ -591,34 +589,26 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         let params = self.alloc(ParamList { params, param_spans });
         let end = self.cur.span.end;
 
-        Some(self.alloc(Stmt::FunctionDef {
+        self.alloc(Stmt::FunctionDef {
             name,
             name_span: Range::from(do_span.start..rparen_span.end),
             params,
             body,
             span: Range::from(start..end),
-        }))
+        })
     }
 
-    fn parse_return(&mut self, start: usize) -> Option<StmtRef<'ast>> {
+    fn parse_return(&mut self, start: usize) -> StmtRef<'ast> {
         self.bump(); // consume `return`
         let expr = match &self.cur.token {
-            Token::Number(..)
-            | Token::String(..)
-            | Token::True
-            | Token::False
-            | Token::Null
-            | Token::Identifier(..)
-            | Token::Not
-            | Token::LParen => Some(self.parse_expression(0)),
             Token::End | Token::EOF => None,
             _ => Some(self.parse_expression(0)),
         };
         let end = self.cur.span.end;
-        Some(self.alloc(Stmt::Return { expr, span: Range::from(start..end) }))
+        self.alloc(Stmt::Return { expr, span: Range::from(start..end) })
     }
 
-    fn parse_assignment(&mut self, start: usize) -> Option<StmtRef<'ast>> {
+    fn parse_assignment(&mut self, start: usize) -> StmtRef<'ast> {
         let make_span = self.cur.span;
         self.bump(); // consume `make`
 
@@ -642,7 +632,6 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 ("_", span)
             }
             _ => {
-                let span = self.cur.span;
                 self.emit_error(
                     make_span,
                     SyntaxError::ExpectedIdentifier,
@@ -653,7 +642,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 );
                 // To always produce a complete AST, even with errors.
                 // We insert placeholder/dummy values and continue parsing.
-                ("_", span)
+                ("_", Range::default())
             }
         };
         self.bump(); // consume variable name
@@ -667,10 +656,10 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         };
 
         let end = self.cur.span.end;
-        Some(self.alloc(Stmt::Assign { var, var_span, expr, span: Range::from(start..end) }))
+        self.alloc(Stmt::Assign { var, var_span, expr, span: Range::from(start..end) })
     }
 
-    fn parse_if(&mut self, start: usize) -> Option<StmtRef<'ast>> {
+    fn parse_if(&mut self, start: usize) -> StmtRef<'ast> {
         let if_span = self.cur.span;
         self.bump(); // consume `if to say`
 
@@ -731,7 +720,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     span: self.cur.span,
                     message: ArenaCow::Borrowed("I dey expect `end` block"),
                 }],
-            )
+            );
         }
 
         // Parse `if not so` block
@@ -770,10 +759,10 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         };
 
         let end = self.cur.span.end;
-        Some(self.alloc(Stmt::If { cond, then_b, else_b, span: Range::from(start..end) }))
+        self.alloc(Stmt::If { cond, then_b, else_b, span: Range::from(start..end) })
     }
 
-    fn parse_loop(&mut self, start: usize) -> Option<StmtRef<'ast>> {
+    fn parse_loop(&mut self, start: usize) -> StmtRef<'ast> {
         let jasi_span = self.cur.span;
         self.bump(); // consume `jasi`
 
@@ -837,7 +826,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         }
 
         let end = self.cur.span.end;
-        Some(self.alloc(Stmt::Loop { cond, body, span: Range::from(start..end) }))
+        self.alloc(Stmt::Loop { cond, body, span: Range::from(start..end) })
     }
 
     #[inline]
@@ -856,7 +845,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                 let s = self.cur.span;
                 let content = sval;
                 self.bump(); // consume string
-                self.parse_string_literal(content, s)
+                self.parse_string_literal(&content, s)
             }
             tok @ (Token::True | Token::False) => {
                 let s = self.cur.span;
@@ -902,7 +891,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                             span: self.cur.span,
                             message: ArenaCow::Borrowed("I dey expect `)`"),
                         }],
-                    )
+                    );
                 }
                 expr
             }
@@ -1117,42 +1106,46 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
 
     fn expr_span(expr: ExprRef<'ast>) -> Span {
         match expr {
-            Expr::Number(.., span) => *span,
-            Expr::String { span, .. } => *span,
-            Expr::Bool(.., span) => *span,
-            Expr::Null(span) => *span,
-            Expr::Var(.., span) => *span,
-            Expr::Binary { span, .. } => *span,
-            Expr::Unary { span, .. } => *span,
-            Expr::Call { span, .. } => *span,
-            Expr::Index { span, .. } => *span,
-            Expr::Array { span, .. } => *span,
-            Expr::Member { span, .. } => *span,
+            Expr::Number(.., span)
+            | Expr::String { span, .. }
+            | Expr::Bool(.., span)
+            | Expr::Null(span)
+            | Expr::Var(.., span)
+            | Expr::Binary { span, .. }
+            | Expr::Unary { span, .. }
+            | Expr::Call { span, .. }
+            | Expr::Index { span, .. }
+            | Expr::Array { span, .. }
+            | Expr::Member { span, .. } => *span,
         }
     }
 
-    fn parse_string_literal(&mut self, content: ArenaCow<'ast, 'src>, span: Span) -> ExprRef<'ast> {
+    fn parse_string_literal(
+        &mut self,
+        content: &ArenaCow<'ast, 'src>,
+        span: Span,
+    ) -> ExprRef<'ast> {
         let bytes = content.as_bytes();
         let len = bytes.len();
 
         // No braces = static string
         let index = memchr(b'{', bytes, 0);
         if index == len {
-            let s = self.alloc_str(&content);
+            let s = self.alloc_str(content);
             return self.alloc(Expr::String { parts: StringParts::Static(s), span });
         }
 
         let template: &'src str = match &content {
             ArenaCow::Borrowed(s) => s,
             ArenaCow::Owned(..) => {
-                let s = self.alloc_str(&content);
+                let s = self.alloc_str(content);
                 return self.alloc(Expr::String { parts: StringParts::Static(s), span });
             }
         };
 
         let segments = self.parse_template_segments(template);
         if segments.is_empty() {
-            let s = self.alloc_str(&content);
+            let s = self.alloc_str(content);
             return self.alloc(Expr::String { parts: StringParts::Static(s), span });
         }
 
@@ -1272,7 +1265,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
                     };
                     buffer.push(StringSegment::Literal(literal));
                     i = end;
-                    beg = i
+                    beg = i;
                 }
 
                 b'}' => {

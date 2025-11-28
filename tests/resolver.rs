@@ -3,12 +3,12 @@ use naijascript::diagnostics::AsStr;
 use naijascript::resolver::{Resolver, SemanticError};
 
 mod common;
-use crate::common::_parse_from_src;
+use crate::common::parse_from_src;
 
 macro_rules! assert_resolve {
     ($src:expr, $err:expr) => {{
         let arena = naijascript::arena::Arena::new(KIBI).unwrap();
-        let mut parser = _parse_from_src($src, &arena);
+        let mut parser = parse_from_src($src, &arena);
         let (root, err) = parser.parse_program();
         assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
         let mut resolver = Resolver::new(&arena);
@@ -22,7 +22,7 @@ macro_rules! assert_resolve {
     }};
     ($src:expr) => {{
         let arena = naijascript::arena::Arena::new(KIBI).unwrap();
-        let mut parser = _parse_from_src($src, &arena);
+        let mut parser = parse_from_src($src, &arena);
         let (root, err) = parser.parse_program();
         assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
         let mut resolver = Resolver::new(&arena);
@@ -171,12 +171,12 @@ fn test_duplicate_parameter_names() {
 #[test]
 fn test_function_not_visible_outside_block() {
     assert_resolve!(
-        r#"
+        r"
         start
             do foo() start end
         end
         foo()
-        "#,
+        ",
         SemanticError::UndeclaredIdentifier
     );
 }
@@ -184,12 +184,12 @@ fn test_function_not_visible_outside_block() {
 #[test]
 fn test_duplicate_function_in_same_block() {
     assert_resolve!(
-        r#"
+        r"
         start
             do foo() start end
             do foo() start end
         end
-        "#,
+        ",
         SemanticError::DuplicateIdentifier
     );
 }
@@ -256,12 +256,12 @@ fn test_unary_minus_with_string() {
 
 #[test]
 fn test_unary_minus_with_boolean() {
-    assert_resolve!(r#"make x get minus true"#, SemanticError::TypeMismatch);
+    assert_resolve!(r"make x get minus true", SemanticError::TypeMismatch);
 }
 
 #[test]
 fn test_unary_minus_with_undeclared_variable() {
-    assert_resolve!(r#"make x get minus y"#, SemanticError::UndeclaredIdentifier);
+    assert_resolve!(r"make x get minus y", SemanticError::UndeclaredIdentifier);
 }
 
 #[test]
