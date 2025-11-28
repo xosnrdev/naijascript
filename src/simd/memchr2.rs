@@ -7,6 +7,7 @@ use std::ptr;
 /// Returns the index of the first occurrence of either needle in the
 /// `haystack`. If no needle is found, `haystack.len()` is returned.
 /// `offset` specifies the index to start searching from.
+#[must_use]
 pub fn memchr2(needle1: u8, needle2: u8, haystack: &[u8], offset: usize) -> usize {
     unsafe {
         let beg = haystack.as_ptr();
@@ -78,18 +79,21 @@ unsafe fn memchr2_avx2(needle1: u8, needle2: u8, mut beg: *const u8, end: *const
         #[cfg(target_arch = "x86")]
         use std::arch::x86::*;
         #[cfg(target_arch = "x86_64")]
-        use std::arch::x86_64::*;
+        use std::arch::x86_64::{
+            _mm256_cmpeq_epi8, _mm256_loadu_si256, _mm256_movemask_epi8, _mm256_or_si256,
+            _mm256_set1_epi8,
+        };
 
-        let n1 = _mm256_set1_epi8(needle1 as i8);
-        let n2 = _mm256_set1_epi8(needle2 as i8);
+        let n1 = _mm256_set1_epi8(needle1.cast_signed());
+        let n2 = _mm256_set1_epi8(needle2.cast_signed());
         let mut remaining = end.offset_from_unsigned(beg);
 
         while remaining >= 32 {
-            let v = _mm256_loadu_si256(beg as *const _);
+            let v = _mm256_loadu_si256(beg.cast());
             let a = _mm256_cmpeq_epi8(v, n1);
             let b = _mm256_cmpeq_epi8(v, n2);
             let c = _mm256_or_si256(a, b);
-            let m = _mm256_movemask_epi8(c) as u32;
+            let m = _mm256_movemask_epi8(c).cast_unsigned();
 
             if m != 0 {
                 return beg.add(m.trailing_zeros() as usize);
@@ -115,14 +119,14 @@ unsafe fn memchr2_avx512bw(
         #[cfg(target_arch = "x86")]
         use std::arch::x86::*;
         #[cfg(target_arch = "x86_64")]
-        use std::arch::x86_64::*;
+        use std::arch::x86_64::{_mm512_cmpeq_epi8_mask, _mm512_loadu_si512, _mm512_set1_epi8};
 
-        let n1 = _mm512_set1_epi8(needle1 as i8);
-        let n2 = _mm512_set1_epi8(needle2 as i8);
+        let n1 = _mm512_set1_epi8(needle1.cast_signed());
+        let n2 = _mm512_set1_epi8(needle2.cast_signed());
         let mut remaining = end.offset_from_unsigned(beg);
 
         while remaining >= 64 {
-            let v = _mm512_loadu_si512(beg as *const _);
+            let v = _mm512_loadu_si512(beg.cast());
             let a = _mm512_cmpeq_epi8_mask(v, n1);
             let b = _mm512_cmpeq_epi8_mask(v, n2);
             let m = a | b;
@@ -225,14 +229,17 @@ unsafe fn memchr2_lsx(needle1: u8, needle2: u8, mut beg: *const u8, end: *const 
 #[cfg(target_arch = "aarch64")]
 unsafe fn memchr2_neon(needle1: u8, needle2: u8, mut beg: *const u8, end: *const u8) -> *const u8 {
     unsafe {
-        use std::arch::aarch64::*;
+        use std::arch::aarch64::{
+            vceqq_u8, vdupq_n_u8, vget_lane_u64, vld1q_u8, vorrq_u8, vreinterpret_u64_u8,
+            vreinterpretq_u16_u8, vshrn_n_u16,
+        };
 
         if end.offset_from_unsigned(beg) >= 16 {
             let n1 = vdupq_n_u8(needle1);
             let n2 = vdupq_n_u8(needle2);
 
             loop {
-                let v = vld1q_u8(beg as *const _);
+                let v = vld1q_u8(beg.cast());
                 let a = vceqq_u8(v, n1);
                 let b = vceqq_u8(v, n2);
                 let c = vorrq_u8(a, b);

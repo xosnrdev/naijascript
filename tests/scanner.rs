@@ -273,7 +273,7 @@ fn test_scan_single_quoted_string() {
 
 #[test]
 fn test_scan_single_quoted_string_with_escape() {
-    let src = r#"'foo\'bar'"#;
+    let src = r"'foo\'bar'";
     let arena = Arena::new(KIBI).unwrap();
     assert_tokens!(
         src,

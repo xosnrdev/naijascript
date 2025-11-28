@@ -1,4 +1,4 @@
-//! The diagnostics system for NaijaScript.
+//! The diagnostics system for `NaijaScript`.
 
 use std::fmt::Write;
 use std::range::Range;
@@ -41,12 +41,12 @@ impl Severity {
 
     #[inline]
     // Writes a diagnostic line to the appropriate output stream or buffer.
-    fn write_to_stream_or_buf(&self, s: &str, buf: Option<&mut ArenaString<'_>>) {
+    fn write_to_stream_or_buf(severity: Severity, s: &str, buf: Option<&mut ArenaString<'_>>) {
         if let Some(buf) = buf {
             buf.push_str(s);
             buf.push('\n');
         } else {
-            match self {
+            match severity {
                 Severity::Error => eprintln!("{s}"),
                 _ => println!("{s}"),
             }
@@ -92,7 +92,7 @@ impl<'arena> Diagnostics<'arena> {
         message: &'static str,
         labels: Vec<Label<'arena>>,
     ) {
-        self.diagnostics.push(Diagnostic { span, severity, code, message, labels });
+        self.diagnostics.push(Diagnostic { labels, span, code, message, severity });
     }
 
     /// Report all collected diagnostics to the terminal with rich formatting.
@@ -102,11 +102,13 @@ impl<'arena> Diagnostics<'arena> {
     }
 
     /// Check if there are any error-level diagnostics
+    #[must_use]
     pub fn has_errors(&self) -> bool {
         self.diagnostics.iter().any(|d| d.severity == Severity::Error)
     }
 
     /// Render all diagnostics as a single ANSI string
+    #[must_use]
     pub fn render_ansi(&self, src: &str, filename: &str) -> ArenaString<'arena> {
         let mut buf = ArenaString::new_in(self.arena);
         let gutter_width = self.compute_gutter_width(&self.diagnostics, src);
@@ -185,18 +187,22 @@ impl<'arena> Diagnostics<'arena> {
         //     |      ^^^ main error caret
         //     |      expected identifier after make
         //
-        diag.severity.write_to_stream_or_buf(&header, buf.as_deref_mut());
-        diag.severity.write_to_stream_or_buf(&location, buf.as_deref_mut());
-        diag.severity.write_to_stream_or_buf(&plain_gutter, buf.as_deref_mut());
+        Severity::write_to_stream_or_buf(diag.severity, &header, buf.as_deref_mut());
+        Severity::write_to_stream_or_buf(diag.severity, &location, buf.as_deref_mut());
+        Severity::write_to_stream_or_buf(diag.severity, &plain_gutter, buf.as_deref_mut());
         for (line_display, label_underline) in &cross_line_displays {
-            diag.severity.write_to_stream_or_buf(line_display, buf.as_deref_mut());
-            diag.severity.write_to_stream_or_buf(label_underline, buf.as_deref_mut());
-            diag.severity.write_to_stream_or_buf(&plain_gutter, buf.as_deref_mut());
+            Severity::write_to_stream_or_buf(diag.severity, line_display, buf.as_deref_mut());
+            Severity::write_to_stream_or_buf(diag.severity, label_underline, buf.as_deref_mut());
+            Severity::write_to_stream_or_buf(diag.severity, &plain_gutter, buf.as_deref_mut());
         }
-        diag.severity.write_to_stream_or_buf(&format!("{gutter}{src_line}"), buf.as_deref_mut());
-        diag.severity.write_to_stream_or_buf(&caret_line, buf.as_deref_mut());
+        Severity::write_to_stream_or_buf(
+            diag.severity,
+            &format!("{gutter}{src_line}"),
+            buf.as_deref_mut(),
+        );
+        Severity::write_to_stream_or_buf(diag.severity, &caret_line, buf.as_deref_mut());
         for l in &label_lines {
-            diag.severity.write_to_stream_or_buf(l, buf.as_deref_mut());
+            Severity::write_to_stream_or_buf(diag.severity, l, buf.as_deref_mut());
         }
     }
 
@@ -316,17 +322,16 @@ impl<'arena> Diagnostics<'arena> {
                     starts.push(idx + 2);
                     offset = idx + 2;
                     continue;
-                } else {
-                    // lone '\r' as a newline
-                    starts.push(idx + 1);
-                    offset = idx + 1;
-                    continue;
                 }
+                // lone '\r' as a newline
+                starts.push(idx + 1);
+                offset = idx + 1;
+                continue;
             }
 
             // plain '\n' (Unix case)
             starts.push(idx + 1);
-            offset = idx + 1
+            offset = idx + 1;
         }
 
         starts

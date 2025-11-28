@@ -23,10 +23,8 @@ pub enum ArrayBuiltin {
 impl Builtin for ArrayBuiltin {
     fn arity(&self) -> usize {
         match self {
-            ArrayBuiltin::Len => 0,
             ArrayBuiltin::Push | ArrayBuiltin::Join => 1,
-            ArrayBuiltin::Pop => 0,
-            ArrayBuiltin::Reverse => 0,
+            ArrayBuiltin::Len | ArrayBuiltin::Pop | ArrayBuiltin::Reverse => 0,
         }
     }
 
@@ -57,6 +55,7 @@ impl Builtin for ArrayBuiltin {
 
 impl ArrayBuiltin {
     #[inline]
+    #[allow(clippy::cast_precision_loss)]
     pub fn len<T>(array: &[T]) -> f64 {
         array.len() as f64
     }
@@ -77,13 +76,13 @@ impl ArrayBuiltin {
     }
 
     #[inline]
-    pub fn reverse<'arena, 'src>(array: &mut Vec<Value<'arena, 'src>, &'arena Arena>) {
+    pub fn reverse<'arena>(array: &mut Vec<Value<'arena, '_>, &'arena Arena>) {
         array.reverse();
     }
 
     #[inline]
-    pub fn join<'arena, 'src>(
-        array: &Vec<Value<'arena, 'src>, &'arena Arena>,
+    pub fn join<'arena>(
+        array: &Vec<Value<'arena, '_>, &'arena Arena>,
         sep: &str,
         arena: &'arena Arena,
     ) -> ArenaString<'arena> {

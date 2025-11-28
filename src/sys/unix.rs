@@ -44,7 +44,7 @@ impl VirtualMemory for UnixVirtualMemory {
             if ptr.is_null() || ptr::eq(ptr, libc::MAP_FAILED) {
                 Err(libc::ENOMEM as u32)
             } else {
-                Ok(NonNull::new_unchecked(ptr as *mut u8))
+                Ok(NonNull::new_unchecked(ptr.cast::<u8>()))
             }
         }
     }
@@ -67,8 +67,8 @@ impl VirtualMemory for UnixVirtualMemory {
 pub struct UnixStdin;
 
 impl Stdin for UnixStdin {
-    fn read_line<'arena, 'src>(
-        prompt: &Value<'arena, 'src>,
+    fn read_line<'arena>(
+        prompt: &Value<'arena, '_>,
         arena: &'arena Arena,
     ) -> Result<ArenaString<'arena>, io::Error> {
         print!("{prompt}");
@@ -97,7 +97,7 @@ impl Stdin for UnixStdin {
                 // EOF
                 break;
             }
-            let n = n as usize;
+            let n = n.cast_unsigned();
 
             len += n;
 

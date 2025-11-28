@@ -18,7 +18,7 @@ use crate::helper::ValueType;
 use crate::runtime::Value;
 use crate::sys::{self, Stdin};
 
-/// Trait representing a built-in function in NaijaScript
+/// Trait representing a built-in function in `NaijaScript`
 pub trait Builtin {
     fn arity(&self) -> usize;
     fn return_type(&self) -> ValueType;
@@ -30,7 +30,7 @@ pub trait Builtin {
     }
 }
 
-/// Enumeration of global built-in functions available in NaijaScript.
+/// Enumeration of global built-in functions available in `NaijaScript`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GlobalBuiltin {
     /// Input/output function that prints values to console
@@ -88,6 +88,7 @@ impl GlobalBuiltin {
     }
 
     #[inline]
+    #[must_use]
     pub fn type_of(value: &Value) -> &'static str {
         match value {
             Value::Number(..) => "number",
@@ -99,8 +100,8 @@ impl GlobalBuiltin {
     }
 
     #[inline]
-    pub fn read_line<'arena, 'src>(
-        prompt: &Value<'arena, 'src>,
+    pub fn read_line<'arena>(
+        prompt: &Value<'arena, '_>,
         arena: &'arena Arena,
     ) -> Result<ArenaString<'arena>, io::Error> {
         sys::stdin::read_line(prompt, arena)

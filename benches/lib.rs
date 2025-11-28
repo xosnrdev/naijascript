@@ -22,7 +22,7 @@ fn bench_skip_comment(c: &mut Criterion) {
             let lexer = Lexer::new(src, &arena);
             let token: Vec<_> = lexer.collect();
             black_box(token);
-        })
+        });
     });
 }
 
@@ -39,7 +39,7 @@ fn bench_scan_string(c: &mut Criterion) {
             let lexer = Lexer::new(src, &arena);
             let token: Vec<_> = lexer.collect();
             black_box(token);
-        })
+        });
     });
 }
 
@@ -52,7 +52,7 @@ fn bench_parse_assignment(c: &mut Criterion) {
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-        })
+        });
     });
 }
 
@@ -65,19 +65,19 @@ fn bench_parse_arithmetic_expr(c: &mut Criterion) {
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-        })
+        });
     });
 }
 
 fn bench_parse_fn_def(c: &mut Criterion) {
-    let src = r#"
+    let src = r"
         do fibonacci(n) start
             if to say (n small pass 2) start
                 return n
             end
             return fibonacci(n minus 1) add fibonacci(n minus 2)
         end
-    "#;
+    ";
 
     c.bench_function("parse_function_definition", |b| {
         b.iter(|| {
@@ -86,7 +86,7 @@ fn bench_parse_fn_def(c: &mut Criterion) {
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-        })
+        });
     });
 }
 
@@ -110,7 +110,7 @@ fn bench_parse_ctrl_flow(c: &mut Criterion) {
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-        })
+        });
     });
 }
 
@@ -128,7 +128,7 @@ fn bench_parse_string_interpolation(c: &mut Criterion) {
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-        })
+        });
     });
 }
 
@@ -142,7 +142,7 @@ fn bench_parse_nested_expr(c: &mut Criterion) {
             let mut parser = Parser::new(lexer, &arena);
             let (root, error) = parser.parse_program();
             black_box((root, error));
-        })
+        });
     });
 }
 
@@ -154,7 +154,7 @@ fn bench_string_slice(c: &mut Criterion) {
             let arena = scratch_arena(None);
             let s = builtins::StringBuiltin::slice(src, 0.0, 5.0, &arena);
             black_box(s);
-        })
+        });
     });
 }
 
@@ -165,7 +165,7 @@ fn bench_two_way(c: &mut Criterion) {
         b.iter(|| {
             let index = builtins::find(src, "uv");
             black_box(index);
-        })
+        });
     });
 }
 

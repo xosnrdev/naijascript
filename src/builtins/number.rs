@@ -45,26 +45,31 @@ impl Builtin for NumberBuiltin {
 
 impl NumberBuiltin {
     #[inline]
+    #[must_use]
     pub const fn abs(n: f64) -> f64 {
         n.abs()
     }
 
     #[inline]
+    #[must_use]
     pub fn sqrt(n: f64) -> f64 {
         n.sqrt()
     }
 
     #[inline]
+    #[must_use]
     pub const fn floor(n: f64) -> f64 {
         n.floor()
     }
 
     #[inline]
+    #[must_use]
     pub const fn ceil(n: f64) -> f64 {
         n.ceil()
     }
 
     #[inline]
+    #[must_use]
     pub const fn round(n: f64) -> f64 {
         n.round()
     }

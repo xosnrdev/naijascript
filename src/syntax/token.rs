@@ -8,7 +8,7 @@ pub struct SpannedToken<'arena, 'input> {
     pub span: Span,
 }
 
-/// All possible token types in NaijaScript
+/// All possible token types in `NaijaScript`
 #[derive(Debug, Default, Clone, PartialEq)]
 pub enum Token<'arena, 'input> {
     // Variable length tokens
@@ -72,7 +72,7 @@ pub enum Token<'arena, 'input> {
     EOF, // End of file
 }
 
-impl<'arena, 'input> std::fmt::Display for Token<'arena, 'input> {
+impl std::fmt::Display for Token<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::Make => write!(f, "make"),
@@ -106,8 +106,9 @@ impl<'arena, 'input> std::fmt::Display for Token<'arena, 'input> {
     }
 }
 
-impl<'arena, 'input> Token<'arena, 'input> {
+impl Token<'_, '_> {
     #[inline]
+    #[must_use]
     pub const fn is_reserved_keyword(&self) -> bool {
         matches!(
             self,

@@ -3,18 +3,18 @@ use naijascript::diagnostics::AsStr;
 use naijascript::syntax::parser::SyntaxError;
 
 mod common;
-use crate::common::_parse_from_src;
+use crate::common::parse_from_src;
 
 macro_rules! assert_parse {
     ($src:expr) => {{
         let arena = naijascript::arena::Arena::new(KIBI).unwrap();
-        let mut parser = _parse_from_src($src, &arena);
+        let mut parser = parse_from_src($src, &arena);
         let (.., errors) = parser.parse_program();
         assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
     }};
     ($src:expr, $err:expr) => {{
         let arena = naijascript::arena::Arena::new(KIBI).unwrap();
-        let mut parser = _parse_from_src($src, &arena);
+        let mut parser = parse_from_src($src, &arena);
         let (.., errors) = parser.parse_program();
         assert!(!errors.diagnostics.is_empty(), "Expected errors, got none");
         assert!(

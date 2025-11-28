@@ -15,12 +15,14 @@ pub enum ArenaCow<'arena, 'src> {
 impl<'arena, 'src> ArenaCow<'arena, 'src> {
     /// Creates a new borrowed `ArenaCow` from a string reference.
     #[inline]
+    #[must_use]
     pub const fn borrowed(s: &'src str) -> Self {
         ArenaCow::Borrowed(s)
     }
 
     /// Creates a new owned [`ArenaCow`] from an `ArenaString`.
     #[inline]
+    #[must_use]
     pub const fn owned(s: ArenaString<'arena>) -> Self {
         ArenaCow::Owned(s)
     }
@@ -33,12 +35,14 @@ impl<'arena, 'src> ArenaCow<'arena, 'src> {
 
     /// Returns `true` if the data is borrowed.
     #[inline]
+    #[must_use]
     pub const fn is_borrowed(&self) -> bool {
         matches!(self, ArenaCow::Borrowed(..))
     }
 
     /// Returns `true` if the data is owned.
     #[inline]
+    #[must_use]
     pub const fn is_owned(&self) -> bool {
         matches!(self, ArenaCow::Owned(..))
     }
@@ -58,7 +62,7 @@ impl<'arena, 'src> ArenaCow<'arena, 'src> {
                 *self = ArenaCow::Owned(ArenaString::from_str(arena, s));
                 match self {
                     ArenaCow::Owned(s) => s,
-                    _ => unreachable!(),
+                    ArenaCow::Borrowed(_) => unreachable!(),
                 }
             }
             ArenaCow::Owned(s) => s,
@@ -67,18 +71,20 @@ impl<'arena, 'src> ArenaCow<'arena, 'src> {
 
     /// Returns the length of the string in bytes.
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.as_ref().len()
     }
 
     /// Returns `true` if the string is empty.
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.as_ref().is_empty()
     }
 }
 
-impl<'arena, 'src> AsRef<str> for ArenaCow<'arena, 'src> {
+impl AsRef<str> for ArenaCow<'_, '_> {
     #[inline]
     fn as_ref(&self) -> &str {
         match self {
@@ -88,7 +94,7 @@ impl<'arena, 'src> AsRef<str> for ArenaCow<'arena, 'src> {
     }
 }
 
-impl<'arena, 'src> Deref for ArenaCow<'arena, 'src> {
+impl Deref for ArenaCow<'_, '_> {
     type Target = str;
 
     #[inline]
@@ -97,58 +103,58 @@ impl<'arena, 'src> Deref for ArenaCow<'arena, 'src> {
     }
 }
 
-impl<'arena, 'src> fmt::Display for ArenaCow<'arena, 'src> {
+impl fmt::Display for ArenaCow<'_, '_> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self.as_ref(), f)
     }
 }
 
-impl<'arena, 'src> PartialEq for ArenaCow<'arena, 'src> {
+impl PartialEq for ArenaCow<'_, '_> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.as_ref() == other.as_ref()
     }
 }
 
-impl<'arena, 'src> PartialEq<str> for ArenaCow<'arena, 'src> {
+impl PartialEq<str> for ArenaCow<'_, '_> {
     #[inline]
     fn eq(&self, other: &str) -> bool {
         self.as_ref() == other
     }
 }
 
-impl<'arena, 'src> PartialEq<&str> for ArenaCow<'arena, 'src> {
+impl PartialEq<&str> for ArenaCow<'_, '_> {
     #[inline]
     fn eq(&self, other: &&str) -> bool {
         self.as_ref() == *other
     }
 }
 
-impl<'arena, 'src> PartialEq<String> for ArenaCow<'arena, 'src> {
+impl PartialEq<String> for ArenaCow<'_, '_> {
     #[inline]
     fn eq(&self, other: &String) -> bool {
         self.as_ref() == other.as_str()
     }
 }
 
-impl<'arena, 'src> Eq for ArenaCow<'arena, 'src> {}
+impl Eq for ArenaCow<'_, '_> {}
 
-impl<'arena, 'src> PartialOrd for ArenaCow<'arena, 'src> {
+impl PartialOrd for ArenaCow<'_, '_> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<'arena, 'src> Ord for ArenaCow<'arena, 'src> {
+impl Ord for ArenaCow<'_, '_> {
     #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.as_ref().cmp(other.as_ref())
     }
 }
 
-impl<'arena, 'src> From<&'src str> for ArenaCow<'arena, 'src> {
+impl<'src> From<&'src str> for ArenaCow<'_, 'src> {
     #[inline]
     fn from(s: &'src str) -> Self {
         ArenaCow::Borrowed(s)

@@ -1,4 +1,6 @@
 #![feature(allocator_api, if_let_guard)]
+#![allow(clippy::missing_errors_doc)]
+
 mod cmd;
 pub mod toolchain;
 

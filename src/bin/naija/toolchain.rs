@@ -69,15 +69,14 @@ pub fn install_version(versions: &[String]) -> Result<(), Cow<'static, str>> {
         if dir.exists() || get_toolchain_version().as_deref().is_some_and(|v| v == version) {
             print_warn!("Version '{version}' already exists, skipping install.");
             continue;
-        } else {
-            print_info!("Installing version '{version}'...");
-            create_dir(&dir)?;
-            match download_and_install(&version, &dir) {
-                Ok(()) => print_success!("Installation complete."),
-                Err(err) => {
-                    let _ = remove_path(&dir);
-                    return Err(err);
-                }
+        }
+        print_info!("Installing version '{version}'...");
+        create_dir(&dir)?;
+        match download_and_install(&version, &dir) {
+            Ok(()) => print_success!("Installation complete."),
+            Err(err) => {
+                let _ = remove_path(&dir);
+                return Err(err);
             }
         }
     }
@@ -85,7 +84,7 @@ pub fn install_version(versions: &[String]) -> Result<(), Cow<'static, str>> {
     Ok(())
 }
 
-fn resolve_version<'a>(version: &'a str) -> Result<Cow<'a, str>, String> {
+fn resolve_version(version: &str) -> Result<Cow<'_, str>, String> {
     print_info!("Resolving version '{version}'...");
     if version.eq_ignore_ascii_case("latest") {
         let version = fetch_latest_version()?;
@@ -196,9 +195,8 @@ fn remove_path(path: &Path) -> Result<(), Cow<'static, str>> {
         Err(err) => {
             if err.kind() == io::ErrorKind::NotFound {
                 return Ok(());
-            } else {
-                return Err(report_error!("Failed to check existing path")(err));
             }
+            return Err(report_error!("Failed to check existing path")(err));
         }
     };
 
@@ -487,7 +485,7 @@ fn read_file_trimmed(path: &Path) -> Option<String> {
 
 struct ResponseExt<'a>(&'a Response);
 
-impl<'a> ResponseExt<'a> {
+impl ResponseExt<'_> {
     fn is_ok(&self) -> bool {
         (200..300).contains(&self.0.status_code)
     }
@@ -576,10 +574,10 @@ fn try_purge_stale_versions(
 
         fs::read_dir(versions_dir).map_or_else(
             |err| {
-                if err.kind() != io::ErrorKind::NotFound {
-                    Err(report_error!("Failed to read version directory")(err))
-                } else {
+                if err.kind() == io::ErrorKind::NotFound {
                     Ok(())
+                } else {
+                    Err(report_error!("Failed to read version directory")(err))
                 }
             },
             |entries| {
@@ -771,11 +769,11 @@ fn try_build_symlink_script(bin_path: &Path) -> Result<(PathBuf, PathBuf), Cow<'
         os::windows::fs::symlink_file(bin_path, &temp_path_buf).map_err(|err| {
             if err.raw_os_error() == Some(1314) {
                 return Cow::Borrowed(
-                    r#"Failed to create symlink: Windows denied the request (OS error 1314).
+                    r"Failed to create symlink: Windows denied the request (OS error 1314).
 
                 You can fix this by either: 
                 1. Enabling Developer Mode in Windows Settings, or 
-                2. Re-running this command from an elevated (Administrator) terminal."#,
+                2. Re-running this command from an elevated (Administrator) terminal.",
                 );
             }
             report_error!("Failed to create symlink to version")(err)

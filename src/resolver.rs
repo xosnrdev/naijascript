@@ -1,4 +1,4 @@
-//! The resolver (semantic analyzer) for NaijaScript.
+//! The resolver (semantic analyzer) for `NaijaScript`.
 
 use std::collections::HashSet;
 
@@ -113,17 +113,17 @@ impl<'ast> Resolver<'ast> {
             // Check for dead code after return statement
             if has_return {
                 let span = match stmt {
-                    Stmt::Assign { span, .. } => span,
-                    Stmt::AssignExisting { span, .. } => span,
-                    Stmt::AssignIndex { span, .. } => span,
-                    Stmt::If { span, .. } => span,
-                    Stmt::Loop { span, .. } => span,
-                    Stmt::Block { span, .. } => span,
-                    Stmt::FunctionDef { span, .. } => span,
-                    Stmt::Return { span, .. } => span,
-                    Stmt::Break { span } => span,
-                    Stmt::Continue { span } => span,
-                    Stmt::Expression { span, .. } => span,
+                    Stmt::Assign { span, .. }
+                    | Stmt::AssignExisting { span, .. }
+                    | Stmt::AssignIndex { span, .. }
+                    | Stmt::If { span, .. }
+                    | Stmt::Loop { span, .. }
+                    | Stmt::Block { span, .. }
+                    | Stmt::FunctionDef { span, .. }
+                    | Stmt::Return { span, .. }
+                    | Stmt::Break { span }
+                    | Stmt::Continue { span }
+                    | Stmt::Expression { span, .. } => span,
                 };
 
                 self.emit_warning(
@@ -408,17 +408,17 @@ impl<'ast> Resolver<'ast> {
             && !matches!(t, ValueType::Bool | ValueType::Null | ValueType::Dynamic)
         {
             let span = match expr {
-                Expr::Number(.., span) => *span,
-                Expr::Null(span) => *span,
-                Expr::String { span, .. } => *span,
-                Expr::Bool(.., span) => *span,
-                Expr::Var(.., span) => *span,
-                Expr::Binary { span, .. } => *span,
-                Expr::Unary { span, .. } => *span,
-                Expr::Call { span, .. } => *span,
-                Expr::Index { span, .. } => *span,
-                Expr::Array { span, .. } => *span,
-                Expr::Member { span, .. } => *span,
+                Expr::Number(.., span)
+                | Expr::Null(span)
+                | Expr::String { span, .. }
+                | Expr::Bool(.., span)
+                | Expr::Var(.., span)
+                | Expr::Binary { span, .. }
+                | Expr::Unary { span, .. }
+                | Expr::Call { span, .. }
+                | Expr::Index { span, .. }
+                | Expr::Array { span, .. }
+                | Expr::Member { span, .. } => *span,
             };
             self.emit_error(
                 span,
@@ -511,10 +511,8 @@ impl<'ast> Resolver<'ast> {
                 let r = self.infer_expr_type(rhs);
                 match op {
                     BinaryOp::Add => match (l, r) {
-                        (Some(ValueType::String), ..)
-                        | (.., Some(ValueType::String))
-                        | (Some(ValueType::Dynamic), ..)
-                        | (.., Some(ValueType::Dynamic))
+                        (Some(ValueType::String | ValueType::Dynamic), ..)
+                        | (.., Some(ValueType::String | ValueType::Dynamic))
                         | (Some(ValueType::Number), Some(ValueType::Number)) => {}
                         _ => {
                             self.emit_error(
@@ -531,10 +529,10 @@ impl<'ast> Resolver<'ast> {
                     },
                     BinaryOp::Minus | BinaryOp::Times | BinaryOp::Divide | BinaryOp::Mod => {
                         match (l, r) {
-                            (Some(ValueType::Number), Some(ValueType::Number))
-                            | (Some(ValueType::Dynamic), Some(ValueType::Number))
-                            | (Some(ValueType::Number), Some(ValueType::Dynamic))
-                            | (Some(ValueType::Dynamic), Some(ValueType::Dynamic)) => {}
+                            (
+                                Some(ValueType::Number | ValueType::Dynamic),
+                                Some(ValueType::Number | ValueType::Dynamic),
+                            ) => {}
                             _ => {
                                 self.emit_error(
                                     *span,
@@ -553,10 +551,8 @@ impl<'ast> Resolver<'ast> {
                         (Some(ValueType::Number), Some(ValueType::Number))
                         | (Some(ValueType::String), Some(ValueType::String))
                         | (Some(ValueType::Bool), Some(ValueType::Bool))
-                        | (Some(ValueType::Null), ..)
-                        | (.., Some(ValueType::Null))
-                        | (Some(ValueType::Dynamic), ..)
-                        | (.., Some(ValueType::Dynamic)) => {}
+                        | (Some(ValueType::Null | ValueType::Dynamic), ..)
+                        | (.., Some(ValueType::Null | ValueType::Dynamic)) => {}
                         _ => self.emit_error(
                             *span,
                             SemanticError::TypeMismatch,
@@ -570,10 +566,8 @@ impl<'ast> Resolver<'ast> {
                     },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
                         (Some(ValueType::Bool), Some(ValueType::Bool))
-                        | (Some(ValueType::Null), ..)
-                        | (.., Some(ValueType::Null))
-                        | (Some(ValueType::Dynamic), ..)
-                        | (.., Some(ValueType::Dynamic)) => {}
+                        | (Some(ValueType::Null | ValueType::Dynamic), ..)
+                        | (.., Some(ValueType::Null | ValueType::Dynamic)) => {}
                         _ => {
                             self.emit_error(
                                 *span,
@@ -608,7 +602,7 @@ impl<'ast> Resolver<'ast> {
                                         "Dis expression type no be boolean",
                                     ),
                                 }],
-                            )
+                            );
                         }
                     }
                     // Unary minus requires a numeric operand or dynamic type
@@ -818,18 +812,14 @@ impl<'ast> Resolver<'ast> {
                         (ValueType::Number, ValueType::Number)
                         | (ValueType::String, ValueType::String)
                         | (ValueType::Bool, ValueType::Bool)
-                        | (ValueType::Null, ..)
-                        | (.., ValueType::Null)
-                        | (ValueType::Dynamic, ..)
-                        | (.., ValueType::Dynamic) => Some(ValueType::Bool),
+                        | (ValueType::Null | ValueType::Dynamic, ..)
+                        | (.., ValueType::Null | ValueType::Dynamic) => Some(ValueType::Bool),
                         _ => None,
                     },
                     BinaryOp::And | BinaryOp::Or => match (l, r) {
                         (ValueType::Bool, ValueType::Bool)
-                        | (ValueType::Null, ..)
-                        | (.., ValueType::Null)
-                        | (ValueType::Dynamic, ..)
-                        | (.., ValueType::Dynamic) => Some(ValueType::Bool),
+                        | (ValueType::Null | ValueType::Dynamic, ..)
+                        | (.., ValueType::Null | ValueType::Dynamic) => Some(ValueType::Bool),
                         _ => None,
                     },
                 }
