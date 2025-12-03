@@ -21,7 +21,7 @@ tempfile = "3.23.0"
 minreq = { version = "2.14.1", features = ["https"] }
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2.177"
+libc = "0.2.178"
 tar = "0.4.44"
 xz2 = "0.1.7"
 
