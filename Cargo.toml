@@ -35,7 +35,7 @@ windows-sys = { version = "0.61.2", features = [
 zip = { version = "6.0.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
-criterion = { version = "0.8.0", features = ["html_reports"] }
+criterion = { version = "0.8.1", features = ["html_reports"] }
 
 [[bench]]
 name = "lib"
