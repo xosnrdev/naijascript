@@ -13,8 +13,6 @@ publish = false
 resolver = "3"
 members = [".", "wasm"]
 
-[workspace.dependencies]
-
 [dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
 clap-cargo = { version = "0.18.3", features = ["clap"] }
