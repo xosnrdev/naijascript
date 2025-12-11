@@ -13,7 +13,7 @@ use naijascript::arena::{self, scratch_arena};
 use crate::cmd::Cli;
 
 #[cfg(target_pointer_width = "32")]
-const SCRATCH_ARENA_CAPACITY: usize = 1 * GIBI;
+const SCRATCH_ARENA_CAPACITY: usize = GIBI;
 #[cfg(target_pointer_width = "64")]
 const SCRATCH_ARENA_CAPACITY: usize = 4 * GIBI;
 
