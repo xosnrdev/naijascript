@@ -104,7 +104,7 @@ jobs:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           path: dist
       - name: ${{ github.event_name == 'workflow_dispatch' && 'Create nightly release' || 'Create release' }}
