@@ -2,9 +2,9 @@
 
 use std::range::Range;
 
-use naijascript::KIBI;
 use naijascript::arena::{Arena, ArenaCow, ArenaString};
 use naijascript::diagnostics::AsStr;
+use naijascript::helpers::KIBI;
 use naijascript::syntax::scanner::{LexError, Lexer};
 use naijascript::syntax::token::{SpannedToken, Token};
 

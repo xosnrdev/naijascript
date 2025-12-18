@@ -2,9 +2,10 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use naijascript::arena::{self, scratch_arena};
+use naijascript::builtins;
+use naijascript::helpers::MEBI;
 use naijascript::syntax::parser::Parser;
 use naijascript::syntax::scanner::Lexer;
-use naijascript::{MEBI, builtins};
 
 fn bench_skip_comment(c: &mut Criterion) {
     let src = r#"

@@ -8,7 +8,7 @@ use crate::builtins::{
     ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
 };
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
-use crate::helper::ValueType;
+use crate::helpers::ValueType;
 use crate::syntax::parser::{
     BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts, StringSegment,
     UnaryOp,

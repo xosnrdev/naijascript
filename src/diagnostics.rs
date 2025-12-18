@@ -7,7 +7,7 @@ use memchr_rs::memchr2;
 
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
-use crate::helper::LenWriter;
+use crate::helpers::LenWriter;
 
 /// Byte-range span within source text.
 pub type Span = Range<usize>;
@@ -393,7 +393,7 @@ pub trait AsStr: 'static {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::KIBI;
+    use crate::helpers::KIBI;
 
     #[test]
     fn test_utf8_column_calculation() {

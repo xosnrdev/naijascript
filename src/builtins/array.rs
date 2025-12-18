@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use crate::arena::{Arena, ArenaString};
 use crate::builtins::Builtin;
-use crate::helper::ValueType;
+use crate::helpers::ValueType;
 use crate::runtime::Value;
 
 /// Built-in array methods

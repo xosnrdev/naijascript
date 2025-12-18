@@ -50,7 +50,7 @@ pub fn replace<'arena>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::KIBI;
+    use crate::helpers::KIBI;
 
     fn arena() -> Arena {
         Arena::new(KIBI).unwrap()

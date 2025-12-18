@@ -10,8 +10,8 @@ use std::slice;
 use memchr_rs::memchr;
 
 use super::{Stdin, VirtualMemory};
-use crate::KIBI;
 use crate::arena::{Arena, ArenaString};
+use crate::helpers::KIBI;
 use crate::runtime::Value;
 
 #[cfg(target_os = "netbsd")]
