@@ -566,6 +566,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
 
 [[package]]
+name = "memchr-rs"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "602d4a5673b7968819b08c0c259de6f9196d263bf557b08080253788436888c1"
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -593,6 +599,7 @@ dependencies = [
  "clap-cargo",
  "criterion",
  "libc",
+ "memchr-rs",
  "minreq",
  "serde_json",
  "sha2",

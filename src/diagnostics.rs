@@ -3,10 +3,11 @@
 use std::fmt::Write;
 use std::range::Range;
 
+use memchr_rs::memchr2;
+
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
 use crate::helper::LenWriter;
-use crate::simd::memchr2;
 
 /// Byte-range span within source text.
 pub type Span = Range<usize>;

@@ -3,10 +3,11 @@
 use std::range::Range;
 use std::{mem, slice};
 
+use memchr_rs::{memchr, memchr2};
+
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
-use crate::simd::{memchr, memchr2};
 use crate::syntax::token::{SpannedToken, Token};
 
 // Direct references to AST nodes allocated in the arena.

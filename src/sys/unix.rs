@@ -7,11 +7,12 @@ use std::io::{self, Write};
 use std::ptr::{self, NonNull, null_mut};
 use std::slice;
 
+use memchr_rs::memchr;
+
 use super::{Stdin, VirtualMemory};
 use crate::KIBI;
 use crate::arena::{Arena, ArenaString};
 use crate::runtime::Value;
-use crate::simd::memchr;
 
 #[cfg(target_os = "netbsd")]
 const fn desired_mprotect(flags: c_int) -> c_int {

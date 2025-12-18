@@ -18,7 +18,6 @@ pub mod diagnostics;
 pub mod helper;
 pub mod resolver;
 pub mod runtime;
-pub mod simd;
 pub mod syntax;
 pub mod sys;
 

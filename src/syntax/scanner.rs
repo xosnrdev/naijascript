@@ -2,10 +2,11 @@
 
 use std::range::Range;
 
+use memchr_rs::memchr2;
+
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
-use crate::simd::memchr2;
 use crate::syntax::token::{SpannedToken, Token};
 
 /// Represents errors that can occur during lexical analysis.
