@@ -44,7 +44,7 @@ pub fn scratch_arena(conflict: Option<&Arena>) -> ScratchArena<'static> {
     unsafe {
         #[cfg(test)]
         if S_SCRATCH[0].is_empty() {
-            use crate::MEBI;
+            use crate::helpers::MEBI;
 
             init(128 * MEBI).unwrap();
         }

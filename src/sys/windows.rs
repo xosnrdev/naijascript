@@ -2,6 +2,7 @@ use std::io::{self, Write};
 use std::ptr::{NonNull, null_mut};
 use std::{char, slice};
 
+use memchr_rs::memchr;
 use windows_sys::Win32::Foundation::{self, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::ReadFile;
 use windows_sys::Win32::System::Console::{
@@ -10,10 +11,9 @@ use windows_sys::Win32::System::Console::{
 use windows_sys::Win32::System::Memory;
 
 use super::{Stdin, VirtualMemory};
-use crate::KIBI;
 use crate::arena::{Arena, ArenaString};
+use crate::helpers::KIBI;
 use crate::runtime::Value;
-use crate::simd::memchr;
 
 pub struct WindowsVirtualMemory;
 

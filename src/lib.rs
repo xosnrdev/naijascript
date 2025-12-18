@@ -15,13 +15,8 @@
 pub mod arena;
 pub mod builtins;
 pub mod diagnostics;
-pub mod helper;
+pub mod helpers;
 pub mod resolver;
 pub mod runtime;
-pub mod simd;
 pub mod syntax;
 pub mod sys;
-
-pub const KIBI: usize = 1024;
-pub const MEBI: usize = KIBI * KIBI;
-pub const GIBI: usize = MEBI * KIBI;

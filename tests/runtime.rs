@@ -1,8 +1,8 @@
 #![feature(allocator_api)]
 
-use naijascript::KIBI;
 use naijascript::arena::{Arena, ArenaCow, ArenaString};
 use naijascript::diagnostics::AsStr;
+use naijascript::helpers::KIBI;
 use naijascript::runtime::{Runtime, RuntimeErrorKind, Value};
 
 mod common;

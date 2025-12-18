@@ -1,7 +1,7 @@
 #![cfg(target_family = "wasm")]
 
-use naijascript::MEBI;
 use naijascript::arena::{self, scratch_arena};
+use naijascript::helpers::MEBI;
 use naijascript::resolver::Resolver;
 use naijascript::runtime::Runtime;
 use naijascript::syntax::parser::Parser;

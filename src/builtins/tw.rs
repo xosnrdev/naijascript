@@ -2,7 +2,7 @@
 
 use std::cmp::max;
 
-use crate::simd::memchr;
+use memchr_rs::memchr;
 
 const SIMD_THRESHOLD: usize = 16;
 

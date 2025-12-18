@@ -1,6 +1,6 @@
 use crate::arena::{Arena, ArenaString};
 use crate::builtins::Builtin;
-use crate::helper::ValueType;
+use crate::helpers::ValueType;
 
 /// Built-in string methods
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,8 +164,8 @@ impl StringBuiltin {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::KIBI;
     use crate::arena::Arena;
+    use crate::helpers::KIBI;
 
     #[test]
     fn test_string_slice() {

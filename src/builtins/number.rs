@@ -1,5 +1,5 @@
 use crate::builtins::Builtin;
-use crate::helper::ValueType;
+use crate::helpers::ValueType;
 
 /// Built-in number methods
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

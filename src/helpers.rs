@@ -32,3 +32,7 @@ impl fmt::Display for ValueType {
         }
     }
 }
+
+pub const KIBI: usize = 1024;
+pub const MEBI: usize = KIBI * KIBI;
+pub const GIBI: usize = MEBI * KIBI;

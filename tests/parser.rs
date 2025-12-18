@@ -1,5 +1,5 @@
-use naijascript::KIBI;
 use naijascript::diagnostics::AsStr;
+use naijascript::helpers::KIBI;
 use naijascript::syntax::parser::SyntaxError;
 
 mod common;

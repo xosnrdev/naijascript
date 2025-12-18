@@ -5,7 +5,7 @@ use std::mem::MaybeUninit;
 use std::ptr::{self, NonNull};
 use std::{mem, slice};
 
-use crate::KIBI;
+use crate::helpers::KIBI;
 use crate::sys::{self, VirtualMemory};
 
 const ALLOC_CHUNK_SIZE: usize = 64 * KIBI;

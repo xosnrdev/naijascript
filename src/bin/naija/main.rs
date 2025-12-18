@@ -7,8 +7,9 @@ pub mod toolchain;
 use std::process::ExitCode;
 
 use clap::Parser;
-use naijascript::GIBI;
 use naijascript::arena::{self, scratch_arena};
+#[cfg(target_pointer_width = "64")]
+use naijascript::helpers::GIBI;
 
 use crate::cmd::Cli;
 

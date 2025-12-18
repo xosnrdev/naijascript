@@ -9,7 +9,7 @@ use crate::builtins::{
     ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
 };
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
-use crate::helper::LenWriter;
+use crate::helpers::LenWriter;
 use crate::syntax::parser::{
     ArgList, BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts,
     StringSegment, UnaryOp,
