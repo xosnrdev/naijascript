@@ -11,8 +11,8 @@ use windows_sys::Win32::System::Console::{
 use windows_sys::Win32::System::Memory;
 
 use super::{Stdin, VirtualMemory};
-use crate::KIBI;
 use crate::arena::{Arena, ArenaString};
+use crate::helpers::KIBI;
 use crate::runtime::Value;
 
 pub struct WindowsVirtualMemory;
