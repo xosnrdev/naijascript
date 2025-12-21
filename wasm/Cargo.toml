@@ -8,11 +8,18 @@ repository = "https://github.com/xosnrdev/naijascript"
 license = "MIT"
 publish = false
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = [
+    "--enable-simd",
+    "--enable-bulk-memory",
+    "--enable-nontrapping-float-to-int",
+]
+
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
 ansi-to-html = "0.2.2"
-html-escape = "0.2.13" 
+html-escape = "0.2.13"
 naijascript = { path = "../" }
 wasm-bindgen = "0.2.100"
