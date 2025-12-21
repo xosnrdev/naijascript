@@ -16,7 +16,7 @@ members = [".", "wasm"]
 [dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
 clap-cargo = { version = "0.18.3", features = ["clap"] }
-memchr-rs = { version = "1.0.0", features = ["memchr", "memchr2"] }
+memchr-rs = { version = "1.0.11", features = ["memchr", "memchr2"] }
 serde_json = "1.0.145"
 sha2 = "0.10.9"
 tempfile = "3.23.0"

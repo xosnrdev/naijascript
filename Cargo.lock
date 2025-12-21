@@ -567,9 +567,9 @@ checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
 
 [[package]]
 name = "memchr-rs"
-version = "1.0.0"
+version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "602d4a5673b7968819b08c0c259de6f9196d263bf557b08080253788436888c1"
+checksum = "96aeb0db3659670fcb43ddef842fd57ef8c20b086f5dfa8f4a43853227bd401d"
 
 [[package]]
 name = "miniz_oxide"
