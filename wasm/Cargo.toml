@@ -1,12 +1,12 @@
 [package]
 name = "wasm"
 version = "0.1.0"
-edition = "2024"
-authors = ["Success Kingsley <xosnrdev@gmail.com>"]
+edition = { workspace = true }
+authors = { workspace = true }
 description = "WASM bindings for The NaijaScript Interpreter"
-repository = "https://github.com/xosnrdev/naijascript"
-license = "MIT"
-publish = false
+repository = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = [
