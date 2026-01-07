@@ -73,7 +73,7 @@ Expected output example:
 naijascript 0.11.5
 ```
 
-See the [Installation Guide](./INSTALL.md) for more.
+See the [Installation Guide](./docs/INSTALLATION.md) for more.
 
 ### First program
 
