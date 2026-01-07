@@ -2,7 +2,7 @@
 name = "naijascript"
 version = "1.0.31"
 edition = { workspace = true }
-rust-version = "1.90.0"
+rust-version = "1.92.0"
 authors = { workspace = true }
 description = "A scripting language interpreter inspired by the expressive linguistics of Naija (Nigerian Pidgin English)"
 repository = { workspace = true }
