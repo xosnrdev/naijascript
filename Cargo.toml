@@ -26,7 +26,7 @@ clap-cargo = { version = "0.18.3", features = ["clap"] }
 memchr-rs = { version = "1.0.11", features = ["memchr", "memchr2"] }
 serde_json = "1.0.149"
 sha2 = "0.10.9"
-tempfile = "3.24.0"
+tempfile = "3.25.0"
 
 # We exclude minreq as it breaks wasm builds
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
