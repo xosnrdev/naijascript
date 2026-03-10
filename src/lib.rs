@@ -1,4 +1,4 @@
-#![feature(allocator_api, cold_path, new_range_api)]
+#![feature(allocator_api, new_range_api)]
 #![cfg_attr(
     target_arch = "loongarch64",
     feature(stdarch_loongarch, stdarch_loongarch_feature_detection, loongarch_target_feature)

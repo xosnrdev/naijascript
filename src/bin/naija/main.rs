@@ -1,4 +1,4 @@
-#![feature(allocator_api, if_let_guard)]
+#![feature(allocator_api)]
 #![allow(clippy::missing_errors_doc)]
 
 mod cmd;
@@ -8,7 +8,6 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use naijascript::arena::{self, scratch_arena};
-#[cfg(target_pointer_width = "64")]
 use naijascript::helpers::GIBI;
 
 use crate::cmd::Cli;
