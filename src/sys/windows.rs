@@ -153,7 +153,7 @@ fn read_line_console(arena: &Arena) -> Result<ArenaString<'_>, io::Error> {
     }
 
     let mut buf8: Vec<u8, &Arena> = Vec::with_capacity_in(total * 3 + 4, arena);
-    for ch in char::decode_utf16(buf16.into_iter()) {
+    for ch in char::decode_utf16(buf16) {
         let ch = ch.unwrap_or(char::REPLACEMENT_CHARACTER);
         let mut dst = [0u8; 4];
         let enc = ch.encode_utf8(&mut dst);

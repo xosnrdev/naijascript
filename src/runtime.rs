@@ -517,7 +517,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
         // We create a new activation record for the function call
         let mut local_vars = Vec::with_capacity_in(func_def.params.params.len(), self.arena);
-        for (param, arg) in func_def.params.params.iter().zip(arg_values.into_iter()) {
+        for (param, arg) in func_def.params.params.iter().zip(arg_values) {
             local_vars.push((*param, arg));
         }
         self.call_stack.push(ActivationRecord { local_vars });
