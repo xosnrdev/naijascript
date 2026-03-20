@@ -3,18 +3,18 @@ use crate::diagnostics::Span;
 
 /// Represents a token
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct SpannedToken<'arena, 'input> {
-    pub token: Token<'arena, 'input>,
+pub struct SpannedToken<'a> {
+    pub token: Token<'a>,
     pub span: Span,
 }
 
 /// All possible token types in `NaijaScript`
 #[derive(Debug, Default, Clone, PartialEq)]
-pub enum Token<'arena, 'input> {
+pub enum Token<'a> {
     // Variable length tokens
-    String(ArenaCow<'arena, 'input>), // String literals
-    Identifier(&'input str),          // Variable names
-    Number(&'input str),              // Numeric literals
+    String(ArenaCow<'a>), // String literals
+    Identifier(&'a str),  // Variable names
+    Number(&'a str),      // Numeric literals
 
     // Keywords for variable declaration and assignment
     Make, // "make" - variable declaration
@@ -72,7 +72,7 @@ pub enum Token<'arena, 'input> {
     EOF, // End of file
 }
 
-impl std::fmt::Display for Token<'_, '_> {
+impl std::fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::Make => write!(f, "make"),
@@ -106,7 +106,7 @@ impl std::fmt::Display for Token<'_, '_> {
     }
 }
 
-impl Token<'_, '_> {
+impl Token<'_> {
     #[inline]
     #[must_use]
     pub const fn is_reserved_keyword(&self) -> bool {

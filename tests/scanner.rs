@@ -1,20 +1,18 @@
-#![feature(new_range_api)]
-
-use std::range::Range;
-
-use naijascript::arena::{Arena, ArenaCow, ArenaString};
+use naijascript::arena::{ArenaCow, ArenaString};
 use naijascript::diagnostics::AsStr;
-use naijascript::helpers::KIBI;
 use naijascript::syntax::scanner::{LexError, Lexer};
-use naijascript::syntax::token::{SpannedToken, Token};
+use naijascript::syntax::token::Token;
+mod common;
+
+use crate::common::with_pipeline;
 
 macro_rules! assert_tokens {
     ($src:expr, $exp:expr $(,)?) => {{
-        let arena = Arena::new(KIBI).unwrap();
-        let lexer = Lexer::new($src, &arena);
-        let spanned_tokens: Vec<SpannedToken> = lexer.collect();
-        let tokens: Vec<Token> = spanned_tokens.into_iter().map(|st| st.token).collect();
-        assert_eq!(tokens, $exp, "Token mismatch");
+        with_pipeline($src, |arena, (_, _), _, _| {
+            let mut lexer = Lexer::new($src, arena);
+            let tokens: Vec<Token> = (&mut lexer).map(|st| st.token).collect();
+            assert_eq!(tokens, $exp, "Token mismatch");
+        })
     }};
 }
 
@@ -96,13 +94,16 @@ fn test_scan_identifier() {
 #[test]
 fn test_scan_invalid_identifier() {
     let src = "1foo";
-    let arena = Arena::new(KIBI).unwrap();
-    let mut lexer = Lexer::new(src, &arena);
-    let _ = lexer.next();
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..4));
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
+    with_pipeline(src, |arena, (_, _), _, _| {
+        let mut lexer = Lexer::new(src, arena);
+        let _ = lexer.next();
+        let errors = lexer.errors;
+        let label = &errors.diagnostics[0].labels[0];
+        assert_eq!(label.span, (0..4).into());
+        assert!(
+            errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str())
+        );
+    });
 }
 
 #[test]
@@ -124,25 +125,29 @@ fn test_scan_number() {
 #[test]
 fn test_scan_invalid_number() {
     let src = "1..2";
-    let arena = Arena::new(KIBI).unwrap();
-    let mut lexer = Lexer::new(src, &arena);
-    let _ = lexer.next();
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..2));
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidNumber.as_str()));
+    with_pipeline(src, |arena, (_, _), _, _| {
+        let mut lexer = Lexer::new(src, arena);
+        let _ = lexer.next();
+        let errors = lexer.errors;
+        let label = &errors.diagnostics[0].labels[0];
+        assert_eq!(label.span, (0..2).into());
+        assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidNumber.as_str()));
+    });
 }
 
 #[test]
 fn test_scan_number_with_underscore_error() {
     let src = "123_foo";
-    let arena = Arena::new(KIBI).unwrap();
-    let mut lexer = Lexer::new(src, &arena);
-    let _ = lexer.next();
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..7));
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str()));
+    with_pipeline(src, |arena, (_, _), _, _| {
+        let mut lexer = Lexer::new(src, arena);
+        let _ = lexer.next();
+        let errors = lexer.errors;
+        let label = &errors.diagnostics[0].labels[0];
+        assert_eq!(label.span, (0..7).into());
+        assert!(
+            errors.diagnostics.iter().any(|e| e.message == LexError::InvalidIdentifier.as_str())
+        );
+    });
 }
 
 //------------------------------------------------------------------------
@@ -163,106 +168,122 @@ fn test_scan_empty_string() {
 
 #[test]
 fn test_scan_string_with_newline_escape() {
-    let arena = Arena::new(KIBI).unwrap();
     let src = r#""foo\nbar""#;
-    assert_tokens!(
-        src,
-        &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "foo\nbar")))]
-    );
+    with_pipeline(src, |arena, (_, _), _, _| {
+        assert_tokens!(
+            src,
+            &[Token::String(ArenaCow::Owned(ArenaString::from_str(arena, "foo\nbar")))]
+        );
+    });
 }
 
 #[test]
 fn test_scan_string_with_tab_escape() {
     let src = r#""foo\tbar""#;
-    let arena = Arena::new(KIBI).unwrap();
-    assert_tokens!(
-        src,
-        &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "foo\tbar")))]
-    );
+    with_pipeline(src, |arena, (_, _), _, _| {
+        assert_tokens!(
+            src,
+            &[Token::String(ArenaCow::Owned(ArenaString::from_str(arena, "foo\tbar")))]
+        );
+    });
 }
 
 #[test]
 fn test_scan_string_with_escaped_quote() {
     let src = r#""foo\"bar""#;
-    let arena = Arena::new(KIBI).unwrap();
-    assert_tokens!(
-        src,
-        &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "foo\"bar")))]
-    );
+    with_pipeline(src, |arena, (_, _), _, _| {
+        assert_tokens!(
+            src,
+            &[Token::String(ArenaCow::Owned(ArenaString::from_str(arena, "foo\"bar")))]
+        );
+    });
 }
 
 #[test]
 fn test_scan_string_with_escaped_backslash() {
     let src = r#""foo\\bar""#;
-    let arena = Arena::new(KIBI).unwrap();
-    assert_tokens!(
-        src,
-        &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "foo\\bar")))]
-    );
+    with_pipeline(src, |arena, (_, _), _, _| {
+        assert_tokens!(
+            src,
+            &[Token::String(ArenaCow::Owned(ArenaString::from_str(arena, "foo\\bar")))]
+        );
+    });
 }
 
 #[test]
 fn test_scan_string_with_only_quote() {
     let src = r#""\"""#;
-    let arena = Arena::new(KIBI).unwrap();
-    assert_tokens!(src, &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "\"")))]);
+    with_pipeline(src, |arena, (_, _), _, _| {
+        assert_tokens!(src, &[Token::String(ArenaCow::Owned(ArenaString::from_str(arena, "\"")))]);
+    });
 }
 
 #[test]
 fn test_scan_string_with_only_backslash() {
     let src = r#""\\""#;
-    let arena = Arena::new(KIBI).unwrap();
-    assert_tokens!(src, &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "\\")))]);
+    with_pipeline(src, |arena, (_, _), _, _| {
+        assert_tokens!(src, &[Token::String(ArenaCow::Owned(ArenaString::from_str(arena, "\\")))]);
+    });
 }
 
 #[test]
 fn test_scan_string_with_all_valid_escapes() {
     let src = r#""\n\t\"\\""#;
-    let arena = Arena::new(KIBI).unwrap();
-    assert_tokens!(
-        src,
-        &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "\n\t\"\\")))]
-    );
+    with_pipeline(src, |arena, (_, _), _, _| {
+        assert_tokens!(
+            src,
+            &[Token::String(ArenaCow::Owned(ArenaString::from_str(arena, "\n\t\"\\")))]
+        );
+    });
 }
 
 #[test]
 fn test_scan_string_with_invalid_escape() {
     let src = r#""foo\xbar""#;
-    let arena = Arena::new(KIBI).unwrap();
-    let mut lexer = Lexer::new(src, &arena);
-    let _ = lexer.next();
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(4..6));
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str()));
+    with_pipeline(src, |arena, (_, _), _, _| {
+        let mut lexer = Lexer::new(src, arena);
+        let _ = lexer.next();
+        let errors = lexer.errors;
+        let label = &errors.diagnostics[0].labels[0];
+        assert_eq!(label.span, (4..6).into());
+        assert!(
+            errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str())
+        );
+    });
 }
 
 #[test]
 fn test_scan_string_with_mixed_valid_and_invalid_escapes() {
     let src = r#""foo\xbar\n""#;
-    let arena = Arena::new(KIBI).unwrap();
-    let mut lexer = Lexer::new(src, &arena);
-    let st = lexer.next().unwrap_or_default();
-    assert_eq!(
-        st.token,
-        Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "fooxbar\n")))
-    );
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(4..6));
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str()));
+    with_pipeline(src, |arena, (_, _), _, _| {
+        let mut lexer = Lexer::new(src, arena);
+        let st = lexer.next().unwrap_or_default();
+        assert_eq!(
+            st.token,
+            Token::String(ArenaCow::Owned(ArenaString::from_str(arena, "fooxbar\n")))
+        );
+        let errors = lexer.errors;
+        let label = &errors.diagnostics[0].labels[0];
+        assert_eq!(label.span, (4..6).into());
+        assert!(
+            errors.diagnostics.iter().any(|e| e.message == LexError::InvalidStringEscape.as_str())
+        );
+    });
 }
 
 #[test]
 fn test_scan_unterminated_string() {
     let src = r#""foo bar"#;
-    let arena = Arena::new(KIBI).unwrap();
-    let mut lexer = Lexer::new(src, &arena);
-    let _ = lexer.next();
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..1));
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str()));
+    with_pipeline(src, |arena, (_, _), _, _| {
+        let mut lexer = Lexer::new(src, arena);
+        let _ = lexer.next();
+        let errors = lexer.errors;
+        let label = &errors.diagnostics[0].labels[0];
+        assert_eq!(label.span, (0..1).into());
+        assert!(
+            errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str())
+        );
+    });
 }
 
 #[test]
@@ -274,23 +295,27 @@ fn test_scan_single_quoted_string() {
 #[test]
 fn test_scan_single_quoted_string_with_escape() {
     let src = r"'foo\'bar'";
-    let arena = Arena::new(KIBI).unwrap();
-    assert_tokens!(
-        src,
-        &[Token::String(ArenaCow::Owned(ArenaString::from_str(&arena, "foo'bar")))]
-    );
+    with_pipeline(src, |arena, (_, _), _, _| {
+        assert_tokens!(
+            src,
+            &[Token::String(ArenaCow::Owned(ArenaString::from_str(arena, "foo'bar")))]
+        );
+    });
 }
 
 #[test]
 fn test_scan_unterminated_single_quoted_string() {
     let src = "'foo bar";
-    let arena = Arena::new(KIBI).unwrap();
-    let mut lexer = Lexer::new(src, &arena);
-    let _ = lexer.next();
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..1));
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str()));
+    with_pipeline(src, |arena, (_, _), _, _| {
+        let mut lexer = Lexer::new(src, arena);
+        let _ = lexer.next();
+        let errors = lexer.errors;
+        let label = &errors.diagnostics[0].labels[0];
+        assert_eq!(label.span, (0..1).into());
+        assert!(
+            errors.diagnostics.iter().any(|e| e.message == LexError::UnterminatedString.as_str())
+        );
+    });
 }
 
 //------------------------------------------------------------------------
@@ -316,23 +341,25 @@ fn test_scan_trailing_comment() {
 #[test]
 fn test_scan_unexpected_character() {
     let src = "@";
-    let arena = Arena::new(KIBI).unwrap();
-    let mut lexer = Lexer::new(src, &arena);
-    let _ = lexer.next();
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..0));
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
+    with_pipeline(src, |arena, (_, _), _, _| {
+        let mut lexer = Lexer::new(src, arena);
+        let _ = lexer.next();
+        let errors = lexer.errors;
+        let label = &errors.diagnostics[0].labels[0];
+        assert_eq!(label.span, (0..0).into());
+        assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
+    });
 }
 
 #[test]
 fn test_scan_utf8_boundary_panic() {
     let src = "😆";
-    let arena = Arena::new(KIBI).unwrap();
-    let mut lexer = Lexer::new(src, &arena);
-    let _ = lexer.next();
-    let errors = lexer.errors;
-    let label = &errors.diagnostics[0].labels[0];
-    assert_eq!(label.span, Range::from(0..4));
-    assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
+    with_pipeline(src, |arena, (_, _), _, _| {
+        let mut lexer = Lexer::new(src, arena);
+        let _ = lexer.next();
+        let errors = lexer.errors;
+        let label = &errors.diagnostics[0].labels[0];
+        assert_eq!(label.span, (0..4).into());
+        assert!(errors.diagnostics.iter().any(|e| e.message == LexError::UnexpectedChar.as_str()));
+    });
 }

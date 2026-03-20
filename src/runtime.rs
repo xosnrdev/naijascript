@@ -80,20 +80,77 @@ const FLOAT_EQ_EPS: f64 = 1e-12;
 
 /// The value types our runtime can work with at runtime.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Value<'arena, 'src> {
+pub enum Value<'a> {
     /// String literals reference original source when possible
-    Str(ArenaCow<'arena, 'src>),
+    Str(ArenaCow<'a>),
     /// All numbers are f64 to keep arithmetic simple and avoid int/float distinction
     Number(f64),
     /// Standard boolean values
     Bool(bool),
     /// Array literal values
-    Array(Vec<Value<'arena, 'src>, &'arena Arena>),
+    Array(Vec<Value<'a>, &'a Arena>),
     /// Represents the absence of a value
     Null,
 }
 
-impl fmt::Display for Value<'_, '_> {
+impl<'a> Value<'a> {
+    /// Clones the value, placing any array backing stores in the given arena.
+    /// Strings use zero-cost clone. Numbers/bools/null are trivial copies.
+    fn clone_into(&self, arena: &'a Arena) -> Self {
+        match self {
+            Value::Str(cow) => Value::Str(cow.clone()),
+            Value::Number(n) => Value::Number(*n),
+            Value::Bool(b) => Value::Bool(*b),
+            Value::Null => Value::Null,
+            Value::Array(items) => {
+                let mut new = Vec::with_capacity_in(items.len(), arena);
+                for item in items {
+                    new.push(item.clone_into(arena));
+                }
+                Value::Array(new)
+            }
+        }
+    }
+
+    /// If this value owns an arena string whose buffer sits at the tail of
+    /// the given arena, reclaims it by resetting the arena offset. The value
+    /// must not be read after this call (the backing bytes are invalidated).
+    ///
+    /// # Safety
+    ///
+    /// Caller must guarantee no live references exist into this value's
+    /// backing memory. Only safe when the value was just `mem::replace`d
+    /// out of a slot that is the sole owner.
+    unsafe fn try_reclaim_tail(&self, arena: &Arena) {
+        if let Value::Str(ArenaCow::Owned(s)) = self {
+            let cap = s.capacity();
+            if arena.is_at_tail(s.as_bytes().as_ptr(), cap) {
+                unsafe { arena.reset(arena.offset() - cap) };
+            }
+        }
+    }
+
+    /// Copies frame-allocated data to the persistent arena.
+    /// Stack values (Number, Bool, Null) pass through unchanged.
+    /// Values already on the target arena pass through (no double-promote).
+    fn promote(self, persistent: &'a Arena) -> Self {
+        match self {
+            Value::Number(n) => Value::Number(n),
+            Value::Bool(b) => Value::Bool(b),
+            Value::Null => Value::Null,
+            Value::Str(cow) => Value::Str(cow.promote(persistent)),
+            Value::Array(items) => {
+                let mut promoted = Vec::with_capacity_in(items.len(), persistent);
+                for item in items {
+                    promoted.push(item.promote(persistent));
+                }
+                Value::Array(promoted)
+            }
+        }
+    }
+}
+
+impl fmt::Display for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Str(s) => write!(f, "{s}"),
@@ -118,50 +175,56 @@ impl fmt::Display for Value<'_, '_> {
 }
 
 #[derive(Debug, Clone)]
-struct FunctionDef<'ast> {
-    name: &'ast str,
-    params: ParamListRef<'ast>,
-    body: BlockRef<'ast>,
+struct FunctionDef<'a> {
+    name: &'a str,
+    params: ParamListRef<'a>,
+    body: BlockRef<'a>,
 }
 
 // Activation record for function calls, represents a function call frame
 #[derive(Debug, Clone)]
-struct ActivationRecord<'arena, 'src> {
-    local_vars: Vec<(&'src str, Value<'arena, 'src>), &'arena Arena>,
+struct ActivationRecord<'a> {
+    local_vars: Vec<(&'a str, Value<'a>), &'a Arena>,
 }
 
 // Controls how function execution should proceed after statements
 #[derive(Debug, Clone, PartialEq)]
-enum ExecFlow<'arena, 'src> {
+enum ExecFlow<'a> {
     Continue,
-    Return(Value<'arena, 'src>),
+    Return(Value<'a>),
     Break,
     LoopContinue,
 }
 
 /// The runtime interface for `NaijaScript` using arena-allocated AST.
-pub struct Runtime<'arena, 'src> {
+pub struct Runtime<'a> {
     // Variable scopes, each Vec is a scope, inner Vec is variables in that scope
-    env: Vec<Vec<(&'src str, Value<'arena, 'src>), &'arena Arena>, &'arena Arena>,
+    env: Vec<Vec<(&'a str, Value<'a>), &'a Arena>, &'a Arena>,
 
     // Global function table, functions are first-class but stored separately
-    functions: Vec<FunctionDef<'src>, &'arena Arena>,
+    functions: Vec<FunctionDef<'a>, &'a Arena>,
 
     // Call stack for function execution, prevents infinite recursion
-    call_stack: Vec<ActivationRecord<'arena, 'src>, &'arena Arena>,
+    call_stack: Vec<ActivationRecord<'a>, &'a Arena>,
 
-    pub output: Vec<Value<'arena, 'src>, &'arena Arena>,
+    pub output: Vec<Value<'a>, &'a Arena>,
 
     /// Collection of runtime errors encountered during execution
-    pub errors: Diagnostics<'arena>,
+    pub errors: Diagnostics<'a>,
 
-    // Reference to the arena for allocating runtime data structures
-    arena: &'arena Arena,
+    // Persistent arena for data that must survive frame resets
+    arena: &'a Arena,
+
+    // Frame arena for per-iteration/per-call temporaries, reset at loop and function boundaries
+    frame: &'a Arena,
 }
 
-impl<'arena, 'src> Runtime<'arena, 'src> {
+impl<'a> Runtime<'a> {
     /// Creates a new [`Runtime`] instance.
-    pub fn new(arena: &'arena Arena) -> Self {
+    /// If `frame` is `None`, the persistent arena is used for both roles
+    /// (no frame resets, identical to pre-frame-arena behavior).
+    pub fn new(arena: &'a Arena, frame: Option<&'a Arena>) -> Self {
+        let frame = frame.unwrap_or(arena);
         Self {
             env: Vec::new_in(arena),
             functions: Vec::new_in(arena),
@@ -169,11 +232,17 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             output: Vec::new_in(arena),
             errors: Diagnostics::new(arena),
             arena,
+            frame,
         }
     }
 
+    /// Returns true when a separate frame arena is in use.
+    fn has_frame_arena(&self) -> bool {
+        !std::ptr::eq(self.frame, self.arena)
+    }
+
     /// Executes a `NaijaScript` program starting from the root block.
-    pub fn run(&mut self, root: BlockRef<'src>) -> &Diagnostics<'arena> {
+    pub fn run(&mut self, root: BlockRef<'a>) -> &Diagnostics<'a> {
         self.env.push(Vec::new_in(self.arena)); // enter global scope
 
         match self.exec_block_with_flow(root) {
@@ -218,7 +287,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         &self.errors
     }
 
-    fn exec_stmt(&mut self, stmt: StmtRef<'src>) -> Result<ExecFlow<'arena, 'src>, RuntimeError> {
+    fn exec_stmt(&mut self, stmt: StmtRef<'a>) -> Result<ExecFlow<'a>, RuntimeError> {
         match stmt {
             Stmt::Assign { var, expr, .. } => {
                 let val = self.eval_expr(expr)?;
@@ -265,10 +334,18 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                     if !should_continue {
                         break;
                     }
+
+                    let frame_offset =
+                        if self.has_frame_arena() { Some(self.frame.offset()) } else { None };
+
                     match self.exec_block_with_flow(body)? {
                         ExecFlow::Break => break,
                         ExecFlow::Continue | ExecFlow::LoopContinue => {}
                         flow @ ExecFlow::Return(..) => return Ok(flow),
+                    }
+
+                    if let Some(offset) = frame_offset {
+                        unsafe { self.frame.reset(offset) };
                     }
                 }
                 Ok(ExecFlow::Continue)
@@ -294,11 +371,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     #[inline]
-    fn exec_block_with_flow(
-        &mut self,
-        block: BlockRef<'src>,
-    ) -> Result<ExecFlow<'arena, 'src>, RuntimeError> {
-        self.env.push(Vec::new_in(self.arena)); // enter new block scope
+    fn exec_block_with_flow(&mut self, block: BlockRef<'a>) -> Result<ExecFlow<'a>, RuntimeError> {
+        self.env.push(Vec::new_in(self.frame)); // enter new block scope
         for stmt in block.stmts {
             match self.exec_stmt(stmt)? {
                 ExecFlow::Continue => {}
@@ -313,7 +387,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     #[inline]
-    fn eval_expr(&mut self, expr: ExprRef<'src>) -> Result<Value<'arena, 'src>, RuntimeError> {
+    fn eval_expr(&mut self, expr: ExprRef<'a>) -> Result<Value<'a>, RuntimeError> {
         match expr {
             Expr::Number(n, ..) => Ok(Value::Number(
                 n.parse::<f64>().expect("Scanner should guarantee valid number format"),
@@ -322,8 +396,9 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Expr::Bool(b, ..) => Ok(Value::Bool(*b)),
             Expr::Null(..) => Ok(Value::Null),
             Expr::Var(v, ..) => {
+                let frame = self.frame;
                 let val = self
-                    .lookup_var(v)
+                    .lookup_var(v, frame)
                     .expect("Semantic analysis should guarantee all variables are declared");
                 Ok(val)
             }
@@ -376,7 +451,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                         (Value::Str(ls), Value::Str(rs)) => match op {
                             BinaryOp::Add => {
                                 let mut s =
-                                    ArenaString::with_capacity_in(ls.len() + rs.len(), self.arena);
+                                    ArenaString::with_capacity_in(ls.len() + rs.len(), self.frame);
                                 s.push_str(&ls);
                                 s.push_str(&rs);
                                 Ok(Value::Str(ArenaCow::Owned(s)))
@@ -391,7 +466,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                             let mut writer = LenWriter(0);
                             write!(writer, "{n}").unwrap();
                             let mut s =
-                                ArenaString::with_capacity_in(ls.len() + writer.0, self.arena);
+                                ArenaString::with_capacity_in(ls.len() + writer.0, self.frame);
                             s.push_str(&ls);
                             write!(s, "{n}").unwrap();
                             Ok(Value::Str(ArenaCow::Owned(s)))
@@ -401,7 +476,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                             let mut writer = LenWriter(0);
                             write!(writer, "{n}").unwrap();
                             let mut s =
-                                ArenaString::with_capacity_in(writer.0 + rs.len(), self.arena);
+                                ArenaString::with_capacity_in(writer.0 + rs.len(), self.frame);
                             write!(s, "{n}").unwrap();
                             s.push_str(&rs);
                             Ok(Value::Str(ArenaCow::Owned(s)))
@@ -438,7 +513,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 }
             }
             Expr::Array { elements, .. } => {
-                let mut values = Vec::with_capacity_in(elements.len(), self.arena);
+                let mut values = Vec::with_capacity_in(elements.len(), self.frame);
                 for element in *elements {
                     let val = self.eval_expr(element)?;
                     values.push(val);
@@ -480,10 +555,10 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn eval_function_call(
         &mut self,
-        callee: ExprRef<'src>,
-        args: &'src ArgList<'src>,
-        span: &'src Span,
-    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+        callee: ExprRef<'a>,
+        args: &'a ArgList<'a>,
+        span: &'a Span,
+    ) -> Result<Value<'a>, RuntimeError> {
         // Handle member method calls
         if let Expr::Member { object, field, .. } = callee {
             return self.eval_member_call(object, field, args, *span);
@@ -506,8 +581,10 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             return Err(RuntimeError::new(RuntimeErrorKind::StackOverflow, *span));
         }
 
+        let frame_offset = if self.has_frame_arena() { Some(self.frame.offset()) } else { None };
+
         // We evaluate all arguments eagerly (left-to-right evaluation order)
-        let mut arg_values = Vec::with_capacity_in(args.args.len(), self.arena);
+        let mut arg_values = Vec::with_capacity_in(args.args.len(), self.frame);
         for arg_expr in args.args {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
@@ -516,7 +593,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         assert_eq!(arg_values.len(), func_def.params.params.len());
 
         // We create a new activation record for the function call
-        let mut local_vars = Vec::with_capacity_in(func_def.params.params.len(), self.arena);
+        let mut local_vars = Vec::with_capacity_in(func_def.params.params.len(), self.frame);
         for (param, arg) in func_def.params.params.iter().zip(arg_values) {
             local_vars.push((*param, arg));
         }
@@ -535,17 +612,22 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
         // We remove the activation record from the call stack
         self.call_stack.pop();
+
+        if let Some(offset) = frame_offset {
+            return Ok(self.relocate_return_value(val, offset));
+        }
+
         Ok(val)
     }
 
     fn eval_builtin_call(
         &mut self,
         builtin: GlobalBuiltin,
-        args: &'src ArgList<'src>,
+        args: &'a ArgList<'a>,
         span: Span,
-    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+    ) -> Result<Value<'a>, RuntimeError> {
         // We evaluate all arguments eagerly (left-to-right evaluation order)
-        let mut arg_values = Vec::with_capacity_in(args.args.len(), self.arena);
+        let mut arg_values = Vec::with_capacity_in(args.args.len(), self.frame);
         for arg_expr in args.args {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
@@ -555,6 +637,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             GlobalBuiltin::Shout => {
                 let argv = mem::replace(&mut arg_values[0], Value::Null);
                 GlobalBuiltin::shout(&argv);
+                let argv = if self.has_frame_arena() { argv.promote(self.arena) } else { argv };
                 self.output.push(argv);
                 Ok(Value::Null)
             }
@@ -564,12 +647,12 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 Ok(Value::Str(ArenaCow::borrowed(t)))
             }
             GlobalBuiltin::ReadLine => {
-                let s = GlobalBuiltin::read_line(&arg_values[0], self.arena)
+                let s = GlobalBuiltin::read_line(&arg_values[0], self.frame)
                     .map_err(|err| RuntimeError::new(err.into(), span))?;
                 Ok(Value::Str(ArenaCow::owned(s)))
             }
             GlobalBuiltin::ToString => {
-                let s = GlobalBuiltin::to_string(self.arena, &arg_values[0]);
+                let s = GlobalBuiltin::to_string(self.frame, &arg_values[0]);
                 Ok(Value::Str(ArenaCow::owned(s)))
             }
         }
@@ -577,14 +660,13 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn eval_member_call(
         &mut self,
-        object: ExprRef<'src>,
-        field: &'src str,
-        args: &'src ArgList<'src>,
+        object: ExprRef<'a>,
+        field: &'a str,
+        args: &'a ArgList<'a>,
         span: Span,
-    ) -> Result<Value<'arena, 'src>, RuntimeError> {
-        let receiver = self.eval_expr(object)?;
-
+    ) -> Result<Value<'a>, RuntimeError> {
         let Some(builtin) = MemberBuiltin::from_name(field) else {
+            let receiver = self.eval_expr(object)?;
             return Err(RuntimeError::new_with_extras(
                 RuntimeErrorKind::TypeMismatch,
                 span,
@@ -593,15 +675,23 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             ));
         };
 
+        // Mutable methods go directly to the mutable path without cloning the receiver.
         if builtin.requires_mut_receiver() {
             match builtin {
-                MemberBuiltin::Array(..) => {
-                    return self.eval_array_member_call_mut(object, field, args, span);
+                MemberBuiltin::Array(array_builtin) => {
+                    return self.eval_array_member_call_mut(
+                        object,
+                        array_builtin,
+                        field,
+                        args,
+                        span,
+                    );
                 }
                 _ => unreachable!("Only array methods require mutable receiver"),
             }
         }
 
+        let receiver = self.eval_expr(object)?;
         match receiver {
             Value::Str(s) => self.eval_string_member_call(&s, field, args),
             Value::Number(n) => Ok(Self::eval_number_member_call(n, field)),
@@ -618,32 +708,13 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn eval_array_member_call_mut(
         &mut self,
-        receiver: ExprRef<'src>,
-        field: &'src str,
-        args: &'src ArgList<'src>,
+        receiver: ExprRef<'a>,
+        builtin: ArrayBuiltin,
+        field: &'a str,
+        args: &'a ArgList<'a>,
         span: Span,
-    ) -> Result<Value<'arena, 'src>, RuntimeError> {
-        let receiver_value = self.eval_expr(receiver)?;
-
-        if !matches!(receiver, Expr::Var(..) | Expr::Index { .. }) {
-            return Err(RuntimeError::new_with_extras(
-                RuntimeErrorKind::TypeMismatch,
-                span,
-                field,
-                GlobalBuiltin::type_of(&receiver_value),
-            ));
-        }
-
-        let Some(array_builtin) = ArrayBuiltin::from_name(field) else {
-            return Err(RuntimeError::new_with_extras(
-                RuntimeErrorKind::TypeMismatch,
-                span,
-                field,
-                GlobalBuiltin::type_of(&receiver_value),
-            ));
-        };
-
-        match array_builtin {
+    ) -> Result<Value<'a>, RuntimeError> {
+        match builtin {
             ArrayBuiltin::Push => {
                 let value = self.eval_expr(args.args[0])?;
                 let array = self.get_mutable_array(receiver, span, field)?;
@@ -652,8 +723,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             }
             ArrayBuiltin::Pop => {
                 let array = self.get_mutable_array(receiver, span, field)?;
-                let popped = ArrayBuiltin::pop(array);
-                Ok(popped.unwrap_or(Value::Null))
+                Ok(ArrayBuiltin::pop(array).unwrap_or(Value::Null))
             }
             ArrayBuiltin::Reverse => {
                 let array = self.get_mutable_array(receiver, span, field)?;
@@ -668,10 +738,10 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn eval_array_member_call(
         &mut self,
-        array: &Vec<Value<'arena, 'src>, &'arena Arena>,
-        field: &'src str,
-        args: &'src ArgList<'src>,
-    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+        array: &Vec<Value<'a>, &'a Arena>,
+        field: &'a str,
+        args: &'a ArgList<'a>,
+    ) -> Result<Value<'a>, RuntimeError> {
         let array_builtin = ArrayBuiltin::from_name(field)
             .expect("Semantic analysis guarantees valid array method");
         match array_builtin {
@@ -681,7 +751,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let Value::Str(sep) = sep else {
                     unreachable!("Semantic analysis guarantees string arg")
                 };
-                let result = ArrayBuiltin::join(array, &sep, self.arena);
+                let result = ArrayBuiltin::join(array, &sep, self.frame);
                 Ok(Value::Str(ArenaCow::Owned(result)))
             }
             ArrayBuiltin::Push | ArrayBuiltin::Pop | ArrayBuiltin::Reverse => {
@@ -692,10 +762,10 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn eval_string_member_call(
         &mut self,
-        s: &ArenaCow<'arena, 'src>,
-        field: &'src str,
-        args: &'src ArgList<'src>,
-    ) -> Result<Value<'arena, 'src>, RuntimeError> {
+        s: &ArenaCow<'a>,
+        field: &'a str,
+        args: &'a ArgList<'a>,
+    ) -> Result<Value<'a>, RuntimeError> {
         let string_builtin = StringBuiltin::from_name(field)
             .expect("Semantic analysis guarantees valid string method");
         match string_builtin {
@@ -705,22 +775,22 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let end = self.eval_expr(args.args[1])?;
                 match (start, end) {
                     (Value::Number(start), Value::Number(end)) => {
-                        let s = StringBuiltin::slice(s, start, end, self.arena);
+                        let s = StringBuiltin::slice(s, start, end, self.frame);
                         Ok(Value::Str(ArenaCow::Owned(s)))
                     }
                     _ => unreachable!("Semantic analysis guarantees number args"),
                 }
             }
             StringBuiltin::ToUppercase => {
-                let s = StringBuiltin::to_uppercase(s, self.arena);
+                let s = StringBuiltin::to_uppercase(s, self.frame);
                 Ok(Value::Str(ArenaCow::Owned(s)))
             }
             StringBuiltin::ToLowercase => {
-                let s = StringBuiltin::to_lowercase(s, self.arena);
+                let s = StringBuiltin::to_lowercase(s, self.frame);
                 Ok(Value::Str(ArenaCow::Owned(s)))
             }
             StringBuiltin::Trim => {
-                let s = StringBuiltin::trim(s, self.arena);
+                let s = StringBuiltin::trim(s, self.frame);
                 Ok(Value::Str(ArenaCow::Owned(s)))
             }
             StringBuiltin::Find => {
@@ -735,7 +805,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 let new = self.eval_expr(args.args[1])?;
                 match (old, new) {
                     (Value::Str(o), Value::Str(n)) => {
-                        let result = StringBuiltin::replace(s, &o, &n, self.arena);
+                        let result = StringBuiltin::replace(s, &o, &n, self.frame);
                         Ok(Value::Str(ArenaCow::Owned(result)))
                     }
                     _ => unreachable!("Semantic analysis guarantees string args"),
@@ -747,8 +817,8 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
                 match pattern {
                     Value::Str(pat) => {
                         let mut collection =
-                            Vec::with_capacity_in(s.len() / pat.len().max(1) + 1, self.arena);
-                        StringBuiltin::split(s, &pat, self.arena)
+                            Vec::with_capacity_in(s.len() / pat.len().max(1) + 1, self.frame);
+                        StringBuiltin::split(s, &pat, self.frame)
                             .for_each(|s| collection.push(Value::Str(ArenaCow::Owned(s))));
                         Ok(Value::Array(collection))
                     }
@@ -758,7 +828,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    fn eval_number_member_call(n: f64, field: &'src str) -> Value<'arena, 'src> {
+    fn eval_number_member_call(n: f64, field: &'a str) -> Value<'a> {
         let number_builtin = NumberBuiltin::from_name(field)
             .expect("Semantic analysis guarantees valid number method");
         match number_builtin {
@@ -772,10 +842,10 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn get_mutable_array(
         &mut self,
-        object: ExprRef<'src>,
+        object: ExprRef<'a>,
         span: Span,
         field: impl Into<String>,
-    ) -> Result<&mut Vec<Value<'arena, 'src>, &'arena Arena>, RuntimeError> {
+    ) -> Result<&mut Vec<Value<'a>, &'a Arena>, RuntimeError> {
         match object {
             Expr::Var(name, ..) => {
                 let var = self
@@ -794,7 +864,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             Expr::Index { .. } => {
                 let (base_var, index_exprs) = self.flatten_index_target(object);
 
-                let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.arena);
+                let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.frame);
                 for (index_expr, index_span) in &index_exprs {
                     let idx = self.eval_index_value(index_expr, *index_span)?;
                     evaluated_indices.push((idx, *index_span));
@@ -839,17 +909,17 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    fn eval_string_expr(&mut self, parts: &StringParts<'src>) -> Value<'arena, 'src> {
+    fn eval_string_expr(&mut self, parts: &StringParts<'a>) -> Value<'a> {
         match parts {
             StringParts::Static(content) => Value::Str(ArenaCow::borrowed(content)),
             StringParts::Interpolated(segments) => {
-                let mut result = ArenaString::with_capacity_in(segments.len(), self.arena);
+                let mut result = ArenaString::with_capacity_in(segments.len(), self.frame);
                 for segment in *segments {
                     match segment {
                         StringSegment::Literal(s) => result.push_str(s),
                         StringSegment::Variable(var) => {
                             let value = self
-                                .lookup_var(var)
+                                .lookup_var_ref(var)
                                 .expect("Semantic analysis should guarantee variable exists");
                             write!(result, "{value}").unwrap();
                         }
@@ -860,46 +930,113 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         }
     }
 
-    fn define_var(&mut self, name: &'src str, val: Value<'arena, 'src>) {
+    fn define_var(&mut self, name: &'a str, val: Value<'a>) {
+        let has_frame = self.has_frame_arena();
+        let arena = self.arena;
         if let Some(scope) = self.env.last_mut() {
             if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
-                *slot = val;
+                Self::overwrite_slot(slot, val, has_frame, arena);
             } else {
+                let val = if has_frame { val.promote(arena) } else { val };
                 scope.push((name, val));
             }
         }
     }
 
-    fn assign_var(&mut self, name: &'src str, val: Value<'arena, 'src>) {
+    fn assign_var(&mut self, name: &'a str, val: Value<'a>) {
+        let has_frame = self.has_frame_arena();
+        let arena = self.arena;
         // First try function-local variables
         if let Some(slot) = self.lookup_call_stack_mut(name) {
-            *slot = val;
+            Self::overwrite_slot(slot, val, has_frame, arena);
             return;
         }
 
         // Then try regular scope stack
         for scope in self.env.iter_mut().rev() {
             if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
-                *slot = val;
+                Self::overwrite_slot(slot, val, has_frame, arena);
                 return;
             }
         }
         unreachable!("Semantic analysis guarantees variable exists");
     }
 
+    /// Moves a function return value across a frame reset boundary.
+    /// Frame-allocated owned strings are staged through persistent arena
+    /// then reconstructed on the caller's frame level, so the staging is
+    /// reclaimed and the return value arrives on frame. This lets
+    /// `overwrite_slot` tail-reclaim the old persistent slot value.
+    fn relocate_return_value(&self, val: Value<'a>, frame_offset: usize) -> Value<'a> {
+        let is_frame_string = match &val {
+            Value::Str(ArenaCow::Owned(s)) => !std::ptr::eq(s.arena(), self.arena),
+            _ => false,
+        };
+
+        if is_frame_string {
+            let Value::Str(ArenaCow::Owned(s)) = val else { unreachable!() };
+            // Stage string bytes on persistent (at the current tail).
+            let stage_mark = self.arena.offset();
+            let staged = ArenaString::from_str(self.arena, s.as_str());
+            // Drop frame string before reset (deallocate is a no-op).
+            drop(s);
+            unsafe { self.frame.reset(frame_offset) };
+            // Reconstruct on the caller's frame from staged bytes.
+            let result = ArenaString::from_str(self.frame, staged.as_str());
+            // Reclaim staging — it is the only allocation above stage_mark.
+            drop(staged);
+            unsafe { self.arena.reset(stage_mark) };
+            return Value::Str(ArenaCow::Owned(result));
+        }
+
+        if matches!(val, Value::Array(_)) {
+            // Arrays promoted to persistent (existing behavior).
+            // Cross-frame array return leak is accepted; pool allocator is future work.
+            let promoted = val.promote(self.arena);
+            unsafe { self.frame.reset(frame_offset) };
+            return promoted;
+        }
+
+        // Numbers, bools, null, borrowed strings, persistent-owned strings
+        // all survive frame reset without staging.
+        unsafe { self.frame.reset(frame_offset) };
+        val
+    }
+
+    /// Overwrites a variable slot, reclaiming the old value's arena memory
+    /// when it sits at the persistent arena tail. The reclaim happens before
+    /// the new value is promoted so the new allocation reuses the same space.
+    fn overwrite_slot(slot: &mut Value<'a>, val: Value<'a>, has_frame: bool, arena: &'a Arena) {
+        if has_frame {
+            // Take ownership of old value without running its destructor yet.
+            let old = mem::replace(slot, Value::Null);
+            // Reclaim old value's arena bytes if at tail (safe: sole owner, no aliases).
+            unsafe { old.try_reclaim_tail(arena) };
+            // Old value dropped here — Vec::drop calls deallocate (no-op).
+            drop(old);
+            // Promote new value into (potentially reclaimed) space.
+            *slot = val.promote(arena);
+        } else {
+            *slot = val;
+        }
+    }
+
     fn assign_index(
         &mut self,
-        target: ExprRef<'src>,
-        value: Value<'arena, 'src>,
+        target: ExprRef<'a>,
+        value: Value<'a>,
         span: Span,
     ) -> Result<(), RuntimeError> {
         let (base_var, index_exprs) = self.flatten_index_target(target);
 
-        let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.arena);
+        let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.frame);
         for (index_expr, index_span) in &index_exprs {
             let idx = self.eval_index_value(index_expr, *index_span)?;
             evaluated_indices.push((idx, *index_span));
         }
+
+        // Promote before taking the mutable borrow on the variable.
+        let value = if self.has_frame_arena() { value.promote(self.arena) } else { value };
 
         let mut slot =
             self.lookup_var_mut(base_var).expect("Semantic analysis guarantees variable exists");
@@ -932,9 +1069,9 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn flatten_index_target(
         &self,
-        mut target: ExprRef<'src>,
-    ) -> (&'src str, Vec<(ExprRef<'src>, Span), &'arena Arena>) {
-        let mut indices = Vec::new_in(self.arena);
+        mut target: ExprRef<'a>,
+    ) -> (&'a str, Vec<(ExprRef<'a>, Span), &'a Arena>) {
+        let mut indices = Vec::new_in(self.frame);
         loop {
             match target {
                 Expr::Index { array, index, index_span, .. } => {
@@ -952,7 +1089,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
 
     fn eval_index_value(
         &mut self,
-        index_expr: ExprRef<'src>,
+        index_expr: ExprRef<'a>,
         index_span: Span,
     ) -> Result<usize, RuntimeError> {
         let value = self.eval_expr(index_expr)?;
@@ -973,11 +1110,18 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
     }
 
     #[inline]
-    fn lookup_var(&self, name: &str) -> Option<Value<'arena, 'src>> {
-        self.lookup_call_stack(name).cloned().or_else(|| self.lookup_env(name).cloned())
+    fn lookup_var(&self, name: &str, clone_arena: &'a Arena) -> Option<Value<'a>> {
+        self.lookup_call_stack(name)
+            .or_else(|| self.lookup_env(name))
+            .map(|v| v.clone_into(clone_arena))
     }
 
-    fn lookup_var_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
+    #[inline]
+    fn lookup_var_ref(&self, name: &str) -> Option<&Value<'a>> {
+        self.lookup_call_stack(name).or_else(|| self.lookup_env(name))
+    }
+
+    fn lookup_var_mut(&mut self, name: &str) -> Option<&mut Value<'a>> {
         if let Some(activation) = self.call_stack.last_mut() {
             for (var, val) in &mut activation.local_vars {
                 if *var == name {
@@ -1003,13 +1147,13 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
             .expect("Semantic analysis guarantees function exists")
     }
 
-    fn lookup_env(&self, name: &str) -> Option<&Value<'arena, 'src>> {
+    fn lookup_env(&self, name: &str) -> Option<&Value<'a>> {
         self.env.iter().rev().find_map(|scope| {
             scope.iter().find_map(|(var, val)| if *var == name { Some(val) } else { None })
         })
     }
 
-    fn lookup_call_stack(&self, name: &str) -> Option<&Value<'arena, 'src>> {
+    fn lookup_call_stack(&self, name: &str) -> Option<&Value<'a>> {
         self.call_stack.last().and_then(|activation| {
             activation
                 .local_vars
@@ -1018,7 +1162,7 @@ impl<'arena, 'src> Runtime<'arena, 'src> {
         })
     }
 
-    fn lookup_call_stack_mut(&mut self, name: &str) -> Option<&mut Value<'arena, 'src>> {
+    fn lookup_call_stack_mut(&mut self, name: &str) -> Option<&mut Value<'a>> {
         self.call_stack.last_mut().and_then(|activation| {
             activation
                 .local_vars

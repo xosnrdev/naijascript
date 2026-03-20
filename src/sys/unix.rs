@@ -58,6 +58,16 @@ impl VirtualMemory for UnixVirtualMemory {
         }
     }
 
+    unsafe fn decommit(base: NonNull<u8>, size: usize) {
+        unsafe {
+            // Release physical pages back to the OS. The kernel replaces them
+            // with zero-fill-on-demand pages; the virtual reservation stays intact.
+            libc::madvise(base.cast().as_ptr(), size, libc::MADV_DONTNEED);
+            // Remove access permissions so stale reads fault immediately.
+            libc::mprotect(base.cast().as_ptr(), size, libc::PROT_NONE);
+        }
+    }
+
     unsafe fn release(base: NonNull<u8>, size: usize) {
         unsafe {
             libc::munmap(base.cast().as_ptr(), size);
@@ -68,10 +78,7 @@ impl VirtualMemory for UnixVirtualMemory {
 pub struct UnixStdin;
 
 impl Stdin for UnixStdin {
-    fn read_line<'arena>(
-        prompt: &Value<'arena, '_>,
-        arena: &'arena Arena,
-    ) -> Result<ArenaString<'arena>, io::Error> {
+    fn read_line<'a>(prompt: &Value<'a>, arena: &'a Arena) -> Result<ArenaString<'a>, io::Error> {
         print!("{prompt}");
         io::stdout().flush()?;
 

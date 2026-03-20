@@ -101,6 +101,14 @@ impl Arena {
         unsafe { self.delegate_target().reset(to) }
     }
 
+    pub fn is_at_tail(&self, ptr: *const u8, size: usize) -> bool {
+        self.delegate_target().is_at_tail(ptr, size)
+    }
+
+    pub fn decommit(&self) {
+        self.delegate_target().decommit();
+    }
+
     pub fn alloc_uninit<T>(&self) -> &mut MaybeUninit<T> {
         self.delegate_target().alloc_uninit()
     }

@@ -51,6 +51,12 @@ impl VirtualMemory for WindowsVirtualMemory {
         }
     }
 
+    unsafe fn decommit(base: NonNull<u8>, size: usize) {
+        unsafe {
+            Memory::VirtualFree(base.as_ptr().cast(), size, Memory::MEM_DECOMMIT);
+        }
+    }
+
     unsafe fn release(base: NonNull<u8>, _size: usize) {
         unsafe {
             // NOTE: `VirtualFree` fails if the pointer isn't
@@ -76,10 +82,7 @@ const fn gle_to_apperr(gle: u32) -> u32 {
 pub struct WindowsStdin;
 
 impl Stdin for WindowsStdin {
-    fn read_line<'arena>(
-        prompt: &Value<'arena, '_>,
-        arena: &'arena Arena,
-    ) -> Result<ArenaString<'arena>, io::Error> {
+    fn read_line<'a>(prompt: &Value<'a>, arena: &'a Arena) -> Result<ArenaString<'a>, io::Error> {
         print!("{prompt}");
         io::stdout().flush()?;
 

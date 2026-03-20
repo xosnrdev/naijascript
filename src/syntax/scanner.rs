@@ -44,14 +44,14 @@ pub struct Lexer<'arena, 'input> {
     len: usize,
 }
 
-impl<'arena, 'input> Lexer<'arena, 'input> {
+impl<'arena, 'input: 'arena> Lexer<'arena, 'input> {
     /// Creates a new [`Lexer`] for the given source text.
     pub fn new(src: &'input str, arena: &'arena Arena) -> Self {
         let src = src.as_bytes();
         Self { errors: Diagnostics::new(arena), src, arena, pos: 0, len: src.len() }
     }
 
-    fn next_token(&mut self) -> SpannedToken<'arena, 'input> {
+    fn next_token(&mut self) -> SpannedToken<'arena> {
         loop {
             // Skip over any whitespace before the next token
             self.skip_whitespace();
@@ -202,7 +202,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         false
     }
 
-    fn scan_string(&mut self, start: usize, quote: u8) -> Token<'arena, 'input> {
+    fn scan_string(&mut self, start: usize, quote: u8) -> Token<'arena> {
         self.pos += 1; // Skip the opening quote
         let beg = self.pos;
 
@@ -338,7 +338,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         }
     }
 
-    fn scan_punctuation(&mut self, b: u8) -> Option<Token<'arena, 'input>> {
+    fn scan_punctuation(&mut self, b: u8) -> Option<Token<'arena>> {
         match b {
             b'(' => {
                 self.pos += 1;
@@ -368,7 +368,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         }
     }
 
-    fn scan_number(&mut self, start: usize) -> Token<'arena, 'input> {
+    fn scan_number(&mut self, start: usize) -> Token<'arena> {
         let len = self.len;
 
         // Try consume the integer part first
@@ -428,7 +428,7 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
         Token::Number(num)
     }
 
-    fn scan_identifier_or_keyword(&mut self, start: usize) -> Token<'arena, 'input> {
+    fn scan_identifier_or_keyword(&mut self, start: usize) -> Token<'arena> {
         let word = self.read_word();
 
         // "if to say" (if-statement) or "if not so" (else-statement)
@@ -522,8 +522,8 @@ impl<'arena, 'input> Lexer<'arena, 'input> {
     }
 }
 
-impl<'arena, 'input> Iterator for Lexer<'arena, 'input> {
-    type Item = SpannedToken<'arena, 'input>;
+impl<'arena, 'input: 'arena> Iterator for Lexer<'arena, 'input> {
+    type Item = SpannedToken<'arena>;
     fn next(&mut self) -> Option<Self::Item> {
         let st = self.next_token();
         // Yield exactly one EOF token at the end of the input.

@@ -8,14 +8,14 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use naijascript::arena::{self, scratch_arena};
-use naijascript::helpers::GIBI;
+use naijascript::helpers::MEBI;
 
 use crate::cmd::Cli;
 
 #[cfg(target_pointer_width = "32")]
-const SCRATCH_ARENA_CAPACITY: usize = GIBI;
+const SCRATCH_ARENA_CAPACITY: usize = 64 * MEBI;
 #[cfg(target_pointer_width = "64")]
-const SCRATCH_ARENA_CAPACITY: usize = 4 * GIBI;
+const SCRATCH_ARENA_CAPACITY: usize = 256 * MEBI;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();

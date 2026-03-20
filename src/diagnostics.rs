@@ -58,7 +58,7 @@ impl Severity {
 /// Secondary annotation attached to a diagnostic.
 #[derive(Debug)]
 pub struct Label<'arena> {
-    pub message: ArenaCow<'arena, 'static>,
+    pub message: ArenaCow<'arena>,
     pub span: Span,
 }
 

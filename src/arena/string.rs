@@ -105,6 +105,12 @@ impl<'a> ArenaString<'a> {
         self.vec.capacity()
     }
 
+    /// Returns the arena this string is allocated in.
+    #[must_use]
+    pub fn arena(&self) -> &'a Arena {
+        self.vec.allocator()
+    }
+
     /// It's a [`String`], now it's a [`str`]. Wow!
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -153,6 +159,17 @@ impl<'a> ArenaString<'a> {
     /// To no surprise, this clears the string.
     pub fn clear(&mut self) {
         self.vec.clear();
+    }
+
+    /// Returns the string as a reference with the arena's lifetime.
+    ///
+    /// # Safety
+    ///
+    /// The underlying bytes are bump-allocated and never moved or individually freed.
+    /// The returned reference is valid for the arena's lifetime.
+    #[must_use]
+    pub fn as_arena_str(&self) -> &'a str {
+        unsafe { &*std::ptr::from_ref::<str>(self.as_str()) }
     }
 
     /// Append some text.

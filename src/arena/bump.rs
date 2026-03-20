@@ -83,6 +83,13 @@ impl Arena {
         self.offset.get()
     }
 
+    /// Returns true if the byte range `[ptr, ptr+size)` ends exactly at the
+    /// arena's current allocation frontier. Used for targeted tail reclaim
+    /// in `assign_var`/`define_var` where ownership is unambiguous.
+    pub fn is_at_tail(&self, ptr: *const u8, size: usize) -> bool {
+        size > 0 && unsafe { ptr.add(size) == self.base.as_ptr().add(self.offset.get()) }
+    }
+
     /// "Deallocates" the memory in the arena down to the given offset.
     ///
     /// # Safety
@@ -98,6 +105,21 @@ impl Arena {
         }
 
         self.offset.replace(to);
+    }
+
+    /// Releases committed physical pages above the current offset back to the OS.
+    /// The virtual reservation remains intact. Safe to call after `reset`.
+    pub fn decommit(&self) {
+        let offset = self.offset.get();
+        let commit = self.commit.get();
+        // Round up to chunk boundary — only decommit full chunks.
+        let keep = (offset + ALLOC_CHUNK_SIZE - 1) & !(ALLOC_CHUNK_SIZE - 1);
+        if keep < commit {
+            unsafe {
+                sys::virtual_memory::decommit(self.base.add(keep), commit - keep);
+            }
+            self.commit.set(keep);
+        }
     }
 
     #[inline]

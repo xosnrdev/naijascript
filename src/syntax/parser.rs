@@ -8,6 +8,7 @@ use memchr_rs::{memchr, memchr2};
 use crate::arena::{Arena, ArenaCow, ArenaString};
 use crate::arena_format;
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
+use crate::syntax::scanner::Lexer;
 use crate::syntax::token::{SpannedToken, Token};
 
 // Direct references to AST nodes allocated in the arena.
@@ -212,21 +213,21 @@ impl AsStr for SyntaxError {
 ///
 /// We use a hybrid approach, combining recursive-descent with Pratt parsing for
 /// expressions. See [<https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html>]
-pub struct Parser<'src, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>>
+pub struct Parser<'src, 'ast>
 where
     'src: 'ast,
 {
-    tokens: I,
-    cur: SpannedToken<'ast, 'src>,
+    lexer: Lexer<'ast, 'src>,
+    cur: SpannedToken<'ast>,
     errors: Diagnostics<'ast>,
     arena: &'ast Arena,
 }
 
-impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src, 'ast, I> {
+impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
     /// Creates a new [`Parser`] instance.
-    pub fn new(mut tokens: I, arena: &'ast Arena) -> Self {
-        let cur = tokens.next().unwrap_or_default();
-        Self { tokens, cur, errors: Diagnostics::new(arena), arena }
+    pub fn new(mut lexer: Lexer<'ast, 'src>, arena: &'ast Arena) -> Self {
+        let cur = lexer.next().unwrap_or_default();
+        Self { lexer, cur, errors: Diagnostics::new(arena), arena }
     }
 
     #[inline]
@@ -242,7 +243,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
 
     #[inline]
     fn bump(&mut self) {
-        self.cur = self.tokens.next().unwrap_or(SpannedToken {
+        self.cur = self.lexer.next().unwrap_or(SpannedToken {
             token: Token::EOF,
             span: Range::from(self.cur.span.end..self.cur.span.end),
         });
@@ -253,11 +254,17 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
     }
 
     /// Returns the parsed program as a Block reference.
+    /// Lexer errors are merged into the parser's diagnostics so the caller
+    /// gets a single unified error report for both lexical and syntax errors.
     pub fn parse_program(&mut self) -> (BlockRef<'ast>, &Diagnostics<'ast>) {
         let block_ref = self.parse_program_body();
         if self.cur.token != Token::EOF {
             self.emit_error(self.cur.span, SyntaxError::TrailingTokensAfterProgramEnd, Vec::new());
         }
+        // Lexer errors go first (earlier in the source) then syntax errors.
+        let mut merged = mem::replace(&mut self.lexer.errors, Diagnostics::new(self.arena));
+        merged.diagnostics.extend(mem::take(&mut self.errors.diagnostics));
+        self.errors = merged;
         (block_ref, &self.errors)
     }
 
@@ -1121,11 +1128,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
         }
     }
 
-    fn parse_string_literal(
-        &mut self,
-        content: &ArenaCow<'ast, 'src>,
-        span: Span,
-    ) -> ExprRef<'ast> {
+    fn parse_string_literal(&mut self, content: &ArenaCow<'ast>, span: Span) -> ExprRef<'ast> {
         let bytes = content.as_bytes();
         let len = bytes.len();
 
@@ -1136,7 +1139,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
             return self.alloc(Expr::String { parts: StringParts::Static(s), span });
         }
 
-        let template: &'src str = match &content {
+        let template: &'ast str = match &content {
             ArenaCow::Borrowed(s) => s,
             ArenaCow::Owned(..) => {
                 let s = self.alloc_str(content);
@@ -1156,7 +1159,7 @@ impl<'src: 'ast, 'ast, I: Iterator<Item = SpannedToken<'ast, 'src>>> Parser<'src
 
     fn parse_template_segments(
         &self,
-        template: &'src str,
+        template: &'ast str,
     ) -> Vec<StringSegment<'ast>, &'ast Arena> {
         let bytes = template.as_bytes();
         let len = bytes.len();
