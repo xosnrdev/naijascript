@@ -90,6 +90,16 @@ impl Arena {
         size > 0 && unsafe { ptr.add(size) == self.base.as_ptr().add(self.offset.get()) }
     }
 
+    /// Returns true if the given pointer falls within this arena's
+    /// virtual reservation. Used by `ArenaCow::promote` to detect
+    /// Borrowed pointers into frame-arena memory that must be copied
+    /// before a frame reset.
+    pub fn contains_ptr(&self, ptr: *const u8) -> bool {
+        let base = self.base.as_ptr() as usize;
+        let addr = ptr as usize;
+        addr.wrapping_sub(base) < self.capacity
+    }
+
     /// "Deallocates" the memory in the arena down to the given offset.
     ///
     /// # Safety

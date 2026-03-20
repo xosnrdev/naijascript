@@ -105,6 +105,10 @@ impl Arena {
         self.delegate_target().is_at_tail(ptr, size)
     }
 
+    pub fn contains_ptr(&self, ptr: *const u8) -> bool {
+        self.delegate_target_unchecked().contains_ptr(ptr)
+    }
+
     pub fn decommit(&self) {
         self.delegate_target().decommit();
     }

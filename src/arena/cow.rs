@@ -97,15 +97,22 @@ impl<'a> ArenaCow<'a> {
     }
 
     /// Copies frame-allocated string data to the persistent arena.
-    /// Borrowed strings already point to stable memory, so they pass through.
-    /// Owned strings already on the target arena pass through (avoids double-promote
-    /// when function return values are promoted in `eval_call` then stored via `assign_var`).
+    /// Borrowed pointers into the frame arena are copied (they would dangle
+    /// after frame reset). Borrowed pointers to source literals or persistent
+    /// memory pass through unchanged.
+    /// Owned strings already on the persistent arena pass through (no double-promote).
     /// Returns Owned so the promoted allocation is reclaimable via tail-dealloc
     /// when the value is overwritten.
     #[must_use]
-    pub fn promote(self, persistent: &'a Arena) -> Self {
+    pub fn promote(self, persistent: &'a Arena, frame: &Arena) -> Self {
         match self {
-            ArenaCow::Borrowed(s) => ArenaCow::Borrowed(s),
+            ArenaCow::Borrowed(s) => {
+                if frame.contains_ptr(s.as_ptr()) {
+                    ArenaCow::Owned(ArenaString::from_str(persistent, s))
+                } else {
+                    ArenaCow::Borrowed(s)
+                }
+            }
             ArenaCow::Owned(s) => {
                 if std::ptr::eq(s.arena(), persistent) {
                     return ArenaCow::Owned(s);

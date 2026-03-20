@@ -144,16 +144,16 @@ impl<'a> Value<'a> {
     /// Copies frame-allocated data to the persistent arena.
     /// Stack values (Number, Bool, Null) pass through unchanged.
     /// Values already on the target arena pass through (no double-promote).
-    fn promote(self, persistent: &'a Arena) -> Self {
+    fn promote(self, persistent: &'a Arena, frame: &Arena) -> Self {
         match self {
             Value::Number(n) => Value::Number(n),
             Value::Bool(b) => Value::Bool(b),
             Value::Null => Value::Null,
-            Value::Str(cow) => Value::Str(cow.promote(persistent)),
+            Value::Str(cow) => Value::Str(cow.promote(persistent, frame)),
             Value::Array(items) => {
                 let mut promoted = Vec::with_capacity_in(items.len(), persistent);
                 for item in items {
-                    promoted.push(item.promote(persistent));
+                    promoted.push(item.promote(persistent, frame));
                 }
                 Value::Array(promoted)
             }
@@ -664,7 +664,11 @@ impl<'a> Runtime<'a> {
             GlobalBuiltin::Shout => {
                 let argv = mem::replace(&mut arg_values[0], Value::Null);
                 GlobalBuiltin::shout(&argv);
-                let argv = if self.has_frame_arena() { argv.promote(self.arena) } else { argv };
+                let argv = if self.has_frame_arena() {
+                    argv.promote(self.arena, self.frame)
+                } else {
+                    argv
+                };
                 self.output.push(argv);
                 Ok(Value::Null)
             }
@@ -744,6 +748,13 @@ impl<'a> Runtime<'a> {
         match builtin {
             ArrayBuiltin::Push => {
                 let value = self.eval_expr(args.args[0])?;
+                // Promote before pushing, the target array lives on persistent,
+                // but the value may reference frame-arena memory.
+                let value = if self.has_frame_arena() {
+                    value.promote(self.arena, self.frame)
+                } else {
+                    value
+                };
                 let array = self.get_mutable_array(receiver, span, field)?;
                 ArrayBuiltin::push(array, value);
                 Ok(Value::Null)
@@ -960,11 +971,12 @@ impl<'a> Runtime<'a> {
     fn define_var(&mut self, name: &'a str, val: Value<'a>) {
         let has_frame = self.has_frame_arena();
         let arena = self.arena;
+        let frame = self.frame;
         if let Some(scope) = self.env.last_mut() {
             if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
-                Self::overwrite_slot(slot, val, has_frame, arena);
+                Self::overwrite_slot(slot, val, has_frame, arena, frame);
             } else {
-                let val = if has_frame { val.promote(arena) } else { val };
+                let val = if has_frame { val.promote(arena, frame) } else { val };
                 scope.push((name, val));
             }
         }
@@ -973,16 +985,17 @@ impl<'a> Runtime<'a> {
     fn assign_var(&mut self, name: &'a str, val: Value<'a>) {
         let has_frame = self.has_frame_arena();
         let arena = self.arena;
+        let frame = self.frame;
         // First try function-local variables
         if let Some(slot) = self.lookup_call_stack_mut(name) {
-            Self::overwrite_slot(slot, val, has_frame, arena);
+            Self::overwrite_slot(slot, val, has_frame, arena, frame);
             return;
         }
 
         // Then try regular scope stack
         for scope in self.env.iter_mut().rev() {
             if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
-                Self::overwrite_slot(slot, val, has_frame, arena);
+                Self::overwrite_slot(slot, val, has_frame, arena, frame);
                 return;
             }
         }
@@ -1019,7 +1032,7 @@ impl<'a> Runtime<'a> {
         if matches!(val, Value::Array(_)) {
             // Arrays promoted to persistent (existing behavior).
             // Cross-frame array return leak is accepted; pool allocator is future work.
-            let promoted = val.promote(self.arena);
+            let promoted = val.promote(self.arena, self.frame);
             unsafe { self.frame.reset(frame_offset) };
             return promoted;
         }
@@ -1033,7 +1046,13 @@ impl<'a> Runtime<'a> {
     /// Overwrites a variable slot, reclaiming the old value's arena memory
     /// when it sits at the persistent arena tail. The reclaim happens before
     /// the new value is promoted so the new allocation reuses the same space.
-    fn overwrite_slot(slot: &mut Value<'a>, val: Value<'a>, has_frame: bool, arena: &'a Arena) {
+    fn overwrite_slot(
+        slot: &mut Value<'a>,
+        val: Value<'a>,
+        has_frame: bool,
+        arena: &'a Arena,
+        frame: &Arena,
+    ) {
         if has_frame {
             // Take ownership of old value without running its destructor yet.
             let old = mem::replace(slot, Value::Null);
@@ -1042,7 +1061,7 @@ impl<'a> Runtime<'a> {
             // Old value dropped here — Vec::drop calls deallocate (no-op).
             drop(old);
             // Promote new value into (potentially reclaimed) space.
-            *slot = val.promote(arena);
+            *slot = val.promote(arena, frame);
         } else {
             *slot = val;
         }
@@ -1063,7 +1082,8 @@ impl<'a> Runtime<'a> {
         }
 
         // Promote before taking the mutable borrow on the variable.
-        let value = if self.has_frame_arena() { value.promote(self.arena) } else { value };
+        let value =
+            if self.has_frame_arena() { value.promote(self.arena, self.frame) } else { value };
 
         let mut slot =
             self.lookup_var_mut(base_var).expect("Semantic analysis guarantees variable exists");
