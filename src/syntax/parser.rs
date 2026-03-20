@@ -158,6 +158,26 @@ pub enum Expr<'ast> {
     Null(Span),
 }
 
+impl Expr<'_> {
+    /// Returns the source span for any expression variant.
+    #[must_use]
+    pub fn span(&self) -> Span {
+        match self {
+            Expr::Number(.., span)
+            | Expr::String { span, .. }
+            | Expr::Bool(.., span)
+            | Expr::Null(span)
+            | Expr::Var(.., span)
+            | Expr::Binary { span, .. }
+            | Expr::Unary { span, .. }
+            | Expr::Call { span, .. }
+            | Expr::Index { span, .. }
+            | Expr::Array { span, .. }
+            | Expr::Member { span, .. } => *span,
+        }
+    }
+}
+
 /// Represents a block of statements, which can be nested.
 #[derive(Debug)]
 pub struct Block<'ast> {
@@ -685,7 +705,7 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
         }
 
         let cond = self.parse_expression(0);
-        let cond_span = Self::expr_span(cond);
+        let cond_span = cond.span();
 
         let rparen_span = self.cur.span;
         if let Token::RParen = self.cur.token {
@@ -788,7 +808,7 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
         }
 
         let cond = self.parse_expression(0);
-        let cond_span = Self::expr_span(cond);
+        let cond_span = cond.span();
 
         let rparen_span = self.cur.span;
         if let Token::RParen = self.cur.token {
@@ -965,7 +985,7 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
         mut lhs: ExprRef<'ast>,
         min_bp: u8,
     ) -> ExprRef<'ast> {
-        let start = Self::expr_span(lhs).start;
+        let start = lhs.span().start;
 
         // Pratt parselet for function calls and binary operators
         loop {
@@ -1110,22 +1130,6 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
             lhs = self.alloc(Expr::Binary { op, lhs, rhs, span: Range::from(start..end) });
         }
         lhs
-    }
-
-    fn expr_span(expr: ExprRef<'ast>) -> Span {
-        match expr {
-            Expr::Number(.., span)
-            | Expr::String { span, .. }
-            | Expr::Bool(.., span)
-            | Expr::Null(span)
-            | Expr::Var(.., span)
-            | Expr::Binary { span, .. }
-            | Expr::Unary { span, .. }
-            | Expr::Call { span, .. }
-            | Expr::Index { span, .. }
-            | Expr::Array { span, .. }
-            | Expr::Member { span, .. } => *span,
-        }
     }
 
     fn parse_string_literal(&mut self, content: &ArenaCow<'ast>, span: Span) -> ExprRef<'ast> {

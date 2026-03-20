@@ -9,7 +9,11 @@ use crate::builtins::{
     ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
 };
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
+#[cfg(target_family = "wasm")]
+use crate::helpers::KIBI;
 use crate::helpers::LenWriter;
+#[cfg(not(target_family = "wasm"))]
+use crate::helpers::MEBI;
 use crate::syntax::parser::{
     ArgList, BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts,
     StringSegment, UnaryOp,
@@ -73,8 +77,15 @@ impl RuntimeError {
     }
 }
 
-// Maximum recursion depth to prevent stack overflow
-const MAX_CALL_DEPTH: usize = 512;
+/// Maximum native stack bytes the runtime is allowed to consume.
+/// Adapts automatically to debug vs release frame sizes and platform
+/// stack limits. Sized to fit within the default 8 MiB thread stack
+/// with headroom for the parser, resolver, and error reporting above.
+#[cfg(target_family = "wasm")]
+const STACK_BUDGET: usize = 512 * KIBI;
+#[cfg(not(target_family = "wasm"))]
+const STACK_BUDGET: usize = 4 * MEBI;
+
 // Epsilon used for approximate floating-point equality checks
 const FLOAT_EQ_EPS: f64 = 1e-12;
 
@@ -217,6 +228,10 @@ pub struct Runtime<'a> {
 
     // Frame arena for per-iteration/per-call temporaries, reset at loop and function boundaries
     frame: &'a Arena,
+
+    // Native stack pointer recorded at run() entry. Used to detect
+    // stack overflow by comparing against the current stack pointer.
+    stack_base: usize,
 }
 
 impl<'a> Runtime<'a> {
@@ -233,6 +248,7 @@ impl<'a> Runtime<'a> {
             errors: Diagnostics::new(arena),
             arena,
             frame,
+            stack_base: 0,
         }
     }
 
@@ -241,8 +257,23 @@ impl<'a> Runtime<'a> {
         !std::ptr::eq(self.frame, self.arena)
     }
 
+    /// Checks whether the native stack has grown beyond `STACK_BUDGET`
+    /// since `run()` was entered. Covers both function-call recursion and
+    /// deeply nested expression evaluation in a single check.
+    #[inline]
+    fn check_stack(&self, span: Span) -> Result<(), RuntimeError> {
+        let probe = 0u8;
+        let current = &raw const probe as usize;
+        if self.stack_base.wrapping_sub(current) > STACK_BUDGET {
+            return Err(RuntimeError::new(RuntimeErrorKind::StackOverflow, span));
+        }
+        Ok(())
+    }
+
     /// Executes a `NaijaScript` program starting from the root block.
     pub fn run(&mut self, root: BlockRef<'a>) -> &Diagnostics<'a> {
+        let anchor = 0u8;
+        self.stack_base = &raw const anchor as usize;
         self.env.push(Vec::new_in(self.arena)); // enter global scope
 
         match self.exec_block_with_flow(root) {
@@ -388,6 +419,7 @@ impl<'a> Runtime<'a> {
 
     #[inline]
     fn eval_expr(&mut self, expr: ExprRef<'a>) -> Result<Value<'a>, RuntimeError> {
+        self.check_stack(expr.span())?;
         match expr {
             Expr::Number(n, ..) => Ok(Value::Number(
                 n.parse::<f64>().expect("Scanner should guarantee valid number format"),
@@ -575,11 +607,6 @@ impl<'a> Runtime<'a> {
 
         // We check for user-defined functions next
         let func_idx = self.lookup_func(func_name);
-
-        // We check for recursion depth
-        if self.call_stack.len() >= MAX_CALL_DEPTH {
-            return Err(RuntimeError::new(RuntimeErrorKind::StackOverflow, *span));
-        }
 
         let frame_offset = if self.has_frame_arena() { Some(self.frame.offset()) } else { None };
 
