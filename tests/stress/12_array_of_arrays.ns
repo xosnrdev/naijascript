@@ -1,0 +1,23 @@
+# Stress: Building a 2D array (array of arrays).
+# Each inner array is a fresh allocation. Tests array promote
+# and nested array memory layout.
+
+make matrix get []
+make row get 0
+jasi (row small pass 100) start
+    make inner get []
+    make col get 0
+    jasi (col small pass 100) start
+        inner.push(row times 100 add col)
+        col get col add 1
+    end
+    matrix.push(inner)
+    row get row add 1
+end
+
+# Verify corners
+shout(matrix[0][0])
+shout(matrix[0][99])
+shout(matrix[99][0])
+shout(matrix[99][99])
+shout(matrix.len())

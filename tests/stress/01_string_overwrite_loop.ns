@@ -1,0 +1,11 @@
+# Stress: String variable overwrite in a tight loop.
+# Old string values must be reclaimed via tail-dealloc.
+# Expected: constant arena growth (0 B/iter for the variable slot).
+
+make result get "seed"
+make i get 0
+jasi (i small pass 10000) start
+    result get "iteration_" add to_string(i) add "_payload"
+    i get i add 1
+end
+shout(result)

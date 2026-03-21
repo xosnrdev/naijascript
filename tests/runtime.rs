@@ -1,43 +1,51 @@
 #![feature(allocator_api)]
 
-use naijascript::arena::{Arena, ArenaCow, ArenaString};
+use naijascript::arena::ArenaCow;
 use naijascript::diagnostics::AsStr;
-use naijascript::helpers::KIBI;
-use naijascript::runtime::{Runtime, RuntimeErrorKind, Value};
+use naijascript::runtime::{RuntimeErrorKind, Value};
 
 mod common;
-use crate::common::parse_from_src;
+use crate::common::with_pipeline;
 
 macro_rules! assert_runtime {
     ($src:expr, output: $expected:expr) => {{
-        let arena = Arena::new(KIBI).unwrap();
-        let mut parser = parse_from_src($src, &arena);
-        let (root, err) = parser.parse_program();
-        assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
-        let mut resolver = naijascript::resolver::Resolver::new(&arena);
-        resolver.resolve(root);
-        assert!(
-            !resolver.errors.has_errors(),
-            "Expected no semantic errors, got: {:?}",
-            resolver.errors.diagnostics
-        );
-        let mut runtime = Runtime::new(&arena);
-        runtime.run(root);
-        assert_eq!(runtime.output, $expected);
+        with_pipeline($src, |_, (root, parse_errors), resolver, runtime| {
+            assert!(
+                parse_errors.diagnostics.is_empty(),
+                "Expected no parse errors, got: {:?}",
+                parse_errors.diagnostics
+            );
+            resolver.resolve(root);
+            assert!(
+                !resolver.errors.has_errors(),
+                "Expected no resolution errors, got: {:?}",
+                resolver.errors.diagnostics
+            );
+            runtime.run(root);
+            assert_eq!(runtime.output, $expected);
+        })
     }};
     ($src:expr, error: $err:expr) => {{
-        let arena = naijascript::arena::Arena::new(4 * KIBI).unwrap();
-        let mut parser = parse_from_src($src, &arena);
-        let (root, err) = parser.parse_program();
-        assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
-        let mut runtime = Runtime::new(&arena);
-        runtime.run(root);
-        assert!(
-            runtime.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
-            "Expected error: {}, got: {:?}",
-            $err.as_str(),
-            runtime.errors.diagnostics
-        );
+        with_pipeline($src, |_, (root, parse_errors), resolver, runtime| {
+            assert!(
+                parse_errors.diagnostics.is_empty(),
+                "Expected no parse errors, got: {:?}",
+                parse_errors.diagnostics
+            );
+            resolver.resolve(root);
+            assert!(
+                !resolver.errors.has_errors(),
+                "Expected no resolution errors, got: {:?}",
+                resolver.errors.diagnostics
+            );
+            runtime.run(root);
+            assert!(
+                runtime.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
+                "Expected runtime error: {}, got: {:?}",
+                $err.as_str(),
+                runtime.errors.diagnostics
+            );
+        })
     }};
 }
 
@@ -281,17 +289,21 @@ fn logical_operator_precedence() {
 
 #[test]
 fn array_output() {
-    let arena = Arena::new(4 * KIBI).unwrap();
-    let mut value = Vec::with_capacity_in(3, &arena);
-    value.extend_from_slice(&[Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)]);
-    assert_runtime!("make nums get [1, 2, 3] shout(nums)", output: vec![Value::Array(value)]);
+    let src = "make nums get [1, 2, 3] shout(nums)";
+    with_pipeline("", |arena, (_, _), _, _| {
+        let mut value = Vec::with_capacity_in(3, arena);
+        value.extend_from_slice(&[Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)]);
+        assert_runtime!(src, output: vec![Value::Array(value)]);
+    });
 }
 
 #[test]
 fn empty_array() {
-    let arena = Arena::new(4 * KIBI).unwrap();
-    let value: Vec<Value, &Arena> = Vec::with_capacity_in(0, &arena);
-    assert_runtime!("make empty get [] shout(empty)", output: vec![Value::Array(value)]);
+    let src = "make empty get [] shout(empty)";
+    with_pipeline("", |arena, (_, _), _, _| {
+        let value = Vec::with_capacity_in(0, arena);
+        assert_runtime!(src, output: vec![Value::Array(value)]);
+    });
 }
 
 #[test]
@@ -447,7 +459,6 @@ fn boolean_parameter_operations() {
 
 #[test]
 fn control_flow_else_return_type() {
-    let arena = Arena::new(KIBI).unwrap();
     assert_runtime!(
         r#"
         do join(a) start
@@ -458,7 +469,7 @@ fn control_flow_else_return_type() {
         end
         shout(join("foo"))
         "#,
-        output: vec![Value::Str(ArenaCow::Owned(ArenaString::from_str(&arena, "foobaz")))]
+        output: vec![Value::Str(ArenaCow::Borrowed("foobaz"))]
     );
     assert_runtime!(
         r#"
@@ -489,15 +500,14 @@ fn do_sum() {
 
 #[test]
 fn do_join() {
-    let arena = Arena::new(KIBI).unwrap();
     assert_runtime!(
         r#"
-        do join(a) start
-            return a add "baz"
-        end
-        shout(join("foo"))
-        "#,
-        output: vec![Value::Str(ArenaCow::Owned(ArenaString::from_str(&arena, "foobaz")))]
+            do join(a) start
+                return a add "baz"
+            end
+            shout(join("foo"))
+            "#,
+        output: vec![Value::Str(ArenaCow::Borrowed("foobaz"))]
     );
 }
 

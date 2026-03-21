@@ -1,0 +1,15 @@
+# Stress: Overwriting array elements by index in a loop.
+# Tests assign_index promotion and that string elements
+# allocated on frame are properly promoted to persistent.
+
+make arr get ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
+make i get 0
+jasi (i small pass 5000) start
+    make idx get i mod 10
+    arr[idx] get "val_" add to_string(i)
+    i get i add 1
+end
+
+shout(arr[0])
+shout(arr[9])
+shout(arr.len())

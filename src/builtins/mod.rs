@@ -100,10 +100,10 @@ impl GlobalBuiltin {
     }
 
     #[inline]
-    pub fn read_line<'arena>(
-        prompt: &Value<'arena, '_>,
-        arena: &'arena Arena,
-    ) -> Result<ArenaString<'arena>, io::Error> {
+    pub fn read_line<'a>(
+        prompt: &Value<'a>,
+        arena: &'a Arena,
+    ) -> Result<ArenaString<'a>, io::Error> {
         sys::stdin::read_line(prompt, arena)
     }
 }

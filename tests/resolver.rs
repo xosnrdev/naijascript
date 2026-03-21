@@ -1,37 +1,41 @@
-use naijascript::diagnostics::AsStr;
-use naijascript::helpers::KIBI;
-use naijascript::resolver::{Resolver, SemanticError};
+use naijascript::resolver::SemanticError;
 
 mod common;
-use crate::common::parse_from_src;
+use crate::common::with_pipeline;
 
 macro_rules! assert_resolve {
     ($src:expr, $err:expr) => {{
-        let arena = naijascript::arena::Arena::new(KIBI).unwrap();
-        let mut parser = parse_from_src($src, &arena);
-        let (root, err) = parser.parse_program();
-        assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
-        let mut resolver = Resolver::new(&arena);
-        resolver.resolve(root);
-        assert!(
-            resolver.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
-            "Expected error: {}, got: {:?}",
-            $err.as_str(),
-            resolver.errors.diagnostics
-        );
+        with_pipeline($src, |_, (root, parse_errors), resolver, _| {
+            use naijascript::diagnostics::AsStr;
+
+            assert!(
+                parse_errors.diagnostics.is_empty(),
+                "Expected no parse errors, got: {:?}",
+                parse_errors.diagnostics
+            );
+            resolver.resolve(root);
+            assert!(
+                resolver.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
+                "Expected resolution error: {}, got: {:?}",
+                $err.as_str(),
+                resolver.errors.diagnostics
+            );
+        })
     }};
     ($src:expr) => {{
-        let arena = naijascript::arena::Arena::new(KIBI).unwrap();
-        let mut parser = parse_from_src($src, &arena);
-        let (root, err) = parser.parse_program();
-        assert!(err.diagnostics.is_empty(), "Expected no parse errors, got: {:?}", err.diagnostics);
-        let mut resolver = Resolver::new(&arena);
-        resolver.resolve(root);
-        assert!(
-            resolver.errors.diagnostics.is_empty(),
-            "Expected no resolution errors, got: {:?}",
-            resolver.errors.diagnostics
-        );
+        with_pipeline($src, |_, (root, parse_errors), resolver, _| {
+            assert!(
+                parse_errors.diagnostics.is_empty(),
+                "Expected no parse errors, got: {:?}",
+                parse_errors.diagnostics
+            );
+            resolver.resolve(root);
+            assert!(
+                resolver.errors.diagnostics.is_empty(),
+                "Expected no resolution errors, got: {:?}",
+                resolver.errors.diagnostics
+            );
+        })
     }};
 }
 #[test]

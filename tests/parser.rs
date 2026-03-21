@@ -1,28 +1,29 @@
-use naijascript::diagnostics::AsStr;
-use naijascript::helpers::KIBI;
 use naijascript::syntax::parser::SyntaxError;
 
 mod common;
-use crate::common::parse_from_src;
+use crate::common::with_pipeline;
 
 macro_rules! assert_parse {
     ($src:expr) => {{
-        let arena = naijascript::arena::Arena::new(KIBI).unwrap();
-        let mut parser = parse_from_src($src, &arena);
-        let (.., errors) = parser.parse_program();
-        assert!(errors.diagnostics.is_empty(), "Expected no errors, got {errors:?}");
+        with_pipeline($src, |_, (_, parse_errors), _, _| {
+            assert!(
+                parse_errors.diagnostics.is_empty(),
+                "Expected no parse errors, got {parse_errors:?}"
+            );
+        })
     }};
     ($src:expr, $err:expr) => {{
-        let arena = naijascript::arena::Arena::new(KIBI).unwrap();
-        let mut parser = parse_from_src($src, &arena);
-        let (.., errors) = parser.parse_program();
-        assert!(!errors.diagnostics.is_empty(), "Expected errors, got none");
-        assert!(
-            errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
-            "Expected error: {}, got: {:?}",
-            $err.as_str(),
-            errors.diagnostics
-        );
+        with_pipeline($src, |_, (_, parse_errors), _, _| {
+            use naijascript::diagnostics::AsStr;
+
+            assert!(!parse_errors.diagnostics.is_empty(), "Expected parse errors, got none");
+            assert!(
+                parse_errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
+                "Expected parser error: {}, got: {:?}",
+                $err.as_str(),
+                parse_errors.diagnostics
+            );
+        })
     }};
 }
 

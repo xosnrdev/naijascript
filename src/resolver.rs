@@ -50,12 +50,16 @@ struct FunctionSig<'ast> {
 }
 
 /// An arena-allocated semantic analyzer.
-pub struct Resolver<'ast> {
+///
+/// Uses two lifetime parameters to separate AST data (`'ast`) from the resolver's
+/// own working memory (`'res`). This allows the resolver's scope tables and diagnostics
+/// to be freed independently of the AST e.g., by using a scratch arena for `'res`.
+pub struct Resolver<'ast, 'res> {
     // Stack of variable symbol tables for block-scoped variables
-    variable_scopes: Vec<Vec<(&'ast str, ValueType, &'ast Span), &'ast Arena>, &'ast Arena>,
+    variable_scopes: Vec<Vec<(&'ast str, ValueType, &'ast Span), &'res Arena>, &'res Arena>,
 
     // Stack of function symbol tables for block-scoped functions
-    function_scopes: Vec<Vec<FunctionSig<'ast>, &'ast Arena>, &'ast Arena>,
+    function_scopes: Vec<Vec<FunctionSig<'ast>, &'res Arena>, &'res Arena>,
 
     // Track current function context for return statement validation
     current_function: Option<&'ast str>,
@@ -64,15 +68,15 @@ pub struct Resolver<'ast> {
     in_loop: usize,
 
     /// Collection of semantic errors found during analysis
-    pub errors: Diagnostics<'ast>,
+    pub errors: Diagnostics<'res>,
 
     // Reference to the arena for allocating scope vectors
-    arena: &'ast Arena,
+    arena: &'res Arena,
 }
 
-impl<'ast> Resolver<'ast> {
+impl<'ast: 'res, 'res> Resolver<'ast, 'res> {
     /// Creates a new [`Resolver`] instance.
-    pub fn new(arena: &'ast Arena) -> Self {
+    pub fn new(arena: &'res Arena) -> Self {
         Self {
             variable_scopes: Vec::new_in(arena),
             function_scopes: Vec::new_in(arena),
@@ -94,11 +98,11 @@ impl<'ast> Resolver<'ast> {
         self.function_scopes.pop();
     }
 
-    fn emit_error(&mut self, span: Span, error: SemanticError, labels: Vec<Label<'ast>>) {
+    fn emit_error(&mut self, span: Span, error: SemanticError, labels: Vec<Label<'res>>) {
         self.errors.emit(span, Severity::Error, "semantic", error.as_str(), labels);
     }
 
-    fn emit_warning(&mut self, span: Span, warning: SemanticError, labels: Vec<Label<'ast>>) {
+    fn emit_warning(&mut self, span: Span, warning: SemanticError, labels: Vec<Label<'res>>) {
         self.errors.emit(span, Severity::Warning, "semantic", warning.as_str(), labels);
     }
 
@@ -883,7 +887,7 @@ impl<'ast> Resolver<'ast> {
     fn collect_return_types(
         &self,
         block: BlockRef<'ast>,
-        return_types: &mut Vec<ValueType, &'ast Arena>,
+        return_types: &mut Vec<ValueType, &'res Arena>,
     ) {
         for stmt in block.stmts {
             self.collect_return_types_from_stmt(stmt, return_types);
@@ -893,7 +897,7 @@ impl<'ast> Resolver<'ast> {
     fn collect_return_types_from_stmt(
         &self,
         stmt: StmtRef<'ast>,
-        return_types: &mut Vec<ValueType, &'ast Arena>,
+        return_types: &mut Vec<ValueType, &'res Arena>,
     ) {
         match stmt {
             Stmt::Return { expr, .. } => {

@@ -1,0 +1,27 @@
+# Stress: Many variables in the same scope, all overwritten in a loop.
+# Tests that tail-reclaim works when multiple variables are active
+# (only the most recently allocated can be at the tail).
+
+make a get "aaa"
+make b get "bbb"
+make c get "ccc"
+make d get "ddd"
+make e get "eee"
+make f get "fff"
+make g get "ggg"
+make h get "hhh"
+
+make i get 0
+jasi (i small pass 5000) start
+    a get "a_" add to_string(i)
+    b get "b_" add to_string(i)
+    c get "c_" add to_string(i)
+    d get "d_" add to_string(i)
+    e get "e_" add to_string(i)
+    f get "f_" add to_string(i)
+    g get "g_" add to_string(i)
+    h get "h_" add to_string(i)
+    i get i add 1
+end
+shout(a)
+shout(h)

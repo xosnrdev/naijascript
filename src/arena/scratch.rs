@@ -12,7 +12,11 @@ static mut S_SCRATCH: [bump::Arena; 2] = const { [bump::Arena::empty(), bump::Ar
 pub fn init(capacity: usize) -> Result<(), u32> {
     unsafe {
         for s in &mut S_SCRATCH[..] {
-            *s = bump::Arena::new(capacity)?;
+            if s.is_empty() {
+                *s = bump::Arena::new(capacity)?;
+            } else {
+                s.reset(0);
+            }
         }
     }
     Ok(())
@@ -93,6 +97,7 @@ impl<'a> ScratchArena<'a> {
 impl Drop for ScratchArena<'_> {
     fn drop(&mut self) {
         unsafe { self.arena.reset(self.offset) };
+        self.arena.decommit();
     }
 }
 

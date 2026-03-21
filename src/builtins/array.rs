@@ -61,31 +61,26 @@ impl ArrayBuiltin {
     }
 
     #[inline]
-    pub fn push<'arena, 'src>(
-        array: &mut Vec<Value<'arena, 'src>, &'arena Arena>,
-        value: Value<'arena, 'src>,
-    ) {
+    pub fn push<'a>(array: &mut Vec<Value<'a>, &'a Arena>, value: Value<'a>) {
         array.push(value);
     }
 
     #[inline]
-    pub fn pop<'arena, 'src>(
-        array: &mut Vec<Value<'arena, 'src>, &'arena Arena>,
-    ) -> Option<Value<'arena, 'src>> {
+    pub fn pop<'a>(array: &mut Vec<Value<'a>, &'a Arena>) -> Option<Value<'a>> {
         array.pop()
     }
 
     #[inline]
-    pub fn reverse<'arena>(array: &mut Vec<Value<'arena, '_>, &'arena Arena>) {
+    pub fn reverse<'a>(array: &mut Vec<Value<'a>, &'a Arena>) {
         array.reverse();
     }
 
     #[inline]
-    pub fn join<'arena>(
-        array: &Vec<Value<'arena, '_>, &'arena Arena>,
+    pub fn join<'a>(
+        array: &Vec<Value<'a>, &'a Arena>,
         sep: &str,
-        arena: &'arena Arena,
-    ) -> ArenaString<'arena> {
+        arena: &'a Arena,
+    ) -> ArenaString<'a> {
         let mut buffer =
             ArenaString::with_capacity_in(sep.len() * array.len().saturating_sub(1), arena);
         for (i, value) in array.iter().enumerate() {

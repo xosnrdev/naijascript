@@ -1,0 +1,11 @@
+# Stress: Repeated string replacement in a loop.
+# Each replace creates a new string, old one should be reclaimable.
+
+make text get "the quick brown fox jumps over the lazy dog"
+make i get 0
+jasi (i small pass 2000) start
+    text get text.replace("the", "THE")
+    text get text.replace("THE", "the")
+    i get i add 1
+end
+shout(text)

@@ -1,0 +1,32 @@
+# Stress: A variable changes type every iteration.
+# String → Number → Boolean → Null → Array → String ...
+# Tests that promote and tail-reclaim handle type transitions.
+
+make val get "initial"
+make i get 0
+jasi (i small pass 10000) start
+    make phase get i mod 5
+    if to say (phase na 0) start
+        val get "string_" add to_string(i)
+    end
+    if not so start
+        if to say (phase na 1) start
+            val get i times 3.14
+        end
+        if not so start
+            if to say (phase na 2) start
+                val get i mod 2 na 0
+            end
+            if not so start
+                if to say (phase na 3) start
+                    val get null
+                end
+                if not so start
+                    val get [i, i add 1, i add 2]
+                end
+            end
+        end
+    end
+    i get i add 1
+end
+shout(typeof(val))

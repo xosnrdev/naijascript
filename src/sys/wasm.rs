@@ -19,6 +19,8 @@ impl VirtualMemory for WasmVirtualMemory {
         Ok(())
     }
 
+    unsafe fn decommit(_base: NonNull<u8>, _size: usize) {}
+
     unsafe fn release(base: NonNull<u8>, size: usize) {
         if let Ok(layout) = Layout::from_size_align(size, mem::align_of::<usize>()) {
             unsafe { dealloc(base.as_ptr(), layout) };
@@ -29,10 +31,7 @@ impl VirtualMemory for WasmVirtualMemory {
 pub struct WasmStdin;
 
 impl Stdin for WasmStdin {
-    fn read_line<'arena, 'src>(
-        _prompt: &Value<'arena, 'src>,
-        _arena: &'arena Arena,
-    ) -> Result<ArenaString<'arena>, io::Error> {
+    fn read_line<'a>(_prompt: &Value<'a>, _arena: &'a Arena) -> Result<ArenaString<'a>, io::Error> {
         Err(io::Error::new(io::ErrorKind::Unsupported, "Dis platform lack I/O support"))
     }
 }

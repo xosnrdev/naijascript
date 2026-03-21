@@ -1,0 +1,15 @@
+# Stress: Function returning a new string each iteration, assigned to same var.
+# Tests the return-value staging through persistent arena + tail-reclaim.
+# Expected: 0 B/iter persistent growth for the variable slot.
+
+do make_label(n) start
+    return "label_" add to_string(n)
+end
+
+make tag get "initial"
+make i get 0
+jasi (i small pass 10000) start
+    tag get make_label(i)
+    i get i add 1
+end
+shout(tag)

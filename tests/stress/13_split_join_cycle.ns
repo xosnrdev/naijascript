@@ -1,0 +1,14 @@
+# Stress: Split a string into an array, join it back, repeat.
+# Each cycle creates temporary arrays and strings.
+# Frame arena should handle all intermediates.
+
+make data get "alpha,bravo,charlie,delta,echo,foxtrot,golf,hotel"
+make i get 0
+jasi (i small pass 5000) start
+    make parts get data.split(",")
+    data get parts.join("-")
+    make parts2 get data.split("-")
+    data get parts2.join(",")
+    i get i add 1
+end
+shout(data)

@@ -58,6 +58,16 @@ pub trait VirtualMemory {
     /// and to pass a size less than or equal to the size passed to `reserve`.
     unsafe fn commit(base: NonNull<u8>, size: usize) -> Result<(), u32>;
 
+    /// Decommits (releases physical pages from) a previously committed region.
+    /// The virtual reservation remains intact. Pages will be recommitted on next
+    /// access via `commit`.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it uses raw pointers.
+    /// Only pass ranges that were previously committed via `commit`.
+    unsafe fn decommit(base: NonNull<u8>, size: usize);
+
     /// Releases a virtual memory region of the given size.
     ///
     /// # Safety
@@ -72,8 +82,5 @@ pub trait Stdin {
     ///
     /// Unlike the `read_line` from [`std::io::stdin`] that's hardcoded to [`std::string::String`] type, this
     /// one allocates with [`ArenaString`].
-    fn read_line<'arena>(
-        prompt: &Value<'arena, '_>,
-        arena: &'arena Arena,
-    ) -> Result<ArenaString<'arena>, io::Error>;
+    fn read_line<'a>(prompt: &Value<'a>, arena: &'a Arena) -> Result<ArenaString<'a>, io::Error>;
 }

@@ -10,9 +10,8 @@ use naijascript::resolver::Resolver;
 use naijascript::runtime::Runtime;
 use naijascript::syntax::parser::Parser;
 use naijascript::syntax::scanner::Lexer;
-use naijascript::syntax::token::SpannedToken;
 
-use crate::arena::{Arena, ArenaString};
+use crate::arena::{Arena, ArenaString, scratch_arena};
 use crate::{print_error, toolchain};
 
 #[derive(Debug, clap::Parser)]
@@ -97,31 +96,33 @@ impl Cli {
 }
 
 fn run_source(filename: &str, src: &str, arena: &Arena) -> ExitCode {
-    let mut lexer = Lexer::new(src, arena);
-    let tokens: Vec<SpannedToken> = (&mut lexer).collect();
-    if !lexer.errors.diagnostics.is_empty() {
-        lexer.errors.report(src, filename);
-        return ExitCode::FAILURE;
-    }
-
-    let mut parser = Parser::new(tokens.into_iter(), arena);
+    let lexer = Lexer::new(src, arena);
+    let mut parser = Parser::new(lexer, arena);
     let (root, err) = parser.parse_program();
     if !err.diagnostics.is_empty() {
         err.report(src, filename);
         return ExitCode::FAILURE;
     }
 
-    let mut resolver = Resolver::new(arena);
-    resolver.resolve(root);
-    if resolver.errors.has_errors() {
-        resolver.errors.report(src, filename);
-        return ExitCode::FAILURE;
-    }
-    if !resolver.errors.diagnostics.is_empty() {
-        resolver.errors.report(src, filename);
+    // Resolver uses a separate scratch arena that is freed after resolution,
+    // before the runtime begins. This groups the resolver's working memory
+    // (scope tables, diagnostics) into a shorter lifetime than the AST.
+    {
+        let res_arena = scratch_arena(Some(arena));
+        let mut resolver = Resolver::new(&res_arena);
+        resolver.resolve(root);
+        if resolver.errors.has_errors() {
+            resolver.errors.report(src, filename);
+            return ExitCode::FAILURE;
+        }
+        if !resolver.errors.diagnostics.is_empty() {
+            resolver.errors.report(src, filename);
+        }
     }
 
-    let mut runtime = Runtime::new(arena);
+    // After resolver scope drops, scratch[1] is free for use as frame arena.
+    let frame = scratch_arena(Some(arena));
+    let mut runtime = Runtime::new(arena, Some(&frame));
     let err = runtime.run(root);
     if err.has_errors() {
         err.report(src, filename);

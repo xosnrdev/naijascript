@@ -1,12 +1,12 @@
 [package]
 name = "wasm"
 version = "0.1.0"
-edition = { workspace = true }
-authors = { workspace = true }
+edition.workspace = true
+authors.workspace = true
 description = "WASM bindings for The NaijaScript Interpreter"
-repository = { workspace = true }
-license = { workspace = true }
-publish = { workspace = true }
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = [

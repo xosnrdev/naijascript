@@ -1,0 +1,18 @@
+# Stress: Functions reading and modifying outer-scope variables.
+# Tests that variable lookup through env scopes works under pressure.
+
+make counter get 0
+make label get "start"
+
+do increment() start
+    counter get counter add 1
+    label get "count_" add to_string(counter)
+end
+
+make i get 0
+jasi (i small pass 10000) start
+    increment()
+    i get i add 1
+end
+shout(counter)
+shout(label)

@@ -83,6 +83,16 @@ impl Arena {
         self.offset.get()
     }
 
+    /// Returns true if the given pointer falls within this arena's
+    /// virtual reservation. Used by `ArenaCow::promote` to detect
+    /// Borrowed pointers into frame-arena memory that must be copied
+    /// before a frame reset.
+    pub fn contains_ptr(&self, ptr: *const u8) -> bool {
+        let base = self.base.as_ptr() as usize;
+        let addr = ptr as usize;
+        addr.wrapping_sub(base) < self.capacity
+    }
+
     /// "Deallocates" the memory in the arena down to the given offset.
     ///
     /// # Safety
@@ -98,6 +108,21 @@ impl Arena {
         }
 
         self.offset.replace(to);
+    }
+
+    /// Releases committed physical pages above the current offset back to the OS.
+    /// The virtual reservation remains intact. Safe to call after `reset`.
+    pub fn decommit(&self) {
+        let offset = self.offset.get();
+        let commit = self.commit.get();
+        // Round up to chunk boundary and only decommit full chunks.
+        let keep = (offset + ALLOC_CHUNK_SIZE - 1) & !(ALLOC_CHUNK_SIZE - 1);
+        if keep < commit {
+            unsafe {
+                sys::virtual_memory::decommit(self.base.add(keep), commit - keep);
+            }
+            self.commit.set(keep);
+        }
     }
 
     #[inline]
