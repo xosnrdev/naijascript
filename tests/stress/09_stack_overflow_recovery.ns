@@ -1,0 +1,8 @@
+# Stress: Intentional stack overflow must produce a clean error,
+# not a process abort. The interpreter must survive this.
+
+do explode() start
+    explode()
+end
+
+explode()

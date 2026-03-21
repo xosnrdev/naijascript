@@ -1,0 +1,20 @@
+# Stress: Mutual recursion (A calls B calls A). Tests that the stack
+# overflow guard catches indirect recursion, not just self-recursion.
+
+do is_even(n) start
+    if to say (n na 0) start
+        return true
+    end
+    return is_odd(n minus 1)
+end
+
+do is_odd(n) start
+    if to say (n na 0) start
+        return false
+    end
+    return is_even(n minus 1)
+end
+
+# Moderate depth: should succeed
+shout(is_even(100))
+shout(is_odd(99))

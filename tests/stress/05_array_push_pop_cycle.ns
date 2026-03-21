@@ -1,0 +1,23 @@
+# Stress: Push N elements, pop all, repeat. Tests array memory lifecycle.
+# After each cycle, the array should be empty. Only the array backing
+# store (capacity) persists; element data is released on pop.
+
+make arr get []
+make cycle get 0
+jasi (cycle small pass 100) start
+    make j get 0
+    jasi (j small pass 100) start
+        arr.push("item_" add to_string(cycle) add "_" add to_string(j))
+        j get j add 1
+    end
+
+    make popped get 0
+    jasi (arr.len() pass 0) start
+        arr.pop()
+        popped get popped add 1
+    end
+
+    cycle get cycle add 1
+end
+shout(arr.len())
+shout(cycle)

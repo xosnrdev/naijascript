@@ -83,13 +83,6 @@ impl Arena {
         self.offset.get()
     }
 
-    /// Returns true if the byte range `[ptr, ptr+size)` ends exactly at the
-    /// arena's current allocation frontier. Used for targeted tail reclaim
-    /// in `assign_var`/`define_var` where ownership is unambiguous.
-    pub fn is_at_tail(&self, ptr: *const u8, size: usize) -> bool {
-        size > 0 && unsafe { ptr.add(size) == self.base.as_ptr().add(self.offset.get()) }
-    }
-
     /// Returns true if the given pointer falls within this arena's
     /// virtual reservation. Used by `ArenaCow::promote` to detect
     /// Borrowed pointers into frame-arena memory that must be copied

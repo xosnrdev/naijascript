@@ -4,7 +4,8 @@
     clippy::similar_names,
     clippy::missing_errors_doc,
     clippy::missing_panics_doc,
-    clippy::too_many_lines
+    clippy::too_many_lines,
+    clippy::cast_possible_truncation
 )]
 
 #[macro_use]

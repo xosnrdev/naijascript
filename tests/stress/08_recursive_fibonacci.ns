@@ -1,0 +1,12 @@
+# Stress: Recursive fibonacci. Deep call tree with exponential branching.
+# fib(25) = 75025 calls. Tests frame arena reset on function return
+# and stack overflow guard for the ~25-level recursion depth.
+
+do fib(n) start
+    if to say (n small pass 2) start
+        return n
+    end
+    return fib(n minus 1) add fib(n minus 2)
+end
+
+shout(fib(25))

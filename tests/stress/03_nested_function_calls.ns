@@ -1,0 +1,27 @@
+# Stress: Deeply nested function calls (non-recursive).
+# Each function calls the next, building a chain.
+# Tests frame arena reset at each call boundary.
+
+do step_a(n) start
+    return step_b(n add 1)
+end
+
+do step_b(n) start
+    return step_c(n add 1)
+end
+
+do step_c(n) start
+    return step_d(n add 1)
+end
+
+do step_d(n) start
+    return n times 2
+end
+
+make i get 0
+make total get 0
+jasi (i small pass 5000) start
+    total get total add step_a(i)
+    i get i add 1
+end
+shout(total)

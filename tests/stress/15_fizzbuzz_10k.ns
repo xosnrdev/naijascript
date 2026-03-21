@@ -1,0 +1,24 @@
+# Stress: FizzBuzz to 10,000. A realistic program that exercises
+# conditionals, string output, modular arithmetic, and output
+# accumulation in bulk.
+
+make i get 1
+jasi (i small pass 10001) start
+    if to say (i mod 15 na 0) start
+        shout("FizzBuzz")
+    end
+    if not so start
+        if to say (i mod 3 na 0) start
+            shout("Fizz")
+        end
+        if not so start
+            if to say (i mod 5 na 0) start
+                shout("Buzz")
+            end
+            if not so start
+                shout(i)
+            end
+        end
+    end
+    i get i add 1
+end

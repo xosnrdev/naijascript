@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::Deref;
 
-use super::{Arena, ArenaString};
+use super::{Arena, ArenaString, PoolSet};
 
 /// A custom clone-on-write smart pointer for [`super::ArenaString`].
 ///
@@ -96,19 +96,18 @@ impl<'a> ArenaCow<'a> {
         self.as_ref().is_empty()
     }
 
-    /// Copies frame-allocated string data to the persistent arena.
-    /// Borrowed pointers into the frame arena are copied (they would dangle
-    /// after frame reset). Borrowed pointers to source literals or persistent
-    /// memory pass through unchanged.
-    /// Owned strings already on the persistent arena pass through (no double-promote).
-    /// Returns Owned so the promoted allocation is reclaimable via tail-dealloc
-    /// when the value is overwritten.
+    /// Copies transient string data to a pool slot (or arena fallback).
+    /// Borrowed pointers into the frame arena or pool slots are copied
+    /// to their own pool slots. Source literals and persistent-arena
+    /// Borrowed pointers pass through unchanged.
+    /// Owned strings already on the persistent arena pass through.
     #[must_use]
-    pub fn promote(self, persistent: &'a Arena, frame: &Arena) -> Self {
+    pub(crate) fn promote(self, pool: &PoolSet<'a>, frame: &Arena) -> Self {
+        let persistent = pool.arena();
         match self {
             ArenaCow::Borrowed(s) => {
-                if frame.contains_ptr(s.as_ptr()) {
-                    ArenaCow::Owned(ArenaString::from_str(persistent, s))
+                if frame.contains_ptr(s.as_ptr()) || pool.contains(s.as_ptr()) {
+                    ArenaCow::Owned(pool.alloc_str(s))
                 } else {
                     ArenaCow::Borrowed(s)
                 }
@@ -117,7 +116,10 @@ impl<'a> ArenaCow<'a> {
                 if std::ptr::eq(s.arena(), persistent) {
                     return ArenaCow::Owned(s);
                 }
-                ArenaCow::Owned(ArenaString::from_str(persistent, s.as_str()))
+                // Pool-allocated strings report the backing arena as their allocator,
+                // so the ptr_eq check above already catches double-promotes for
+                // pool-backed strings.
+                ArenaCow::Owned(pool.alloc_str(s.as_str()))
             }
         }
     }

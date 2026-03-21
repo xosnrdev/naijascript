@@ -1,0 +1,12 @@
+# Stress: Progressive string concatenation.
+# s = s + "x" grows the string by 1 char per iteration.
+# Growth is O(N) and proportional to the string content itself (correct).
+# Tests tail-reclaim: old string reclaimed before new one is promoted.
+
+make s get ""
+make i get 0
+jasi (i small pass 5000) start
+    s get s add "x"
+    i get i add 1
+end
+shout(s.len())

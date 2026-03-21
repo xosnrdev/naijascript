@@ -1,0 +1,13 @@
+# Stress: String interpolation creating new strings each iteration,
+# overwriting the same variable. Tests zero-cost clone (variable read)
+# and tail-reclaim (variable overwrite).
+
+make name get "world"
+make greeting get ""
+make i get 0
+jasi (i small pass 10000) start
+    name get "user_" add to_string(i)
+    greeting get "Hello {name}, welcome to iteration {i}"
+    i get i add 1
+end
+shout(greeting)

@@ -1,5 +1,6 @@
 use std::alloc::Allocator;
 use std::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
+use std::ptr::NonNull;
 use std::{fmt, ptr, str};
 
 use super::Arena;
@@ -42,6 +43,21 @@ impl<'a> ArenaString<'a> {
     #[must_use]
     pub unsafe fn from_utf8_unchecked(bytes: Vec<u8, &'a Arena>) -> Self {
         Self { vec: bytes }
+    }
+
+    /// Wraps a pre-allocated buffer as an `ArenaString` without copying.
+    /// Capacity is set to `len` so the Vec has no knowledge of slot padding.
+    ///
+    /// # Safety
+    ///
+    /// - `ptr` must point to `len` bytes of valid UTF-8.
+    /// - The buffer must be allocated from (or backed by) `arena`.
+    /// - The buffer must remain valid for the arena's lifetime.
+    #[inline]
+    #[must_use]
+    pub unsafe fn from_raw_parts(ptr: NonNull<u8>, len: usize, arena: &'a Arena) -> Self {
+        // SAFETY: Caller guarantees ptr/len/arena validity.
+        Self { vec: unsafe { Vec::from_raw_parts_in(ptr.as_ptr(), len, len, arena) } }
     }
 
     /// Checks whether `text` contains only valid UTF-8.

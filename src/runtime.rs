@@ -3,7 +3,7 @@
 use std::fmt::{self, Write};
 use std::{io, mem};
 
-use crate::arena::{Arena, ArenaCow, ArenaString};
+use crate::arena::{Arena, ArenaCow, ArenaString, PoolSet};
 use crate::arena_format;
 use crate::builtins::{
     ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
@@ -123,37 +123,41 @@ impl<'a> Value<'a> {
         }
     }
 
-    /// If this value owns an arena string whose buffer sits at the tail of
-    /// the given arena, reclaims it by resetting the arena offset. The value
-    /// must not be read after this call (the backing bytes are invalidated).
+    /// Returns this value's pool slot to the pool allocator.
+    /// Strings > 256 bytes (arena-fallback) are not pool-managed and
+    /// are silently skipped. Non-string values are no-ops.
     ///
     /// # Safety
     ///
-    /// Caller must guarantee no live references exist into this value's
-    /// backing memory. Only safe when the value was just `mem::replace`d
-    /// out of a slot that is the sole owner.
-    unsafe fn try_reclaim_tail(&self, arena: &Arena) {
+    /// Caller must guarantee no live references (including Borrowed clones)
+    /// exist into this value's backing memory.
+    unsafe fn return_to_pool(&self, pool: &PoolSet<'_>) {
         if let Value::Str(ArenaCow::Owned(s)) = self {
-            let cap = s.capacity();
-            if arena.is_at_tail(s.as_bytes().as_ptr(), cap) {
-                unsafe { arena.reset(arena.offset() - cap) };
+            let ptr = s.as_bytes().as_ptr();
+            if pool.contains(ptr) {
+                unsafe {
+                    pool.dealloc(
+                        std::ptr::NonNull::new_unchecked(ptr.cast_mut()),
+                        s.capacity() as u32,
+                    );
+                }
             }
         }
     }
 
-    /// Copies frame-allocated data to the persistent arena.
+    /// Copies frame-allocated data to the persistent pool/arena.
     /// Stack values (Number, Bool, Null) pass through unchanged.
     /// Values already on the target arena pass through (no double-promote).
-    fn promote(self, persistent: &'a Arena, frame: &Arena) -> Self {
+    fn promote(self, pool: &PoolSet<'a>, frame: &Arena) -> Self {
         match self {
             Value::Number(n) => Value::Number(n),
             Value::Bool(b) => Value::Bool(b),
             Value::Null => Value::Null,
-            Value::Str(cow) => Value::Str(cow.promote(persistent, frame)),
+            Value::Str(cow) => Value::Str(cow.promote(pool, frame)),
             Value::Array(items) => {
-                let mut promoted = Vec::with_capacity_in(items.len(), persistent);
+                let mut promoted = Vec::with_capacity_in(items.len(), pool.arena());
                 for item in items {
-                    promoted.push(item.promote(persistent, frame));
+                    promoted.push(item.promote(pool, frame));
                 }
                 Value::Array(promoted)
             }
@@ -229,6 +233,9 @@ pub struct Runtime<'a> {
     // Frame arena for per-iteration/per-call temporaries, reset at loop and function boundaries
     frame: &'a Arena,
 
+    // Pool allocator for recyclable string storage during promote
+    pool: PoolSet<'a>,
+
     // Native stack pointer recorded at run() entry. Used to detect
     // stack overflow by comparing against the current stack pointer.
     stack_base: usize,
@@ -240,6 +247,7 @@ impl<'a> Runtime<'a> {
     /// (no frame resets, identical to pre-frame-arena behavior).
     pub fn new(arena: &'a Arena, frame: Option<&'a Arena>) -> Self {
         let frame = frame.unwrap_or(arena);
+        let pool = PoolSet::new(arena);
         Self {
             env: Vec::new_in(arena),
             functions: Vec::new_in(arena),
@@ -248,6 +256,7 @@ impl<'a> Runtime<'a> {
             errors: Diagnostics::new(arena),
             arena,
             frame,
+            pool,
             stack_base: 0,
         }
     }
@@ -403,18 +412,28 @@ impl<'a> Runtime<'a> {
 
     #[inline]
     fn exec_block_with_flow(&mut self, block: BlockRef<'a>) -> Result<ExecFlow<'a>, RuntimeError> {
-        self.env.push(Vec::new_in(self.frame)); // enter new block scope
+        self.env.push(Vec::new_in(self.frame));
         for stmt in block.stmts {
             match self.exec_stmt(stmt)? {
                 ExecFlow::Continue => {}
                 flow @ (ExecFlow::Return(..) | ExecFlow::Break | ExecFlow::LoopContinue) => {
-                    self.env.pop(); // exit block scope before returning
+                    self.pop_scope();
                     return Ok(flow);
                 }
             }
         }
-        self.env.pop(); // exit block scope
+        self.pop_scope();
         Ok(ExecFlow::Continue)
+    }
+
+    /// Pops the innermost scope and returns pool slots for any
+    /// pool-managed strings in its variables.
+    fn pop_scope(&mut self) {
+        if let Some(scope) = self.env.pop() {
+            for (_, val) in &scope {
+                unsafe { val.return_to_pool(&self.pool) };
+            }
+        }
     }
 
     #[inline]
@@ -619,9 +638,18 @@ impl<'a> Runtime<'a> {
         let func_def = &self.functions[func_idx];
         assert_eq!(arg_values.len(), func_def.params.params.len());
 
-        // We create a new activation record for the function call
+        // Borrowed string args that alias pool slots are promoted to
+        // their own pool slots. Breaks the alias so overwrite_slot
+        // inside the function body cannot free a slot still referenced
+        // by a parameter.
         let mut local_vars = Vec::with_capacity_in(func_def.params.params.len(), self.frame);
         for (param, arg) in func_def.params.params.iter().zip(arg_values) {
+            let arg = match arg {
+                Value::Str(ArenaCow::Borrowed(s)) if self.pool.contains(s.as_ptr()) => {
+                    Value::Str(ArenaCow::Owned(self.pool.alloc_str(s)))
+                }
+                other => other,
+            };
             local_vars.push((*param, arg));
         }
         self.call_stack.push(ActivationRecord { local_vars });
@@ -637,8 +665,12 @@ impl<'a> Runtime<'a> {
             }
         };
 
-        // We remove the activation record from the call stack
-        self.call_stack.pop();
+        // Return pool slots for any pool-managed strings in the activation record.
+        if let Some(record) = self.call_stack.pop() {
+            for (_, val) in &record.local_vars {
+                unsafe { val.return_to_pool(&self.pool) };
+            }
+        }
 
         if let Some(offset) = frame_offset {
             return Ok(self.relocate_return_value(val, offset));
@@ -665,7 +697,7 @@ impl<'a> Runtime<'a> {
                 let argv = mem::replace(&mut arg_values[0], Value::Null);
                 GlobalBuiltin::shout(&argv);
                 let argv = if self.has_frame_arena() {
-                    argv.promote(self.arena, self.frame)
+                    argv.promote(&self.pool, self.frame)
                 } else {
                     argv
                 };
@@ -751,7 +783,7 @@ impl<'a> Runtime<'a> {
                 // Promote before pushing, the target array lives on persistent,
                 // but the value may reference frame-arena memory.
                 let value = if self.has_frame_arena() {
-                    value.promote(self.arena, self.frame)
+                    value.promote(&self.pool, self.frame)
                 } else {
                     value
                 };
@@ -970,13 +1002,11 @@ impl<'a> Runtime<'a> {
 
     fn define_var(&mut self, name: &'a str, val: Value<'a>) {
         let has_frame = self.has_frame_arena();
-        let arena = self.arena;
-        let frame = self.frame;
         if let Some(scope) = self.env.last_mut() {
             if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
-                Self::overwrite_slot(slot, val, has_frame, arena, frame);
+                Self::overwrite_slot(slot, val, has_frame, &self.pool, self.frame);
             } else {
-                let val = if has_frame { val.promote(arena, frame) } else { val };
+                let val = if has_frame { val.promote(&self.pool, self.frame) } else { val };
                 scope.push((name, val));
             }
         }
@@ -984,18 +1014,21 @@ impl<'a> Runtime<'a> {
 
     fn assign_var(&mut self, name: &'a str, val: Value<'a>) {
         let has_frame = self.has_frame_arena();
-        let arena = self.arena;
+        let pool = &self.pool;
         let frame = self.frame;
+
         // First try function-local variables
-        if let Some(slot) = self.lookup_call_stack_mut(name) {
-            Self::overwrite_slot(slot, val, has_frame, arena, frame);
+        if let Some(slot) = self.call_stack.last_mut().and_then(|a| {
+            a.local_vars.iter_mut().find_map(|(var, v)| if *var == name { Some(v) } else { None })
+        }) {
+            Self::overwrite_slot(slot, val, has_frame, pool, frame);
             return;
         }
 
         // Then try regular scope stack
         for scope in self.env.iter_mut().rev() {
             if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
-                Self::overwrite_slot(slot, val, has_frame, arena, frame);
+                Self::overwrite_slot(slot, val, has_frame, pool, frame);
                 return;
             }
         }
@@ -1005,8 +1038,7 @@ impl<'a> Runtime<'a> {
     /// Moves a function return value across a frame reset boundary.
     /// Frame-allocated owned strings are staged through persistent arena
     /// then reconstructed on the caller's frame level, so the staging is
-    /// reclaimed and the return value arrives on frame. This lets
-    /// `overwrite_slot` tail-reclaim the old persistent slot value.
+    /// reclaimed and the return value arrives on frame.
     fn relocate_return_value(&self, val: Value<'a>, frame_offset: usize) -> Value<'a> {
         let is_frame_string = match &val {
             Value::Str(ArenaCow::Owned(s)) => !std::ptr::eq(s.arena(), self.arena),
@@ -1030,9 +1062,8 @@ impl<'a> Runtime<'a> {
         }
 
         if matches!(val, Value::Array(_)) {
-            // Arrays promoted to persistent (existing behavior).
-            // Cross-frame array return leak is accepted; pool allocator is future work.
-            let promoted = val.promote(self.arena, self.frame);
+            // Arrays promoted to persistent via pool.
+            let promoted = val.promote(&self.pool, self.frame);
             unsafe { self.frame.reset(frame_offset) };
             return promoted;
         }
@@ -1043,25 +1074,19 @@ impl<'a> Runtime<'a> {
         val
     }
 
-    /// Overwrites a variable slot, reclaiming the old value's arena memory
-    /// when it sits at the persistent arena tail. The reclaim happens before
-    /// the new value is promoted so the new allocation reuses the same space.
+    /// Overwrites a variable slot, returning the old value's pool slot
+    /// before promoting the new value.
     fn overwrite_slot(
         slot: &mut Value<'a>,
         val: Value<'a>,
         has_frame: bool,
-        arena: &'a Arena,
+        pool: &PoolSet<'a>,
         frame: &Arena,
     ) {
         if has_frame {
-            // Take ownership of old value without running its destructor yet.
             let old = mem::replace(slot, Value::Null);
-            // Reclaim old value's arena bytes if at tail (safe: sole owner, no aliases).
-            unsafe { old.try_reclaim_tail(arena) };
-            // Old value dropped here — Vec::drop calls deallocate (no-op).
-            drop(old);
-            // Promote new value into (potentially reclaimed) space.
-            *slot = val.promote(arena, frame);
+            unsafe { old.return_to_pool(pool) };
+            *slot = val.promote(pool, frame);
         } else {
             *slot = val;
         }
@@ -1083,7 +1108,7 @@ impl<'a> Runtime<'a> {
 
         // Promote before taking the mutable borrow on the variable.
         let value =
-            if self.has_frame_arena() { value.promote(self.arena, self.frame) } else { value };
+            if self.has_frame_arena() { value.promote(&self.pool, self.frame) } else { value };
 
         let mut slot =
             self.lookup_var_mut(base_var).expect("Semantic analysis guarantees variable exists");
@@ -1099,7 +1124,8 @@ impl<'a> Runtime<'a> {
                         ));
                     }
                     if is_last {
-                        items[*idx] = value;
+                        let old = mem::replace(&mut items[*idx], value);
+                        unsafe { old.return_to_pool(&self.pool) };
                         return Ok(());
                     }
                     // SAFETY: idx >= 0 and < items.len()
@@ -1205,15 +1231,6 @@ impl<'a> Runtime<'a> {
             activation
                 .local_vars
                 .iter()
-                .find_map(|(var, val)| if *var == name { Some(val) } else { None })
-        })
-    }
-
-    fn lookup_call_stack_mut(&mut self, name: &str) -> Option<&mut Value<'a>> {
-        self.call_stack.last_mut().and_then(|activation| {
-            activation
-                .local_vars
-                .iter_mut()
                 .find_map(|(var, val)| if *var == name { Some(val) } else { None })
         })
     }

@@ -1,0 +1,52 @@
+# Stress: Combined torture test exercising every subsystem simultaneously.
+# Functions, recursion, strings, arrays, interpolation, methods, loops.
+
+do build_row(n) start
+    make row get []
+    make j get 0
+    jasi (j small pass 10) start
+        row.push("cell_{n}_{j}")
+        j get j add 1
+    end
+    return row
+end
+
+do format_row(row) start
+    return row.join(" | ")
+end
+
+do process(limit) start
+    make results get []
+    make i get 0
+    jasi (i small pass limit) start
+        make row get build_row(i)
+        make formatted get format_row(row)
+        make upper get formatted.to_uppercase()
+        make trimmed get upper.trim()
+        make found get trimmed.find("CELL")
+
+        if to say (found pass 0 minus 1) start
+            make tag get "ROW_{i}_OK"
+            results.push(tag)
+        end
+
+        i get i add 1
+    end
+    return results.len()
+end
+
+make total get process(500)
+shout(total)
+
+# Now do it again to test re-entrant arena state
+make total2 get process(500)
+shout(total2)
+
+# Verify arithmetic still works after heavy allocation
+make sum get 0
+make k get 1
+jasi (k small pass 1001) start
+    sum get sum add k
+    k get k add 1
+end
+shout(sum)
