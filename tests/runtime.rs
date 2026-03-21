@@ -21,7 +21,7 @@ macro_rules! assert_runtime {
                 "Expected no resolution errors, got: {:?}",
                 resolver.errors.diagnostics
             );
-            runtime.run(root);
+            runtime.run_with_analysis(root, &resolver.facts, resolver.optimization_plan.as_ref());
             assert_eq!(runtime.output, $expected);
         })
     }};
@@ -38,7 +38,7 @@ macro_rules! assert_runtime {
                 "Expected no resolution errors, got: {:?}",
                 resolver.errors.diagnostics
             );
-            runtime.run(root);
+            runtime.run_with_analysis(root, &resolver.facts, resolver.optimization_plan.as_ref());
             assert!(
                 runtime.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
                 "Expected runtime error: {}, got: {:?}",
@@ -389,6 +389,62 @@ fn function_definition_and_call() {
 #[test]
 fn function_with_parameters() {
     assert_runtime!("do sum(a, b) start shout(a add b) end sum(3, 4)", output: vec![Value::Number(7.0)]);
+}
+
+#[test]
+fn function_local_shadows_parameter() {
+    assert_runtime!(
+        "do foo(x) start make x get 2 shout(x) end foo(1)",
+        output: vec![Value::Number(2.0)]
+    );
+}
+
+#[test]
+fn nested_function_definition_shadows_outer_function() {
+    assert_runtime!(
+        "do foo() start shout(1) end start do foo() start shout(2) end foo() end",
+        output: vec![Value::Number(2.0)]
+    );
+}
+
+#[test]
+fn nested_function_observes_same_scope_rebinding() {
+    assert_runtime!(
+        "make x get 1 do f() start shout(x) end make x get 2 f()",
+        output: vec![Value::Number(2.0)]
+    );
+}
+
+#[test]
+fn unused_function_pruning_preserves_bound_nested_call() {
+    with_pipeline(
+        r#"
+        do foo() start
+            shout("outer")
+        end
+        do caller() start
+            do foo() start
+                shout("inner")
+            end
+            foo()
+        end
+        caller()
+        "#,
+        |_, (root, parse_errors), resolver, runtime| {
+            assert!(parse_errors.diagnostics.is_empty(), "{:?}", parse_errors.diagnostics);
+            resolver.resolve(root);
+            assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+
+            let plan = resolver
+                .optimization_plan
+                .as_ref()
+                .expect("Resolver should always build an optimization plan");
+            assert_eq!(plan.removable_function_defs.len(), 1);
+
+            runtime.run_with_analysis(root, &resolver.facts, Some(plan));
+            assert_eq!(runtime.output, vec![Value::Str(ArenaCow::Borrowed("inner"))]);
+        },
+    );
 }
 
 #[test]

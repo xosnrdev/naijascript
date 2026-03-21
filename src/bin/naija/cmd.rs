@@ -109,7 +109,7 @@ fn run_source(filename: &str, src: &str, arena: &Arena) -> ExitCode {
     // (scope tables, diagnostics) into a shorter lifetime than the AST.
     {
         let res_arena = scratch_arena(Some(arena));
-        let mut resolver = Resolver::new(&res_arena);
+        let mut resolver = Resolver::with_facts_arena(&res_arena, arena);
         resolver.resolve(root);
         if resolver.errors.has_errors() {
             resolver.errors.report(src, filename);
@@ -118,21 +118,22 @@ fn run_source(filename: &str, src: &str, arena: &Arena) -> ExitCode {
         if !resolver.errors.diagnostics.is_empty() {
             resolver.errors.report(src, filename);
         }
-    }
 
-    // After resolver scope drops, scratch[1] is free for use as frame arena.
-    let frame = scratch_arena(Some(arena));
-    let mut runtime = Runtime::new(arena, Some(&frame));
-    let err = runtime.run(root);
-    if err.has_errors() {
-        err.report(src, filename);
-        return ExitCode::FAILURE;
-    }
-    if !err.diagnostics.is_empty() {
-        err.report(src, filename);
-    }
+        let (facts, optimization_plan) = resolver.into_artifacts();
 
-    ExitCode::SUCCESS
+        // After resolver scope drops, scratch[1] is free for use as frame arena.
+        let frame = scratch_arena(Some(arena));
+        let mut runtime = Runtime::new(arena, Some(&frame));
+        let err = runtime.run_with_analysis(root, &facts, optimization_plan.as_ref());
+        if err.has_errors() {
+            err.report(src, filename);
+            return ExitCode::FAILURE;
+        }
+        if !err.diagnostics.is_empty() {
+            err.report(src, filename);
+        }
+        ExitCode::SUCCESS
+    }
 }
 
 fn run_file(path: &str, arena: &Arena) -> ExitCode {

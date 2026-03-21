@@ -1,8 +1,12 @@
 //! The runtime for `NaijaScript`.
 
 use std::fmt::{self, Write};
+use std::ptr::NonNull;
 use std::{io, mem};
 
+use crate::analysis::facts::ProgramFacts;
+use crate::analysis::ids::FunctionId;
+use crate::analysis::opt::OptimizationPlan;
 use crate::arena::{Arena, ArenaCow, ArenaString, PoolSet};
 use crate::arena_format;
 use crate::builtins::{
@@ -189,17 +193,12 @@ impl fmt::Display for Value<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 struct FunctionDef<'a> {
+    id: Option<FunctionId>,
     name: &'a str,
     params: ParamListRef<'a>,
     body: BlockRef<'a>,
-}
-
-// Activation record for function calls, represents a function call frame
-#[derive(Debug, Clone)]
-struct ActivationRecord<'a> {
-    local_vars: Vec<(&'a str, Value<'a>), &'a Arena>,
 }
 
 // Controls how function execution should proceed after statements
@@ -216,11 +215,8 @@ pub struct Runtime<'a> {
     // Variable scopes, each Vec is a scope, inner Vec is variables in that scope
     env: Vec<Vec<(&'a str, Value<'a>), &'a Arena>, &'a Arena>,
 
-    // Global function table, functions are first-class but stored separately
-    functions: Vec<FunctionDef<'a>, &'a Arena>,
-
-    // Call stack for function execution, prevents infinite recursion
-    call_stack: Vec<ActivationRecord<'a>, &'a Arena>,
+    // Function scopes mirror lexical block scopes so lookup stays lexical.
+    function_scopes: Vec<Vec<FunctionDef<'a>, &'a Arena>, &'a Arena>,
 
     pub output: Vec<Value<'a>, &'a Arena>,
 
@@ -239,6 +235,12 @@ pub struct Runtime<'a> {
     // Native stack pointer recorded at run() entry. Used to detect
     // stack overflow by comparing against the current stack pointer.
     stack_base: usize,
+
+    // Optional persistent analysis facts used for binding-safe runtime dispatch.
+    facts: Option<NonNull<ProgramFacts<'a, 'a>>>,
+
+    // Optional conservative optimization plan. Only function-def pruning is applied.
+    optimization_plan: Option<NonNull<OptimizationPlan<'a>>>,
 }
 
 impl<'a> Runtime<'a> {
@@ -250,15 +252,31 @@ impl<'a> Runtime<'a> {
         let pool = PoolSet::new(arena);
         Self {
             env: Vec::new_in(arena),
-            functions: Vec::new_in(arena),
-            call_stack: Vec::new_in(arena),
+            function_scopes: Vec::new_in(arena),
             output: Vec::new_in(arena),
             errors: Diagnostics::new(arena),
             arena,
             frame,
             pool,
             stack_base: 0,
+            facts: None,
+            optimization_plan: None,
         }
+    }
+
+    /// Executes a `NaijaScript` program with resolved binding facts attached.
+    pub fn run_with_analysis<'facts>(
+        &mut self,
+        root: BlockRef<'a>,
+        facts: &'facts ProgramFacts<'a, 'a>,
+        optimization_plan: Option<&'facts OptimizationPlan<'a>>,
+    ) -> &Diagnostics<'a> {
+        self.facts = Some(NonNull::from(facts));
+        self.optimization_plan = optimization_plan.map(NonNull::from);
+        self.run_inner(root);
+        self.facts = None;
+        self.optimization_plan = None;
+        &self.errors
     }
 
     /// Returns true when a separate frame arena is in use.
@@ -281,9 +299,14 @@ impl<'a> Runtime<'a> {
 
     /// Executes a `NaijaScript` program starting from the root block.
     pub fn run(&mut self, root: BlockRef<'a>) -> &Diagnostics<'a> {
+        self.run_inner(root);
+        &self.errors
+    }
+
+    fn run_inner(&mut self, root: BlockRef<'a>) {
         let anchor = 0u8;
         self.stack_base = &raw const anchor as usize;
-        self.env.push(Vec::new_in(self.arena)); // enter global scope
+        self.push_scope_with_capacity(0, self.arena);
 
         match self.exec_block_with_flow(root) {
             Ok(..) => {}
@@ -323,8 +346,7 @@ impl<'a> Runtime<'a> {
                 self.errors.emit(err.span, Severity::Error, "runtime", err.kind.as_str(), labels);
             }
         }
-        self.env.pop(); // exit global scope
-        &self.errors
+        self.pop_scope();
     }
 
     fn exec_stmt(&mut self, stmt: StmtRef<'a>) -> Result<ExecFlow<'a>, RuntimeError> {
@@ -392,8 +414,32 @@ impl<'a> Runtime<'a> {
             }
             Stmt::Block { block, .. } => self.exec_block_with_flow(block),
             Stmt::FunctionDef { name, params, body, .. } => {
-                let func_def = FunctionDef { name, params, body };
-                self.functions.push(func_def);
+                let bound_function = self.facts().and_then(|facts| {
+                    facts.function_by_body(body).map(|id| (id, facts.function(id)))
+                });
+                let id = bound_function.map(|(function_id, _)| function_id);
+                if let Some(function_id) = id
+                    && self.function_is_pruned(function_id)
+                {
+                    return Ok(ExecFlow::Continue);
+                }
+
+                let func_def = if let Some((function_id, info)) = bound_function {
+                    FunctionDef {
+                        id: Some(function_id),
+                        name: info.name,
+                        params: info
+                            .params
+                            .expect("User-defined function metadata should include parameters"),
+                        body: info.body,
+                    }
+                } else {
+                    FunctionDef { id: None, name, params, body }
+                };
+                self.function_scopes
+                    .last_mut()
+                    .expect("Runtime should always execute inside a function scope")
+                    .push(func_def);
                 Ok(ExecFlow::Continue)
             }
             Stmt::Return { expr, .. } => {
@@ -412,7 +458,7 @@ impl<'a> Runtime<'a> {
 
     #[inline]
     fn exec_block_with_flow(&mut self, block: BlockRef<'a>) -> Result<ExecFlow<'a>, RuntimeError> {
-        self.env.push(Vec::new_in(self.frame));
+        self.push_scope_with_capacity(0, self.frame);
         for stmt in block.stmts {
             match self.exec_stmt(stmt)? {
                 ExecFlow::Continue => {}
@@ -429,6 +475,7 @@ impl<'a> Runtime<'a> {
     /// Pops the innermost scope and returns pool slots for any
     /// pool-managed strings in its variables.
     fn pop_scope(&mut self) {
+        self.function_scopes.pop();
         if let Some(scope) = self.env.pop() {
             for (_, val) in &scope {
                 unsafe { val.return_to_pool(&self.pool) };
@@ -600,16 +647,15 @@ impl<'a> Runtime<'a> {
             Expr::Member { .. } => {
                 unreachable!("Semantic analysis guarantees member access is always a function call")
             }
-            Expr::Call { callee, args, span } => self.eval_function_call(callee, args, span),
+            Expr::Call { .. } => self.eval_function_call(expr),
         }
     }
 
-    fn eval_function_call(
-        &mut self,
-        callee: ExprRef<'a>,
-        args: &'a ArgList<'a>,
-        span: &'a Span,
-    ) -> Result<Value<'a>, RuntimeError> {
+    fn eval_function_call(&mut self, call: ExprRef<'a>) -> Result<Value<'a>, RuntimeError> {
+        let Expr::Call { callee, args, span } = call else {
+            unreachable!("Runtime function call evaluation requires a call expression")
+        };
+
         // Handle member method calls
         if let Expr::Member { object, field, .. } = callee {
             return self.eval_member_call(object, field, args, *span);
@@ -624,8 +670,12 @@ impl<'a> Runtime<'a> {
             return self.eval_builtin_call(builtin, args, *span);
         }
 
-        // We check for user-defined functions next
-        let func_idx = self.lookup_func(func_name);
+        let func_def =
+            if let Some(callee_id) = self.facts().and_then(|facts| facts.user_call_callee(call)) {
+                self.lookup_func_by_id(callee_id)
+            } else {
+                self.lookup_func_by_name(func_name)
+            };
 
         let frame_offset = if self.has_frame_arena() { Some(self.frame.offset()) } else { None };
 
@@ -635,14 +685,12 @@ impl<'a> Runtime<'a> {
             arg_values.push(self.eval_expr(arg_expr)?);
         }
 
-        let func_def = &self.functions[func_idx];
         assert_eq!(arg_values.len(), func_def.params.params.len());
 
-        // Borrowed string args that alias pool slots are promoted to
-        // their own pool slots. Breaks the alias so overwrite_slot
-        // inside the function body cannot free a slot still referenced
-        // by a parameter.
-        let mut local_vars = Vec::with_capacity_in(func_def.params.params.len(), self.frame);
+        // Parameters live in their own lexical scope so block locals can shadow them.
+        self.push_scope_with_capacity(func_def.params.params.len(), self.frame);
+        let param_scope =
+            self.env.last_mut().expect("Parameter scope should exist immediately after push");
         for (param, arg) in func_def.params.params.iter().zip(arg_values) {
             let arg = match arg {
                 Value::Str(ArenaCow::Borrowed(s)) if self.pool.contains(s.as_ptr()) => {
@@ -650,12 +698,14 @@ impl<'a> Runtime<'a> {
                 }
                 other => other,
             };
-            local_vars.push((*param, arg));
+            param_scope.push((*param, arg));
         }
-        self.call_stack.push(ActivationRecord { local_vars });
 
         // We execute the function body with proper return value handling
-        let val = match self.exec_block_with_flow(func_def.body)? {
+        let flow = self.exec_block_with_flow(func_def.body);
+        self.pop_scope();
+
+        let val = match flow? {
             ExecFlow::Continue => Value::Null,
             ExecFlow::Return(val) => val,
             ExecFlow::Break | ExecFlow::LoopContinue => {
@@ -664,13 +714,6 @@ impl<'a> Runtime<'a> {
                 )
             }
         };
-
-        // Return pool slots for any pool-managed strings in the activation record.
-        if let Some(record) = self.call_stack.pop() {
-            for (_, val) in &record.local_vars {
-                unsafe { val.return_to_pool(&self.pool) };
-            }
-        }
 
         if let Some(offset) = frame_offset {
             return Ok(self.relocate_return_value(val, offset));
@@ -1003,7 +1046,7 @@ impl<'a> Runtime<'a> {
     fn define_var(&mut self, name: &'a str, val: Value<'a>) {
         let has_frame = self.has_frame_arena();
         if let Some(scope) = self.env.last_mut() {
-            if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
+            if let Some((.., slot)) = scope.iter_mut().rev().find(|(var, ..)| *var == name) {
                 Self::overwrite_slot(slot, val, has_frame, &self.pool, self.frame);
             } else {
                 let val = if has_frame { val.promote(&self.pool, self.frame) } else { val };
@@ -1017,17 +1060,8 @@ impl<'a> Runtime<'a> {
         let pool = &self.pool;
         let frame = self.frame;
 
-        // First try function-local variables
-        if let Some(slot) = self.call_stack.last_mut().and_then(|a| {
-            a.local_vars.iter_mut().find_map(|(var, v)| if *var == name { Some(v) } else { None })
-        }) {
-            Self::overwrite_slot(slot, val, has_frame, pool, frame);
-            return;
-        }
-
-        // Then try regular scope stack
         for scope in self.env.iter_mut().rev() {
-            if let Some((.., slot)) = scope.iter_mut().find(|(var, ..)| *var == name) {
+            if let Some((.., slot)) = scope.iter_mut().rev().find(|(var, ..)| *var == name) {
                 Self::overwrite_slot(slot, val, has_frame, pool, frame);
                 return;
             }
@@ -1182,29 +1216,24 @@ impl<'a> Runtime<'a> {
         Ok(number as usize)
     }
 
+    fn push_scope_with_capacity(&mut self, var_capacity: usize, arena: &'a Arena) {
+        self.env.push(Vec::with_capacity_in(var_capacity, arena));
+        self.function_scopes.push(Vec::new_in(arena));
+    }
+
     #[inline]
     fn lookup_var(&self, name: &str, clone_arena: &'a Arena) -> Option<Value<'a>> {
-        self.lookup_call_stack(name)
-            .or_else(|| self.lookup_env(name))
-            .map(|v| v.clone_into(clone_arena))
+        self.lookup_env(name).map(|v| v.clone_into(clone_arena))
     }
 
     #[inline]
     fn lookup_var_ref(&self, name: &str) -> Option<&Value<'a>> {
-        self.lookup_call_stack(name).or_else(|| self.lookup_env(name))
+        self.lookup_env(name)
     }
 
     fn lookup_var_mut(&mut self, name: &str) -> Option<&mut Value<'a>> {
-        if let Some(activation) = self.call_stack.last_mut() {
-            for (var, val) in &mut activation.local_vars {
-                if *var == name {
-                    return Some(val);
-                }
-            }
-        }
-
         for scope in self.env.iter_mut().rev() {
-            for (var, val) in scope.iter_mut() {
+            for (var, val) in scope.iter_mut().rev() {
                 if *var == name {
                     return Some(val);
                 }
@@ -1213,25 +1242,41 @@ impl<'a> Runtime<'a> {
         None
     }
 
-    fn lookup_func(&self, name: &str) -> usize {
-        self.functions
+    fn lookup_func_by_name(&self, name: &str) -> FunctionDef<'a> {
+        self.function_scopes
             .iter()
-            .position(|f| f.name == name)
+            .rev()
+            .find_map(|scope| scope.iter().rev().find(|f| f.name == name).copied())
             .expect("Semantic analysis guarantees function exists")
+    }
+
+    fn lookup_func_by_id(&self, id: FunctionId) -> FunctionDef<'a> {
+        self.function_scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.iter().rev().find(|f| f.id == Some(id)).copied())
+            .expect("Semantic analysis guarantees function exists in runtime scope")
+    }
+
+    fn function_is_pruned(&self, id: FunctionId) -> bool {
+        self.optimization_plan().is_some_and(|plan| plan.removable_function_defs.contains(&id))
+    }
+
+    fn facts(&self) -> Option<&ProgramFacts<'a, 'a>> {
+        // Safety: `run_with_analysis` only installs these pointers for the duration
+        // of one synchronous execution and clears them before returning.
+        self.facts.map(|facts| unsafe { facts.as_ref() })
+    }
+
+    fn optimization_plan(&self) -> Option<&OptimizationPlan<'a>> {
+        // Safety: `run_with_analysis` only installs these pointers for the duration
+        // of one synchronous execution and clears them before returning.
+        self.optimization_plan.map(|plan| unsafe { plan.as_ref() })
     }
 
     fn lookup_env(&self, name: &str) -> Option<&Value<'a>> {
         self.env.iter().rev().find_map(|scope| {
-            scope.iter().find_map(|(var, val)| if *var == name { Some(val) } else { None })
-        })
-    }
-
-    fn lookup_call_stack(&self, name: &str) -> Option<&Value<'a>> {
-        self.call_stack.last().and_then(|activation| {
-            activation
-                .local_vars
-                .iter()
-                .find_map(|(var, val)| if *var == name { Some(val) } else { None })
+            scope.iter().rev().find_map(|(var, val)| if *var == name { Some(val) } else { None })
         })
     }
 }

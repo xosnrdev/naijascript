@@ -12,7 +12,7 @@ macro_rules! assert_stress {
             assert!(errs.diagnostics.is_empty(), "Parse errors: {:?}", errs.diagnostics);
             resolver.resolve(root);
             assert!(!resolver.errors.has_errors(), "Resolve errors: {:?}", resolver.errors.diagnostics);
-            runtime.run(root);
+            runtime.run_with_analysis(root, &resolver.facts, resolver.optimization_plan.as_ref());
             assert!(!runtime.errors.has_errors(), "Runtime errors: {:?}", runtime.errors.diagnostics);
             assert_eq!(runtime.output, vec![$($expected),*]);
         })
@@ -156,7 +156,11 @@ mod stack_overflow_recovery {
                         assert!(errs.diagnostics.is_empty());
                         resolver.resolve(root);
                         assert!(!resolver.errors.has_errors());
-                        runtime.run(root);
+                        runtime.run_with_analysis(
+                            root,
+                            &resolver.facts,
+                            resolver.optimization_plan.as_ref(),
+                        );
                         assert!(
                             runtime
                                 .errors
@@ -277,7 +281,11 @@ mod fizzbuzz_10k {
                 assert!(errs.diagnostics.is_empty());
                 resolver.resolve(root);
                 assert!(!resolver.errors.has_errors());
-                runtime.run(root);
+                runtime.run_with_analysis(
+                    root,
+                    &resolver.facts,
+                    resolver.optimization_plan.as_ref(),
+                );
                 assert!(!runtime.errors.has_errors());
 
                 let out = &runtime.output;

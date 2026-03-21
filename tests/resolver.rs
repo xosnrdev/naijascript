@@ -31,7 +31,7 @@ macro_rules! assert_resolve {
             );
             resolver.resolve(root);
             assert!(
-                resolver.errors.diagnostics.is_empty(),
+                !resolver.errors.has_errors(),
                 "Expected no resolution errors, got: {:?}",
                 resolver.errors.diagnostics
             );
@@ -41,6 +41,226 @@ macro_rules! assert_resolve {
 #[test]
 fn test_shadowing_variable_declaration() {
     assert_resolve!("make x get 5 make x get 10");
+}
+
+#[test]
+fn test_unused_assignment_after_overwrite() {
+    assert_resolve!("make x get 1 x get 2 shout(x)", SemanticError::UnusedAssignment);
+}
+
+#[test]
+fn test_unused_assignment_respects_capture_read() {
+    with_pipeline(
+        r"
+        make x get 1
+        do read_x() start
+            shout(x)
+        end
+        read_x()
+        ",
+        |_, (root, parse_errors), resolver, _| {
+            use naijascript::diagnostics::AsStr;
+
+            assert!(parse_errors.diagnostics.is_empty());
+            resolver.resolve(root);
+            assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+            assert!(
+                resolver
+                    .errors
+                    .diagnostics
+                    .iter()
+                    .all(|diag| diag.message != SemanticError::UnusedAssignment.as_str()),
+                "Expected no unused-assignment warning, got: {:?}",
+                resolver.errors.diagnostics
+            );
+        },
+    );
+}
+
+#[test]
+fn test_unused_assignment_detects_capture_write_overwrite() {
+    assert_resolve!(
+        r"
+        make x get 1
+        do set_x() start
+            x get 2
+        end
+        set_x()
+        ",
+        SemanticError::UnusedAssignment
+    );
+}
+
+#[test]
+fn test_unused_assignment_treats_mutating_capture_call_as_read() {
+    with_pipeline(
+        r"
+        make items get []
+        do fill() start
+            items.push(1)
+        end
+        fill()
+        ",
+        |_, (root, parse_errors), resolver, _| {
+            use naijascript::diagnostics::AsStr;
+
+            assert!(parse_errors.diagnostics.is_empty());
+            resolver.resolve(root);
+            assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+            assert!(
+                resolver
+                    .errors
+                    .diagnostics
+                    .iter()
+                    .all(|diag| diag.message != SemanticError::UnusedAssignment.as_str()),
+                "Expected no unused-assignment warning, got: {:?}",
+                resolver.errors.diagnostics
+            );
+        },
+    );
+}
+
+#[test]
+fn test_unused_variable_after_never_read_decl() {
+    assert_resolve!("make x get 1", SemanticError::UnusedVariable);
+}
+
+#[test]
+fn test_unused_variable_not_emitted_when_local_is_read() {
+    with_pipeline("make x get 1 shout(x)", |_, (root, parse_errors), resolver, _| {
+        use naijascript::diagnostics::AsStr;
+
+        assert!(parse_errors.diagnostics.is_empty());
+        resolver.resolve(root);
+        assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+        assert!(
+            resolver
+                .errors
+                .diagnostics
+                .iter()
+                .all(|diag| diag.message != SemanticError::UnusedVariable.as_str()),
+            "Expected no unused-variable warning, got: {:?}",
+            resolver.errors.diagnostics
+        );
+    });
+}
+
+#[test]
+fn test_unused_variable_ignores_uncalled_capture_read() {
+    assert_resolve!(
+        r"
+        make x get 1
+        do read_x() start
+            shout(x)
+        end
+        ",
+        SemanticError::UnusedVariable
+    );
+}
+
+#[test]
+fn test_unused_variable_respects_called_capture_read() {
+    with_pipeline(
+        r"
+        make x get 1
+        do read_x() start
+            shout(x)
+        end
+        read_x()
+        ",
+        |_, (root, parse_errors), resolver, _| {
+            use naijascript::diagnostics::AsStr;
+
+            assert!(parse_errors.diagnostics.is_empty());
+            resolver.resolve(root);
+            assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+            assert!(
+                resolver
+                    .errors
+                    .diagnostics
+                    .iter()
+                    .all(|diag| diag.message != SemanticError::UnusedVariable.as_str()),
+                "Expected no unused-variable warning, got: {:?}",
+                resolver.errors.diagnostics
+            );
+        },
+    );
+}
+
+#[test]
+fn test_unused_function_for_top_level_definition() {
+    assert_resolve!("do foo() start end", SemanticError::UnusedFunction);
+}
+
+#[test]
+fn test_unused_function_not_emitted_when_called() {
+    with_pipeline(
+        r"
+        do foo() start
+        end
+        foo()
+        ",
+        |_, (root, parse_errors), resolver, _| {
+            use naijascript::diagnostics::AsStr;
+
+            assert!(parse_errors.diagnostics.is_empty());
+            resolver.resolve(root);
+            assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+            assert!(
+                resolver
+                    .errors
+                    .diagnostics
+                    .iter()
+                    .all(|diag| diag.message != SemanticError::UnusedFunction.as_str()),
+                "Expected no unused-function warning, got: {:?}",
+                resolver.errors.diagnostics
+            );
+        },
+    );
+}
+
+#[test]
+fn test_unused_function_for_reachable_nested_definition() {
+    assert_resolve!(
+        r"
+        do outer() start
+            do inner() start
+            end
+        end
+        outer()
+        ",
+        SemanticError::UnusedFunction
+    );
+}
+
+#[test]
+fn test_unused_function_not_emitted_for_unreachable_nested_definition() {
+    with_pipeline(
+        r"
+        do outer() start
+            return 1
+            do inner() start
+            end
+        end
+        outer()
+        ",
+        |_, (root, parse_errors), resolver, _| {
+            use naijascript::diagnostics::AsStr;
+
+            assert!(parse_errors.diagnostics.is_empty());
+            resolver.resolve(root);
+            assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+            assert!(
+                resolver
+                    .errors
+                    .diagnostics
+                    .iter()
+                    .all(|diag| diag.message != SemanticError::UnusedFunction.as_str()),
+                "Expected no unused-function warning, got: {:?}",
+                resolver.errors.diagnostics
+            );
+        },
+    );
 }
 
 #[test]
@@ -156,6 +376,50 @@ fn test_dead_code_after_return() {
             return 42
             make x get 10
             shout(x)
+        end
+        ",
+        SemanticError::UnreachableCode
+    );
+}
+
+#[test]
+fn test_dead_code_after_break_in_loop() {
+    assert_resolve!(
+        "
+        jasi (true) start
+            comot
+            shout(1)
+        end
+        ",
+        SemanticError::UnreachableCode
+    );
+}
+
+#[test]
+fn test_dead_code_after_continue_in_loop() {
+    assert_resolve!(
+        "
+        jasi (true) start
+            next
+            shout(1)
+        end
+        ",
+        SemanticError::UnreachableCode
+    );
+}
+
+#[test]
+fn test_dead_code_after_non_fallthrough_if() {
+    assert_resolve!(
+        "
+        do foo() start
+            if to say (true) start
+                return 1
+            end
+            if not so start
+                return 2
+            end
+            shout(3)
         end
         ",
         SemanticError::UnreachableCode

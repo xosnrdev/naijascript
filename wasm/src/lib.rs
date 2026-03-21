@@ -26,7 +26,7 @@ pub fn run_source(src: &str, filename: &str) -> String {
     let mut non_err = String::with_capacity(src.len() / 2);
     {
         let res_arena = scratch_arena(Some(&arena));
-        let mut resolver = Resolver::new(&res_arena);
+        let mut resolver = Resolver::with_facts_arena(&res_arena, &arena);
         resolver.resolve(root);
         if resolver.errors.has_errors() {
             return report_html(&resolver.errors.render_ansi(src, filename));
@@ -34,25 +34,26 @@ pub fn run_source(src: &str, filename: &str) -> String {
         if !resolver.errors.diagnostics.is_empty() {
             non_err.push_str(&report_html(&resolver.errors.render_ansi(src, filename)));
         }
-    }
+        let (facts, optimization_plan) = resolver.into_artifacts();
 
-    // After resolver scope drops, scratch[1] is free for use as frame arena.
-    let frame = scratch_arena(Some(&arena));
-    let mut runtime = Runtime::new(&arena, Some(&frame));
-    let err = runtime.run(root);
-    if err.has_errors() {
-        return report_html(&err.render_ansi(src, filename));
-    }
-    if !err.diagnostics.is_empty() {
-        non_err.push_str(&report_html(&err.render_ansi(src, filename)));
-    }
+        // After resolver scope drops, scratch[1] is free for use as frame arena.
+        let frame = scratch_arena(Some(&arena));
+        let mut runtime = Runtime::new(&arena, Some(&frame));
+        let err = runtime.run_with_analysis(root, &facts, optimization_plan.as_ref());
+        if err.has_errors() {
+            return report_html(&err.render_ansi(src, filename));
+        }
+        if !err.diagnostics.is_empty() {
+            non_err.push_str(&report_html(&err.render_ansi(src, filename)));
+        }
 
-    let res = runtime.output.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n");
-    if !non_err.is_empty() {
-        non_err.push_str(&res);
-        return non_err;
+        let res = runtime.output.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n");
+        if !non_err.is_empty() {
+            non_err.push_str(&res);
+            return non_err;
+        }
+        res
     }
-    res
 }
 
 fn report_html(ansi: &str) -> String {
