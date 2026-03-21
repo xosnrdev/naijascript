@@ -33,7 +33,7 @@ minreq = { version = "2.14.1", features = ["https"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.180"
-tar = "0.4.44"
+tar = "0.4.45"
 xz2 = "0.1.7"
 
 [target.'cfg(windows)'.dependencies]
