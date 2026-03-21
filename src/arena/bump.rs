@@ -115,7 +115,7 @@ impl Arena {
     pub fn decommit(&self) {
         let offset = self.offset.get();
         let commit = self.commit.get();
-        // Round up to chunk boundary — only decommit full chunks.
+        // Round up to chunk boundary and only decommit full chunks.
         let keep = (offset + ALLOC_CHUNK_SIZE - 1) & !(ALLOC_CHUNK_SIZE - 1);
         if keep < commit {
             unsafe {

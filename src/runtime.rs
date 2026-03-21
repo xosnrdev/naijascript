@@ -1055,7 +1055,7 @@ impl<'a> Runtime<'a> {
             unsafe { self.frame.reset(frame_offset) };
             // Reconstruct on the caller's frame from staged bytes.
             let result = ArenaString::from_str(self.frame, staged.as_str());
-            // Reclaim staging — it is the only allocation above stage_mark.
+            // Reclaim staging!!! it is the only allocation above stage_mark.
             drop(staged);
             unsafe { self.arena.reset(stage_mark) };
             return Value::Str(ArenaCow::Owned(result));
