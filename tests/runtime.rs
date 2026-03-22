@@ -21,7 +21,7 @@ macro_rules! assert_runtime {
                 "Expected no resolution errors, got: {:?}",
                 resolver.errors.diagnostics
             );
-            runtime.run(root);
+            runtime.run_with_analysis(root, &resolver.facts, resolver.optimization_plan.as_ref());
             assert_eq!(runtime.output, $expected);
         })
     }};
@@ -38,7 +38,7 @@ macro_rules! assert_runtime {
                 "Expected no resolution errors, got: {:?}",
                 resolver.errors.diagnostics
             );
-            runtime.run(root);
+            runtime.run_with_analysis(root, &resolver.facts, resolver.optimization_plan.as_ref());
             assert!(
                 runtime.errors.diagnostics.iter().any(|e| e.message == $err.as_str()),
                 "Expected runtime error: {}, got: {:?}",
@@ -387,8 +387,97 @@ fn function_definition_and_call() {
 }
 
 #[test]
+fn function_call_before_definition() {
+    assert_runtime!(
+        "shout(double(21)) do double(n) start return n times 2 end",
+        output: vec![Value::Number(42.0)]
+    );
+}
+
+#[test]
 fn function_with_parameters() {
     assert_runtime!("do sum(a, b) start shout(a add b) end sum(3, 4)", output: vec![Value::Number(7.0)]);
+}
+
+#[test]
+fn mutual_recursion_across_forward_reference() {
+    assert_runtime!(
+        r"
+        do is_even(n) start
+            if to say (n na 0) start
+                return true
+            end
+            return is_odd(n minus 1)
+        end
+
+        do is_odd(n) start
+            if to say (n na 0) start
+                return false
+            end
+            return is_even(n minus 1)
+        end
+
+        shout(is_even(10))
+        shout(is_odd(9))
+        ",
+        output: vec![Value::Bool(true), Value::Bool(true)]
+    );
+}
+
+#[test]
+fn function_local_shadows_parameter() {
+    assert_runtime!(
+        "do foo(x) start make x get 2 shout(x) end foo(1)",
+        output: vec![Value::Number(2.0)]
+    );
+}
+
+#[test]
+fn nested_function_definition_shadows_outer_function() {
+    assert_runtime!(
+        "do foo() start shout(1) end start do foo() start shout(2) end foo() end",
+        output: vec![Value::Number(2.0)]
+    );
+}
+
+#[test]
+fn nested_function_observes_same_scope_rebinding() {
+    assert_runtime!(
+        "make x get 1 do f() start shout(x) end make x get 2 f()",
+        output: vec![Value::Number(2.0)]
+    );
+}
+
+#[test]
+fn unused_function_pruning_preserves_bound_nested_call() {
+    with_pipeline(
+        r#"
+        do foo() start
+            shout("outer")
+        end
+        do caller() start
+            do foo() start
+                shout("inner")
+            end
+            foo()
+        end
+        caller()
+        "#,
+        |_, (root, parse_errors), resolver, runtime| {
+            assert!(parse_errors.diagnostics.is_empty(), "{:?}", parse_errors.diagnostics);
+            resolver.resolve(root);
+            assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+
+            let plan = resolver
+                .optimization_plan
+                .as_ref()
+                .expect("Resolver should always build an optimization plan");
+            assert_eq!(plan.removable_function_defs.len(), 1);
+
+            runtime.run_with_analysis(root, &resolver.facts, Some(plan));
+            assert_eq!(runtime.output, vec![Value::Str(ArenaCow::Borrowed("inner"))]);
+        },
+    );
 }
 
 #[test]
@@ -648,6 +737,59 @@ fn string_interpolation_resolve_whitespace() {
         shout("Hello { name }")
         "#,
         output: vec![Value::Str(ArenaCow::Borrowed("Hello World"))]
+    );
+}
+
+#[test]
+fn string_interpolation_reads_shadowed_local() {
+    assert_runtime!(
+        r#"
+        make name get "outer"
+        start
+            make name get "inner"
+            shout("Hello {name}")
+        end
+        shout(name)
+        "#,
+        output: vec![
+            Value::Str(ArenaCow::Borrowed("Hello inner")),
+            Value::Str(ArenaCow::Borrowed("outer"))
+        ]
+    );
+}
+
+#[test]
+fn array_mutation_preserves_shadowed_binding() {
+    assert_runtime!(
+        r#"
+        make arr get [1]
+        start
+            make arr get [2]
+            arr.push(3)
+            shout(arr.join(","))
+        end
+        shout(arr.join(","))
+        "#,
+        output: vec![
+            Value::Str(ArenaCow::Borrowed("2,3")),
+            Value::Str(ArenaCow::Borrowed("1"))
+        ]
+    );
+}
+
+#[test]
+fn index_assignment_preserves_shadowed_binding() {
+    assert_runtime!(
+        r"
+        make arr get [1]
+        start
+            make arr get [2]
+            arr[0] get 3
+            shout(arr[0])
+        end
+        shout(arr[0])
+        ",
+        output: vec![Value::Number(3.0), Value::Number(1.0)]
     );
 }
 
