@@ -16,6 +16,8 @@ pub enum ValueType {
     String,
     Bool,
     Array,
+    ProcessCommand,
+    ProcessResult,
     Dynamic,
     Null,
 }
@@ -27,6 +29,8 @@ impl fmt::Display for ValueType {
             ValueType::String => write!(f, "string"),
             ValueType::Bool => write!(f, "boolean"),
             ValueType::Array => write!(f, "array"),
+            ValueType::ProcessCommand => write!(f, "process_command"),
+            ValueType::ProcessResult => write!(f, "process_result"),
             ValueType::Dynamic => write!(f, "dynamic"),
             ValueType::Null => write!(f, "null"),
         }

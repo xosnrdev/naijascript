@@ -126,6 +126,27 @@ fn test_unused_variable_after_never_read_decl() {
 }
 
 #[test]
+fn test_process_builder_mutation_requires_lvalue_receiver() {
+    assert_resolve!(r#"command("echo").arg("hello")"#, SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_process_value_rejected_in_arithmetic() {
+    assert_resolve!(r#"shout(command("echo") add 1)"#, SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_process_timeout_requires_number() {
+    assert_resolve!(
+        r#"
+        make cmd get command("echo")
+        cmd.timeout_ms("fast")
+        "#,
+        SemanticError::TypeMismatch
+    );
+}
+
+#[test]
 fn test_unused_variable_not_emitted_when_local_is_read() {
     with_pipeline("make x get 1 shout(x)", |_, (root, parse_errors), resolver, _| {
         use naijascript::diagnostics::AsStr;

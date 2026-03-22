@@ -48,3 +48,21 @@ make x get 42
 make s get to_string(x)
 shout(s)
 ```
+
+## Workflow
+
+### command(program)
+
+Creates a `process_command` builder for direct child-process execution. See
+[Process Execution](PROCESS_EXECUTION.md) for the full method set and runtime
+behavior.
+
+Example:
+
+```naijascript
+make cmd get command("git")
+cmd.arg("status")
+cmd.stdout_capture()
+make res get cmd.run()
+shout(res.stdout())
+```

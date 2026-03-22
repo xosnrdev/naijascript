@@ -9,9 +9,10 @@ use std::slice;
 
 use memchr_rs::memchr;
 
-use super::{Stdin, VirtualMemory};
+use super::{ProcessRunner, Stdin, VirtualMemory, process_common};
 use crate::arena::{Arena, ArenaString};
 use crate::helpers::KIBI;
+use crate::process::{ProcessCaps, ProcessError, ProcessResult, ProcessSpec};
 use crate::runtime::Value;
 
 #[cfg(target_os = "netbsd")]
@@ -122,5 +123,17 @@ impl Stdin for UnixStdin {
         }
 
         Ok(buf)
+    }
+}
+
+pub struct UnixProcessRunner;
+
+impl ProcessRunner for UnixProcessRunner {
+    fn run<'arena>(
+        spec: &ProcessSpec<'_>,
+        caps: &ProcessCaps,
+        arena: &'arena Arena,
+    ) -> Result<ProcessResult<'arena>, ProcessError> {
+        process_common::run_host_process(spec, caps, arena)
     }
 }

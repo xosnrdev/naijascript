@@ -1,5 +1,6 @@
 mod array;
 mod number;
+mod process;
 mod replace;
 mod string;
 mod tw;
@@ -8,6 +9,7 @@ use std::{fmt, io};
 
 pub use array::*;
 pub use number::*;
+pub use process::*;
 pub use replace::*;
 pub use string::*;
 pub use tw::*;
@@ -15,6 +17,7 @@ pub use tw::*;
 use crate::arena::{Arena, ArenaString};
 use crate::arena_format;
 use crate::helpers::ValueType;
+use crate::process::HostValue;
 use crate::runtime::Value;
 use crate::sys::{self, Stdin};
 
@@ -41,6 +44,8 @@ pub enum GlobalBuiltin {
     ReadLine,
     /// Convert a value to a string
     ToString,
+    /// Construct a process command builder
+    Command,
 }
 
 impl Builtin for GlobalBuiltin {
@@ -49,7 +54,8 @@ impl Builtin for GlobalBuiltin {
             GlobalBuiltin::Shout
             | GlobalBuiltin::TypeOf
             | GlobalBuiltin::ReadLine
-            | GlobalBuiltin::ToString => 1,
+            | GlobalBuiltin::ToString
+            | GlobalBuiltin::Command => 1,
         }
     }
 
@@ -59,6 +65,7 @@ impl Builtin for GlobalBuiltin {
             GlobalBuiltin::TypeOf | GlobalBuiltin::ReadLine | GlobalBuiltin::ToString => {
                 ValueType::String
             }
+            GlobalBuiltin::Command => ValueType::ProcessCommand,
         }
     }
 
@@ -68,6 +75,7 @@ impl Builtin for GlobalBuiltin {
             "typeof" => Some(GlobalBuiltin::TypeOf),
             "read_line" => Some(GlobalBuiltin::ReadLine),
             "to_string" => Some(GlobalBuiltin::ToString),
+            "command" => Some(GlobalBuiltin::Command),
             _ => None,
         }
     }
@@ -95,6 +103,10 @@ impl GlobalBuiltin {
             Value::Str(..) => "string",
             Value::Bool(..) => "boolean",
             Value::Array(..) => "array",
+            Value::Host(host) => match host.get() {
+                HostValue::ProcessCommand(..) => "process_command",
+                HostValue::ProcessResult(..) => "process_result",
+            },
             Value::Null => "null",
         }
     }
@@ -114,6 +126,8 @@ pub enum MemberBuiltin {
     String(StringBuiltin),
     Array(ArrayBuiltin),
     Number(NumberBuiltin),
+    ProcessCommand(ProcessCommandBuiltin),
+    ProcessResult(ProcessResultBuiltin),
 }
 
 impl Builtin for MemberBuiltin {
@@ -122,6 +136,8 @@ impl Builtin for MemberBuiltin {
             MemberBuiltin::String(b) => b.arity(),
             MemberBuiltin::Array(b) => b.arity(),
             MemberBuiltin::Number(b) => b.arity(),
+            MemberBuiltin::ProcessCommand(b) => b.arity(),
+            MemberBuiltin::ProcessResult(b) => b.arity(),
         }
     }
 
@@ -130,6 +146,8 @@ impl Builtin for MemberBuiltin {
             MemberBuiltin::String(b) => b.return_type(),
             MemberBuiltin::Array(b) => b.return_type(),
             MemberBuiltin::Number(b) => b.return_type(),
+            MemberBuiltin::ProcessCommand(b) => b.return_type(),
+            MemberBuiltin::ProcessResult(b) => b.return_type(),
         }
     }
 
@@ -138,6 +156,8 @@ impl Builtin for MemberBuiltin {
             .map(MemberBuiltin::String)
             .or_else(|| ArrayBuiltin::from_name(name).map(MemberBuiltin::Array))
             .or_else(|| NumberBuiltin::from_name(name).map(MemberBuiltin::Number))
+            .or_else(|| ProcessCommandBuiltin::from_name(name).map(MemberBuiltin::ProcessCommand))
+            .or_else(|| ProcessResultBuiltin::from_name(name).map(MemberBuiltin::ProcessResult))
     }
 
     fn requires_mut_receiver(&self) -> bool {
@@ -145,6 +165,8 @@ impl Builtin for MemberBuiltin {
             MemberBuiltin::String(b) => b.requires_mut_receiver(),
             MemberBuiltin::Array(b) => b.requires_mut_receiver(),
             MemberBuiltin::Number(b) => b.requires_mut_receiver(),
+            MemberBuiltin::ProcessCommand(b) => b.requires_mut_receiver(),
+            MemberBuiltin::ProcessResult(b) => b.requires_mut_receiver(),
         }
     }
 }

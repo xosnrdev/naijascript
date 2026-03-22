@@ -37,7 +37,8 @@ Read more in [this article](https://hackmd.io/sIhWJ4QeSAGiaE3D-xiieg).
 
 While NaijaScript aims to be a practical scripting language, it currently has some limitations:
 
-- No package management or extensive standard library yet
+- Native process execution is available, but the standard library is still small
+- No package management yet
 - Designed for educational and scripting use cases, not large-scale applications
 - Lacks IDE support and advanced tooling
 
@@ -45,5 +46,6 @@ While NaijaScript aims to be a practical scripting language, it currently has so
 
 - How to install NaijaScript and run the interpreter
 - The language syntax and core semantics
+- How to automate external tools with native process execution
 
 Ready to begin? Let's start with [installation](INSTALLATION.md).

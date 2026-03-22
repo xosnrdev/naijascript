@@ -2,6 +2,9 @@
 
 #![allow(non_camel_case_types)]
 
+#[cfg(not(target_family = "wasm"))]
+mod process_common;
+
 #[cfg(windows)]
 mod windows;
 
@@ -22,6 +25,7 @@ use wasm::*;
 pub use windows::*;
 
 use crate::arena::{Arena, ArenaString};
+use crate::process::{ProcessCaps, ProcessError, ProcessResult, ProcessSpec};
 use crate::runtime::Value;
 
 #[cfg(unix)]
@@ -37,6 +41,13 @@ pub type stdin = UnixStdin;
 pub type stdin = WindowsStdin;
 #[cfg(target_family = "wasm")]
 pub type stdin = WasmStdin;
+
+#[cfg(unix)]
+pub type process = unix::UnixProcessRunner;
+#[cfg(windows)]
+pub type process = windows::WindowsProcessRunner;
+#[cfg(target_family = "wasm")]
+pub type process = wasm::WasmProcessRunner;
 
 pub trait VirtualMemory {
     /// Reserves a virtual memory region of the given size.
@@ -83,4 +94,12 @@ pub trait Stdin {
     /// Unlike the `read_line` from [`std::io::stdin`] that's hardcoded to [`std::string::String`] type, this
     /// one allocates with [`ArenaString`].
     fn read_line<'a>(prompt: &Value<'a>, arena: &'a Arena) -> Result<ArenaString<'a>, io::Error>;
+}
+
+pub trait ProcessRunner {
+    fn run<'arena>(
+        spec: &ProcessSpec<'_>,
+        caps: &ProcessCaps,
+        arena: &'arena Arena,
+    ) -> Result<ProcessResult<'arena>, ProcessError>;
 }
