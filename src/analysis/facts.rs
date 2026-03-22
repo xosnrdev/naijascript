@@ -6,7 +6,7 @@ use crate::analysis::effects::ExprClass;
 use crate::analysis::ids::{FunctionId, INVALID_SCOPE_ID, LocalId, ScopeId, StmtId};
 use crate::arena::Arena;
 use crate::diagnostics::Span;
-use crate::syntax::parser::{BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef};
+use crate::syntax::parser::{Block, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef};
 
 /// Stable name used for the synthetic top-level script function.
 pub const ROOT_FUNCTION_NAME: &str = "<script>";
@@ -16,6 +16,7 @@ pub const ROOT_FUNCTION_NAME: &str = "<script>";
 pub struct ProgramFacts<'ast, 'arena> {
     pub root_function: FunctionId,
     pub functions: Vec<FunctionInfo<'ast>, &'arena Arena>,
+    pub function_bodies: Vec<FunctionBodyBinding<'ast>, &'arena Arena>,
     pub scopes: Vec<ScopeInfo, &'arena Arena>,
     pub block_scopes: Vec<BlockScopeBinding<'ast>, &'arena Arena>,
     pub scope_locals: Vec<Vec<LocalId, &'arena Arena>, &'arena Arena>,
@@ -57,6 +58,13 @@ pub struct ScopeInfo {
 pub struct BlockScopeBinding<'ast> {
     pub block: BlockRef<'ast>,
     pub scope: ScopeId,
+}
+
+/// Mapping from a function body block node to its stable function id.
+#[derive(Debug)]
+pub struct FunctionBodyBinding<'ast> {
+    pub body: BlockRef<'ast>,
+    pub function: FunctionId,
 }
 
 /// Metadata describing a local declaration.
@@ -140,6 +148,7 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
         Self {
             root_function: FunctionId(0),
             functions: Vec::new_in(arena),
+            function_bodies: Vec::new_in(arena),
             scopes: Vec::new_in(arena),
             block_scopes: Vec::new_in(arena),
             scope_locals: Vec::new_in(arena),
@@ -171,6 +180,7 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
             locals_start: 0,
             locals_len: 0,
         });
+        self.function_bodies.push(FunctionBodyBinding { body, function: id });
         self.function_directs.push(FunctionDirectFacts {
             direct_callees: Vec::new_in(self.functions.allocator()),
             direct_capture_reads: Vec::new_in(self.functions.allocator()),
@@ -202,6 +212,7 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
             locals_start: self.locals.len() as u32,
             locals_len: 0,
         });
+        self.function_bodies.push(FunctionBodyBinding { body, function: id });
         self.function_directs.push(FunctionDirectFacts {
             direct_callees: Vec::new_in(self.functions.allocator()),
             direct_capture_reads: Vec::new_in(self.functions.allocator()),
@@ -308,7 +319,7 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
 
     /// Records which lexical scope belongs to a parsed block node.
     pub fn record_block_scope(&mut self, block: BlockRef<'ast>, scope: ScopeId) {
-        if self.scope_of_block(block).is_none() {
+        if !self.block_scopes.iter().any(|binding| std::ptr::eq(binding.block, block)) {
             self.block_scopes.push(BlockScopeBinding { block, scope });
         }
     }
@@ -336,10 +347,11 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
     /// Returns the lexical scope id associated with a parsed block node.
     #[must_use]
     pub fn scope_of_block(&self, block: BlockRef<'ast>) -> Option<ScopeId> {
+        let key = block_ptr(block);
         self.block_scopes
-            .iter()
-            .find(|binding| std::ptr::eq(binding.block, block))
-            .map(|binding| binding.scope)
+            .binary_search_by_key(&key, |binding| block_ptr(binding.block))
+            .ok()
+            .map(|idx| self.block_scopes[idx].scope)
     }
 
     /// Returns the bound local for an assignment statement.
@@ -391,10 +403,11 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
     /// Finds the function id that owns the given body block.
     #[must_use]
     pub fn function_by_body(&self, body: BlockRef<'ast>) -> Option<FunctionId> {
-        self.functions
-            .iter()
-            .position(|info| std::ptr::eq(info.body, body))
-            .map(|idx| FunctionId(idx as u32))
+        let key = block_ptr(body);
+        self.function_bodies
+            .binary_search_by_key(&key, |binding| block_ptr(binding.body))
+            .ok()
+            .map(|idx| self.function_bodies[idx].function)
     }
 
     /// Finds the direct user-function callee bound to this call expression.
@@ -441,8 +454,10 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
         &self.stmt_effects[stmt.0 as usize]
     }
 
-    /// Sorts pointer-keyed runtime bindings once resolution is complete.
-    pub fn finalize_runtime_bindings(&mut self) {
+    /// Sorts persistent pointer-keyed bindings once resolution is complete.
+    pub fn finalize_pointer_bindings(&mut self) {
+        self.function_bodies.sort_by_key(|binding| block_ptr(binding.body));
+        self.block_scopes.sort_by_key(|binding| block_ptr(binding.block));
         self.stmt_ids.sort_by_key(|binding| stmt_ptr(binding.stmt));
         self.stmt_locals.sort_by_key(|binding| stmt_ptr(binding.stmt));
         self.expr_locals.sort_by_key(|binding| expr_ptr(binding.expr));
@@ -528,4 +543,8 @@ fn expr_ptr(expr: ExprRef<'_>) -> *const Expr<'_> {
 
 fn stmt_ptr(stmt: StmtRef<'_>) -> *const Stmt<'_> {
     std::ptr::from_ref::<Stmt<'_>>(stmt)
+}
+
+fn block_ptr(block: BlockRef<'_>) -> *const Block<'_> {
+    std::ptr::from_ref::<Block<'_>>(block)
 }

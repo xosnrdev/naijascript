@@ -153,7 +153,7 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
         self.current_owner = root_function;
         self.current_function = None;
         self.check_block(root);
-        self.facts.finalize_runtime_bindings();
+        self.facts.finalize_pointer_bindings();
         self.emit_analysis_warnings();
     }
 

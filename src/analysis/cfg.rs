@@ -34,7 +34,12 @@ pub enum StmtKind {
     Expression,
 }
 
-/// Metadata about a statement lowered into the CFG.
+/// Metadata about one source statement in the analysis sidecar.
+///
+/// `StmtId` remains the stable source-facing identity shared with diagnostics,
+/// optimization planning, and the tree-walk runtime. The lowered op id stays an
+/// analysis-internal detail even though the current lowering still emits one op
+/// per source statement.
 #[derive(Debug)]
 pub struct StmtInfo<'ast> {
     pub stmt: StmtRef<'ast>,
@@ -46,7 +51,12 @@ pub struct StmtInfo<'ast> {
     pub op: OpId,
 }
 
-/// One source statement lowered into the linear op stream of a function.
+/// One lowered analysis op in the linear op stream of a function.
+///
+/// The current lowering emits exactly one op per source statement so existing
+/// dataflow storage can stay statement-shaped. External consumers must still
+/// treat `StmtId` as the runtime-facing identity and `OpId` as an analysis-only
+/// handle.
 #[derive(Debug)]
 pub struct LinearOp<'arena> {
     pub id: OpId,
@@ -164,6 +174,14 @@ impl<'arena> CfgFunction<'arena> {
 pub struct CfgProgram<'ast, 'arena> {
     pub functions: Vec<CfgFunction<'arena>, &'arena Arena>,
     pub stmts: Vec<StmtInfo<'ast>, &'arena Arena>,
+}
+
+impl<'ast> CfgProgram<'ast, '_> {
+    /// Returns source-facing statement metadata by stable statement id.
+    #[must_use]
+    pub fn stmt_info(&self, stmt: StmtId) -> &StmtInfo<'ast> {
+        &self.stmts[stmt.0 as usize]
+    }
 }
 
 /// Counted CFG resources used to pre-size analysis storage and validate limits.
@@ -1014,6 +1032,9 @@ impl<'arena> LinearOp<'arena> {
     ) -> Self {
         let effect = facts.stmt_effect(stmt);
         Self {
+            // The current lowering keeps one op per statement so dataflow and
+            // source-oriented diagnostics stay aligned while the executor still
+            // walks statements directly.
             id: OpId(stmt.0),
             stmt,
             reads: clone_slice_in(&effect.reads, arena),

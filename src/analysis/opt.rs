@@ -4,7 +4,7 @@ use crate::analysis::cfg::CfgProgram;
 use crate::analysis::diagnostics::{UnusedFunction, UnusedVariable};
 use crate::analysis::effects::ExprClass;
 use crate::analysis::facts::ProgramFacts;
-use crate::analysis::ids::{FunctionId, OpId, StmtId};
+use crate::analysis::ids::{FunctionId, StmtId};
 use crate::analysis::liveness::UnusedAssignment;
 use crate::analysis::summary::FunctionSummary;
 use crate::arena::Arena;
@@ -28,20 +28,15 @@ pub struct OptimizationInputs<'ast, 'cfg, 'summary, 'input> {
 /// Side-effect-free description of code that later integrations may skip.
 #[derive(Debug)]
 pub struct OptimizationPlan<'arena> {
-    pub removable_ops: Vec<OpId, &'arena Arena>,
-    // Statements remain the runtime-facing key because the tree-walk executor still steps
-    // source statements directly even though the CFG now stores linear ops separately.
+    // Statements remain the canonical pruning key because the tree-walk executor
+    // still steps source statements directly. The CFG's op stream stays an
+    // analysis-only lowering detail and can be recovered from `CfgProgram` when
+    // a pass needs it.
     pub removable_stmts: Vec<StmtId, &'arena Arena>,
     pub removable_function_defs: Vec<FunctionId, &'arena Arena>,
 }
 
 impl OptimizationPlan<'_> {
-    /// Returns whether the plan marks this statement op as removable.
-    #[must_use]
-    pub fn contains_removable_op(&self, op: OpId) -> bool {
-        self.removable_ops.binary_search_by_key(&op.0, |candidate| candidate.0).is_ok()
-    }
-
     /// Returns whether the plan marks this source statement as removable.
     #[must_use]
     pub fn contains_removable_stmt(&self, stmt: StmtId) -> bool {
@@ -71,20 +66,31 @@ pub fn build_optimization_plan<'arena>(
         unused_variables,
         unused_functions,
     } = inputs;
-    let mut removable_ops = Vec::new_in(arena);
     let mut removable_stmts = Vec::new_in(arena);
     let mut removable_function_defs = Vec::new_in(arena);
     let max_local_reference_stmt =
         compute_max_local_reference_stmt(facts, summaries, reachable, arena);
+    debug_assert_eq!(
+        program.stmts.len(),
+        facts.stmt_effects.len(),
+        "CFG statements and statement facts should stay in lock-step order",
+    );
+    debug_assert_eq!(
+        program.stmts.len(),
+        reachable.len(),
+        "Reachability should stay indexed by stable statement id",
+    );
 
     for (stmt_idx, is_reachable) in reachable.iter().copied().enumerate() {
         if !is_reachable {
-            let stmt_info = &program.stmts[stmt_idx];
-            let stmt = stmt_info.stmt;
-            let stmt_id = facts
-                .stmt_id(stmt)
-                .expect("CFG statement should map back to a stable statement id");
-            push_unique(&mut removable_ops, stmt_info.op);
+            let stmt_id = StmtId(u32::try_from(stmt_idx).expect("statement index should fit u32"));
+            let stmt = program.stmt_info(stmt_id).stmt;
+            debug_assert_eq!(
+                facts
+                    .stmt_id(stmt)
+                    .expect("CFG statement should map back to a stable statement id"),
+                stmt_id,
+            );
             push_unique(&mut removable_stmts, stmt_id);
         }
     }
@@ -103,8 +109,13 @@ pub fn build_optimization_plan<'arena>(
         {
             continue;
         }
-        let op = program.stmts[warning.stmt_id.0 as usize].op;
-        push_unique(&mut removable_ops, op);
+        debug_assert!(
+            std::ptr::eq(
+                program.stmt_info(warning.stmt_id).stmt,
+                facts.stmt_effect(warning.stmt_id).stmt,
+            ),
+            "CFG statement metadata should keep the same arena node as statement effects",
+        );
         push_unique(&mut removable_stmts, warning.stmt_id);
     }
 
@@ -119,8 +130,13 @@ pub fn build_optimization_plan<'arena>(
         ) {
             continue;
         }
-        let op = program.stmts[warning.stmt_id.0 as usize].op;
-        push_unique(&mut removable_ops, op);
+        debug_assert!(
+            std::ptr::eq(
+                program.stmt_info(warning.stmt_id).stmt,
+                facts.stmt_effect(warning.stmt_id).stmt,
+            ),
+            "CFG statement metadata should keep the same arena node as statement effects",
+        );
         push_unique(&mut removable_stmts, warning.stmt_id);
     }
 
@@ -128,11 +144,10 @@ pub fn build_optimization_plan<'arena>(
         push_unique(&mut removable_function_defs, warning.function);
     }
 
-    removable_ops.sort_by_key(|op| op.0);
     removable_stmts.sort_by_key(|stmt| stmt.0);
     removable_function_defs.sort_by_key(|function| function.0);
 
-    OptimizationPlan { removable_ops, removable_stmts, removable_function_defs }
+    OptimizationPlan { removable_stmts, removable_function_defs }
 }
 
 fn compute_max_local_reference_stmt<'ast, 'arena>(

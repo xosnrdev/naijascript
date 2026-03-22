@@ -1,11 +1,11 @@
 use naijascript::analysis::cfg::{
-    CfgProgram, build_program, build_program_with_counts, count_program, debug_dump_program,
+    build_program, build_program_with_counts, count_program, debug_dump_program,
 };
 use naijascript::analysis::diagnostics::{
     compute_function_reachability, unused_functions, unused_variables,
 };
 use naijascript::analysis::facts::ProgramFacts;
-use naijascript::analysis::ids::{BlockId, FunctionId, LocalId, OpId};
+use naijascript::analysis::ids::{BlockId, FunctionId, LocalId, StmtId};
 use naijascript::analysis::limits::{AnalysisCaps, DEFAULT_CAPS, first_exceeded_limit};
 use naijascript::analysis::liveness::unused_assignments;
 use naijascript::analysis::opt::{OptimizationInputs, build_optimization_plan};
@@ -43,14 +43,6 @@ fn local_id_by_name(facts: &ProgramFacts<'_, '_>, name: &str, owner: FunctionId)
                 .then_some(LocalId(u32::try_from(idx).expect("local index should fit in u32")))
         })
         .expect("Expected local to exist")
-}
-
-fn program_stmt_index(program: &CfgProgram<'_, '_>, op: OpId) -> usize {
-    program
-        .stmts
-        .iter()
-        .position(|info| info.op == op)
-        .expect("Optimization op should resolve to a lowered program statement")
 }
 
 #[test]
@@ -125,6 +117,58 @@ fn resolver_records_runtime_local_bindings() {
                 panic!("shout argument should be an interpolated string");
             };
             assert_eq!(facts.string_segment_local(args.args[0], 1), Some(x));
+        },
+    );
+}
+
+#[test]
+fn resolver_finalizes_pointer_keyed_block_and_body_lookups() {
+    with_pipeline(
+        r"
+        start
+            shout(0)
+        end
+        do outer() start
+            start
+                shout(1)
+            end
+            do inner() start
+            end
+        end
+        ",
+        |_, (root, parse_errors), resolver, _| {
+            assert!(parse_errors.diagnostics.is_empty());
+            resolver.resolve(root);
+            assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+
+            let facts = &resolver.facts;
+
+            assert_eq!(facts.function_by_body(root), Some(facts.root_function));
+            assert!(facts.scope_of_block(root).is_some());
+
+            let Stmt::Block { block: top_block, .. } = root.stmts[0] else {
+                panic!("first statement should be a standalone block");
+            };
+            assert!(facts.scope_of_block(top_block).is_some());
+
+            let Stmt::FunctionDef { body: outer_body, .. } = root.stmts[1] else {
+                panic!("second statement should be a function definition");
+            };
+            let outer_id = function_id_by_name(facts, "outer", Some(facts.root_function));
+            assert_eq!(facts.function_by_body(outer_body), Some(outer_id));
+            assert!(facts.scope_of_block(outer_body).is_some());
+
+            let Stmt::Block { block: nested_block, .. } = outer_body.stmts[0] else {
+                panic!("outer body should start with a nested block");
+            };
+            assert!(facts.scope_of_block(nested_block).is_some());
+
+            let Stmt::FunctionDef { body: inner_body, .. } = outer_body.stmts[1] else {
+                panic!("outer body should contain an inner function definition");
+            };
+            let inner_id = function_id_by_name(facts, "inner", Some(outer_id));
+            assert_eq!(facts.function_by_body(inner_body), Some(inner_id));
+            assert!(facts.scope_of_block(inner_body).is_some());
         },
     );
 }
@@ -353,11 +397,8 @@ fn optimization_plan_keeps_calls_with_unavailable_summaries() {
                 naijascript::analysis::cfg::StmtKind::AssignExisting
             )
         }));
-        assert!(!plan.removable_ops.iter().any(|op| {
-            matches!(
-                program.stmts[program_stmt_index(&program, *op)].stmt,
-                Stmt::AssignExisting { .. }
-            )
+        assert!(!plan.removable_stmts.iter().any(|stmt_id| {
+            matches!(program.stmt_info(*stmt_id).stmt, Stmt::AssignExisting { .. })
         }));
     });
 }
@@ -429,6 +470,27 @@ fn cfg_blocks_reference_contiguous_op_slices() {
             assert_eq!(seen_op_ids, all_op_ids);
         },
     );
+}
+
+#[test]
+fn cfg_statement_ids_index_source_metadata_directly() {
+    with_pipeline("make x get 1 shout(x)", |arena, (root, parse_errors), resolver, _| {
+        assert!(parse_errors.diagnostics.is_empty());
+        resolver.resolve(root);
+        assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+
+        let facts = &resolver.facts;
+        let counts = count_program(facts, arena);
+        let program = build_program_with_counts(facts, &counts, arena);
+
+        for (idx, stmt_info) in program.stmts.iter().enumerate() {
+            let stmt_id = StmtId(u32::try_from(idx).expect("statement index should fit in u32"));
+            assert_eq!(facts.stmt_id(stmt_info.stmt), Some(stmt_id));
+            assert!(std::ptr::eq(program.stmt_info(stmt_id).stmt, stmt_info.stmt));
+        }
+
+        assert!(std::ptr::eq(program.stmt_info(StmtId(0)).stmt, root.stmts[0]));
+    });
 }
 
 #[test]
@@ -551,9 +613,8 @@ fn optimization_plan_marks_pure_unused_assignment_removable() {
             arena,
         );
 
-        assert_eq!(plan.removable_ops.len(), 1);
-        let removable_stmt =
-            program.stmts[program_stmt_index(&program, plan.removable_ops[0])].stmt;
+        assert_eq!(plan.removable_stmts.len(), 1);
+        let removable_stmt = program.stmt_info(plan.removable_stmts[0]).stmt;
         assert!(matches!(removable_stmt, Stmt::Assign { .. }));
     });
 }
@@ -595,12 +656,12 @@ fn optimization_plan_keeps_declaration_needed_for_later_reassignment() {
             arena,
         );
 
-        assert!(plan.removable_ops.is_empty());
+        assert!(plan.removable_stmts.is_empty());
     });
 }
 
 #[test]
-fn optimization_plan_marks_unreachable_ops_and_unused_function_defs_removable() {
+fn optimization_plan_marks_unreachable_statements_and_unused_function_defs_removable() {
     let src = r#"
         do outer() start
             return 1
@@ -644,9 +705,9 @@ fn optimization_plan_marks_unreachable_ops_and_unused_function_defs_removable() 
             arena,
         );
 
-        assert!(plan.removable_ops.iter().any(|op| {
-            matches!(program.stmts[program_stmt_index(&program, *op)].stmt, Stmt::Expression { .. })
-                && !reachable[program_stmt_index(&program, *op)]
+        assert!(plan.removable_stmts.iter().any(|stmt_id| {
+            matches!(program.stmt_info(*stmt_id).stmt, Stmt::Expression { .. })
+                && !reachable[stmt_id.0 as usize]
         }));
         assert_eq!(unused_functions.len(), 1);
         assert_eq!(plan.removable_function_defs.len(), 1);
