@@ -74,6 +74,15 @@ struct WarningRecord<'a> {
     message: ArenaCow<'a>,
 }
 
+#[derive(Clone, Copy)]
+struct PendingFunctionDef<'ast> {
+    name: &'ast str,
+    name_span: &'ast Span,
+    params: ParamListRef<'ast>,
+    body: BlockRef<'ast>,
+    scope_index: usize,
+}
+
 /// An arena-allocated semantic analyzer.
 ///
 /// Uses two lifetime parameters to separate AST data (`'ast`) from the resolver's
@@ -178,6 +187,7 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
         self.scope_stack.push(scope_id);
         self.variable_scopes.push(Vec::new_in(self.arena));
         self.function_scopes.push(Vec::new_in(self.arena));
+        self.predeclare_block_functions(block);
 
         for &stmt in block.stmts {
             self.check_stmt(stmt);
@@ -296,22 +306,9 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
             Stmt::Block { block, .. } => {
                 self.check_block(block);
             }
-            Stmt::FunctionDef { name, name_span, params, body, span } => {
+            Stmt::FunctionDef { params, body, .. } => {
                 self.set_stmt_expr_class(ExprClass::Impure);
-                if GlobalBuiltin::from_name(name).is_some() {
-                    self.emit_error(
-                        *name_span,
-                        SemanticError::ReservedKeyword,
-                        vec![Label {
-                            span: *name_span,
-                            message: ArenaCow::Owned(arena_format!(
-                                self.arena,
-                                "`{name}` na reserved keyword",
-                            )),
-                        }],
-                    );
-                }
-                self.check_function_def(name, name_span, params, body, span);
+                self.check_function_body(params, body);
             }
             Stmt::Return { expr, span } => {
                 self.check_return_stmt(*expr, span);
@@ -443,95 +440,151 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
         None
     }
 
-    fn check_function_def(
-        &mut self,
-        name: &'ast str,
-        name_span: &'ast Span,
-        params: ParamListRef<'ast>,
-        body: BlockRef<'ast>,
-        _span: &'ast Span,
-    ) {
-        // Check for duplicate function declaration in current scope
-        if let Some(current_scope) = self.function_scopes.last()
-            && let Some(existing_func) = current_scope.iter().find(|sig| sig.name == name)
-        {
-            self.emit_error(
-                *name_span,
-                SemanticError::DuplicateIdentifier,
-                vec![
-                    Label {
-                        span: *existing_func.name_span,
-                        message: ArenaCow::Owned(arena_format!(
-                            self.arena,
-                            "Function `{name}` dey scope already",
-                        )),
-                    },
-                    Label {
+    fn predeclared_function_id(&self, body: BlockRef<'ast>) -> Option<FunctionId> {
+        self.facts.functions.iter().enumerate().find_map(|(idx, info)| {
+            std::ptr::eq(info.body, body).then_some(FunctionId(
+                u32::try_from(idx).expect("function index should fit in u32"),
+            ))
+        })
+    }
+
+    fn predeclare_block_functions(&mut self, block: BlockRef<'ast>) {
+        let mut pending = Vec::new_in(self.arena);
+
+        for stmt in block.stmts {
+            let Stmt::FunctionDef { name, name_span, params, body, .. } = stmt else {
+                continue;
+            };
+
+            if GlobalBuiltin::from_name(name).is_some() {
+                self.emit_error(
+                    *name_span,
+                    SemanticError::ReservedKeyword,
+                    vec![Label {
                         span: *name_span,
                         message: ArenaCow::Owned(arena_format!(
                             self.arena,
-                            "Another function `{name}` for here"
-                        )),
-                    },
-                ],
-            );
-            return;
-        }
-
-        // Check for duplicate parameter names
-        let mut set = HashSet::with_capacity(params.params.len());
-        for (param_name, param_span) in params.params.iter().zip(params.param_spans.iter()) {
-            if GlobalBuiltin::from_name(param_name).is_some() {
-                self.emit_error(
-                    *param_span,
-                    SemanticError::ReservedKeyword,
-                    vec![Label {
-                        span: *param_span,
-                        message: ArenaCow::Owned(arena_format!(
-                            self.arena,
-                            "`{param_name}` na reserved keyword",
+                            "`{name}` na reserved keyword",
                         )),
                     }],
                 );
             }
-            if !set.insert(param_name) {
+
+            let existing_name_span = self
+                .function_scopes
+                .last()
+                .expect("function scope stack should never be empty")
+                .iter()
+                .find(|sig| sig.name == *name)
+                .map(|sig| *sig.name_span);
+            if let Some(existing_name_span) = existing_name_span {
                 self.emit_error(
-                    *param_span,
+                    *name_span,
                     SemanticError::DuplicateIdentifier,
-                    vec![Label {
-                        span: *param_span,
-                        message: ArenaCow::Owned(arena_format!(
-                            self.arena,
-                            "Parameter `{param_name}` used more than once",
-                        )),
-                    }],
+                    vec![
+                        Label {
+                            span: existing_name_span,
+                            message: ArenaCow::Owned(arena_format!(
+                                self.arena,
+                                "Function `{name}` dey scope already",
+                            )),
+                        },
+                        Label {
+                            span: *name_span,
+                            message: ArenaCow::Owned(arena_format!(
+                                self.arena,
+                                "Another function `{name}` for here"
+                            )),
+                        },
+                    ],
                 );
+                continue;
             }
+
+            let mut set = HashSet::with_capacity(params.params.len());
+            for (param_name, param_span) in params.params.iter().zip(params.param_spans.iter()) {
+                if GlobalBuiltin::from_name(param_name).is_some() {
+                    self.emit_error(
+                        *param_span,
+                        SemanticError::ReservedKeyword,
+                        vec![Label {
+                            span: *param_span,
+                            message: ArenaCow::Owned(arena_format!(
+                                self.arena,
+                                "`{param_name}` na reserved keyword",
+                            )),
+                        }],
+                    );
+                }
+                if !set.insert(param_name) {
+                    self.emit_error(
+                        *param_span,
+                        SemanticError::DuplicateIdentifier,
+                        vec![Label {
+                            span: *param_span,
+                            message: ArenaCow::Owned(arena_format!(
+                                self.arena,
+                                "Parameter `{param_name}` used more than once",
+                            )),
+                        }],
+                    );
+                }
+            }
+
+            let defining_scope = self.current_scope();
+            let function_id = self.facts.push_function(
+                name,
+                params,
+                Some(self.current_owner),
+                defining_scope,
+                *name_span,
+                body,
+            );
+            let current_scope = self
+                .function_scopes
+                .last_mut()
+                .expect("function scope stack should never be empty");
+            let scope_index = current_scope.len();
+            current_scope.push(FunctionSig {
+                name,
+                id: function_id,
+                param_names: params.params,
+                name_span,
+                return_type: ValueType::Dynamic,
+            });
+            pending.push(PendingFunctionDef { name, name_span, params, body, scope_index });
         }
 
-        let return_type = self.infer_function_return_type(body);
-        let function_id = self.facts.push_function(
-            name,
-            params,
-            Some(self.current_owner),
-            self.current_scope(),
-            *name_span,
-            body,
-        );
+        for _ in 0..pending.len() {
+            let mut changed = false;
+            for pending_def in &pending {
+                let return_type = self.infer_function_return_type(pending_def.body);
+                let current_scope = self
+                    .function_scopes
+                    .last_mut()
+                    .expect("function scope stack should never be empty");
+                let sig = &mut current_scope[pending_def.scope_index];
+                debug_assert_eq!(sig.name, pending_def.name);
+                debug_assert!(std::ptr::eq(sig.name_span, pending_def.name_span));
+                debug_assert!(std::ptr::eq(sig.param_names, pending_def.params.params));
+                if sig.return_type != return_type {
+                    sig.return_type = return_type;
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    fn check_function_body(&mut self, params: ParamListRef<'ast>, body: BlockRef<'ast>) {
+        let Some(function_id) = self.predeclared_function_id(body) else {
+            return;
+        };
         if let Some(stmt) = self.current_stmt {
             self.facts.set_function_def_stmt(function_id, stmt);
         }
-
-        // Add function to current function scope
-        self.function_scopes.last_mut().expect("function scope stack should never be empty").push(
-            FunctionSig {
-                name,
-                id: function_id,
-                name_span,
-                param_names: params.params,
-                return_type,
-            },
-        );
 
         // Set current function context for return validation
         let prev_owner = self.current_owner;

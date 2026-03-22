@@ -364,6 +364,35 @@ fn test_function_call_arity() {
 }
 
 #[test]
+fn test_forward_function_reference_in_same_block() {
+    assert_resolve!(
+        r"
+        do step_a(n) start
+            return step_b(n add 1)
+        end
+
+        do step_b(n) start
+            return n times 2
+        end
+
+        shout(step_a(5))
+        "
+    );
+}
+
+#[test]
+fn test_top_level_call_before_definition() {
+    assert_resolve!(
+        r"
+        shout(foo())
+        do foo() start
+            return 42
+        end
+        "
+    );
+}
+
+#[test]
 fn test_return_outside_function() {
     assert_resolve!("return 42", SemanticError::UnreachableCode);
 }

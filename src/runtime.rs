@@ -433,35 +433,7 @@ impl<'a> Runtime<'a> {
                 Ok(ExecFlow::Continue)
             }
             Stmt::Block { block, .. } => self.exec_block_with_flow(block),
-            Stmt::FunctionDef { name, params, body, .. } => {
-                let bound_function = self.facts().and_then(|facts| {
-                    facts.function_by_body(body).map(|id| (id, facts.function(id)))
-                });
-                let id = bound_function.map(|(function_id, _)| function_id);
-                if let Some(function_id) = id
-                    && self.function_is_pruned(function_id)
-                {
-                    return Ok(ExecFlow::Continue);
-                }
-
-                let func_def = if let Some((function_id, info)) = bound_function {
-                    FunctionDef {
-                        id: Some(function_id),
-                        name: info.name,
-                        params: info
-                            .params
-                            .expect("User-defined function metadata should include parameters"),
-                        body: info.body,
-                    }
-                } else {
-                    FunctionDef { id: None, name, params, body }
-                };
-                self.function_scopes
-                    .last_mut()
-                    .expect("Runtime should always execute inside a function scope")
-                    .push(func_def);
-                Ok(ExecFlow::Continue)
-            }
+            Stmt::FunctionDef { .. } => Ok(ExecFlow::Continue),
             Stmt::Return { expr, .. } => {
                 let val =
                     if let Some(expr_ref) = expr { self.eval_expr(expr_ref)? } else { Value::Null };
@@ -479,6 +451,7 @@ impl<'a> Runtime<'a> {
     #[inline]
     fn exec_block_with_flow(&mut self, block: BlockRef<'a>) -> Result<ExecFlow<'a>, RuntimeError> {
         self.push_scope_with_capacity(0, self.frame);
+        self.hoist_block_functions(block);
         for stmt in block.stmts {
             if self.stmt_is_pruned(stmt) {
                 #[cfg(test)]
@@ -500,6 +473,44 @@ impl<'a> Runtime<'a> {
         }
         self.pop_scope();
         Ok(ExecFlow::Continue)
+    }
+
+    fn hoist_block_functions(&mut self, block: BlockRef<'a>) {
+        for stmt in block.stmts {
+            let Stmt::FunctionDef { name, params, body, .. } = stmt else {
+                continue;
+            };
+            self.register_function(name, params, body);
+        }
+    }
+
+    fn register_function(&mut self, name: &'a str, params: ParamListRef<'a>, body: BlockRef<'a>) {
+        let bound_function = self
+            .facts()
+            .and_then(|facts| facts.function_by_body(body).map(|id| (id, facts.function(id))));
+        let id = bound_function.map(|(function_id, _)| function_id);
+        if let Some(function_id) = id
+            && self.function_is_pruned(function_id)
+        {
+            return;
+        }
+
+        let func_def = if let Some((function_id, info)) = bound_function {
+            FunctionDef {
+                id: Some(function_id),
+                name: info.name,
+                params: info
+                    .params
+                    .expect("User-defined function metadata should include parameters"),
+                body: info.body,
+            }
+        } else {
+            FunctionDef { id: None, name, params, body }
+        };
+        self.function_scopes
+            .last_mut()
+            .expect("Runtime should always execute inside a function scope")
+            .push(func_def);
     }
 
     /// Pops the innermost scope and returns pool slots for any

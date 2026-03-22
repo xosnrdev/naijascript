@@ -387,8 +387,41 @@ fn function_definition_and_call() {
 }
 
 #[test]
+fn function_call_before_definition() {
+    assert_runtime!(
+        "shout(double(21)) do double(n) start return n times 2 end",
+        output: vec![Value::Number(42.0)]
+    );
+}
+
+#[test]
 fn function_with_parameters() {
     assert_runtime!("do sum(a, b) start shout(a add b) end sum(3, 4)", output: vec![Value::Number(7.0)]);
+}
+
+#[test]
+fn mutual_recursion_across_forward_reference() {
+    assert_runtime!(
+        r"
+        do is_even(n) start
+            if to say (n na 0) start
+                return true
+            end
+            return is_odd(n minus 1)
+        end
+
+        do is_odd(n) start
+            if to say (n na 0) start
+                return false
+            end
+            return is_even(n minus 1)
+        end
+
+        shout(is_even(10))
+        shout(is_odd(9))
+        ",
+        output: vec![Value::Bool(true), Value::Bool(true)]
+    );
 }
 
 #[test]

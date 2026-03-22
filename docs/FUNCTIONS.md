@@ -57,6 +57,17 @@ make x get add(2, 3)
 shout("x = {x}")
 ```
 
+Function definitions are visible throughout the block where they are declared. That means
+same-block forward references and mutual recursion are valid:
+
+```naijascript
+shout(double(21))
+
+do double(n) start
+    return n times 2
+end
+```
+
 ## Scope and locals
 
 Variables declared with `make` inside a function are local to that function. They do not affect the caller’s scope unless returned and assigned:

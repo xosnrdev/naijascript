@@ -256,9 +256,13 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
         kind: LocalKind,
     ) -> LocalId {
         let id = LocalId(self.locals.len() as u32);
+        let function = &mut self.functions[owner.0 as usize];
+        if function.locals_len == 0 {
+            function.locals_start = id.0;
+        }
         self.locals.push(LocalInfo { name, owner, declaring_scope, decl_span, decl_stmt, kind });
         self.scope_locals[declaring_scope.0 as usize].push(id);
-        self.functions[owner.0 as usize].locals_len += 1;
+        function.locals_len += 1;
         id
     }
 
