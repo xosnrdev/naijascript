@@ -10,6 +10,8 @@ pub struct AnalysisCaps {
     pub max_locals: u32,
     pub max_scopes: u32,
     pub max_statements: u32,
+    pub max_total_ops: u32,
+    pub max_ops_per_function: u32,
     pub max_total_blocks: u32,
     pub max_blocks_per_function: u32,
     pub max_direct_user_calls: u32,
@@ -23,6 +25,8 @@ pub const DEFAULT_CAPS: AnalysisCaps = AnalysisCaps {
     max_locals: 131_072,
     max_scopes: 131_072,
     max_statements: 262_144,
+    max_total_ops: 262_144,
+    max_ops_per_function: 262_144,
     max_total_blocks: 524_288,
     max_blocks_per_function: 65_536,
     max_direct_user_calls: 262_144,
@@ -89,6 +93,25 @@ pub fn first_exceeded_limit(
         });
     }
 
+    let total_ops = u64::from(counts.total_ops);
+    if total_ops > u64::from(caps.max_total_ops) {
+        return Some(AnalysisLimit {
+            metric: "cfg ops",
+            observed: total_ops,
+            limit: u64::from(caps.max_total_ops),
+        });
+    }
+
+    if let Some(ops_per_function) = counts.function_ops.iter().copied().map(u64::from).max()
+        && ops_per_function > u64::from(caps.max_ops_per_function)
+    {
+        return Some(AnalysisLimit {
+            metric: "ops in one function",
+            observed: ops_per_function,
+            limit: u64::from(caps.max_ops_per_function),
+        });
+    }
+
     let total_blocks = u64::from(counts.total_blocks);
     if total_blocks > u64::from(caps.max_total_blocks) {
         return Some(AnalysisLimit {
@@ -148,10 +171,19 @@ fn summary_event_bound(facts: &ProgramFacts<'_, '_>) -> u64 {
 }
 
 fn liveness_event_bound(facts: &ProgramFacts<'_, '_>, counts: &ProgramCounts<'_>) -> u64 {
-    counts.function_blocks.iter().enumerate().fold(0_u64, |events, (function_idx, block_count)| {
-        let function = crate::analysis::ids::FunctionId(function_idx as u32);
-        let local_range = facts.local_range(function);
-        let local_count = u64::from(local_range.end - local_range.start);
-        events.saturating_add(u64::from(*block_count).saturating_mul(local_count))
-    })
+    counts.function_blocks.iter().zip(&counts.function_ops).enumerate().fold(
+        0_u64,
+        |events, (function_idx, (block_count, op_count))| {
+            let function = crate::analysis::ids::FunctionId(function_idx as u32);
+            let local_range = facts.local_range(function);
+            let local_count = u64::from(local_range.end - local_range.start);
+
+            // One fixpoint sweep touches block-sized live-in/out sets, and the backward walk
+            // touches one live set per op. This bound stays conservative without depending on
+            // temporary allocation counts.
+            let function_events =
+                (u64::from(*block_count).saturating_mul(2)).saturating_add(u64::from(*op_count));
+            events.saturating_add(function_events.saturating_mul(local_count))
+        },
+    )
 }

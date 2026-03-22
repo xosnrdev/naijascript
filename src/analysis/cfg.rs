@@ -2,8 +2,9 @@
 
 use std::fmt::Write;
 
+use crate::analysis::effects::ExprClass;
 use crate::analysis::facts::ProgramFacts;
-use crate::analysis::ids::{BlockId, FunctionId, StmtId};
+use crate::analysis::ids::{BlockId, FunctionId, LocalId, OpId, ScopeId, StmtId};
 use crate::arena::{Arena, ArenaString};
 use crate::diagnostics::Span;
 use crate::syntax::parser::{BlockRef, Stmt, StmtRef};
@@ -41,34 +42,82 @@ pub struct StmtInfo<'ast> {
     pub parent: Option<StmtId>,
     pub span: Span,
     pub kind: StmtKind,
+    pub block: BlockId,
+    pub op: OpId,
+}
+
+/// One source statement lowered into the linear op stream of a function.
+#[derive(Debug)]
+pub struct LinearOp<'arena> {
+    pub id: OpId,
+    pub stmt: StmtId,
+    pub reads: Vec<LocalId, &'arena Arena>,
+    pub writes: Vec<LocalId, &'arena Arena>,
+    pub direct_callees: Vec<FunctionId, &'arena Arena>,
+    pub expr_class: ExprClass,
+    pub span: Span,
 }
 
 /// Terminator of a basic block.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Terminator {
-    Goto { target: BlockId },
-    Branch { then_target: BlockId, else_target: BlockId, span: Span },
-    Return { span: Span },
-    Break { target: Option<BlockId>, span: Span },
-    Continue { target: Option<BlockId>, span: Span },
+#[derive(Debug)]
+pub enum Terminator<'arena> {
+    Goto {
+        target: BlockId,
+    },
+    Branch {
+        stmt: StmtId,
+        cond_reads: Vec<LocalId, &'arena Arena>,
+        cond_class: ExprClass,
+        then_target: BlockId,
+        else_target: BlockId,
+        span: Span,
+    },
+    Return {
+        stmt: StmtId,
+        reads: Vec<LocalId, &'arena Arena>,
+        expr_class: ExprClass,
+        span: Span,
+    },
+    Break {
+        stmt: StmtId,
+        target: Option<BlockId>,
+        span: Span,
+    },
+    Continue {
+        stmt: StmtId,
+        target: Option<BlockId>,
+        span: Span,
+    },
     Exit,
 }
 
-impl Terminator {
+impl Terminator<'_> {
     /// Visits all successor blocks.
-    pub fn successors(self, mut f: impl FnMut(BlockId)) {
+    pub fn successors(&self, mut f: impl FnMut(BlockId)) {
         match self {
-            Terminator::Goto { target } => f(target),
+            Terminator::Goto { target } => f(*target),
             Terminator::Branch { then_target, else_target, .. } => {
-                f(then_target);
-                f(else_target);
+                f(*then_target);
+                f(*else_target);
             }
             Terminator::Break { target, .. } | Terminator::Continue { target, .. } => {
                 if let Some(target) = target {
-                    f(target);
+                    f(*target);
                 }
             }
             Terminator::Return { .. } | Terminator::Exit => {}
+        }
+    }
+
+    /// Returns the statement that introduced this control transfer, if any.
+    #[must_use]
+    pub const fn stmt(&self) -> Option<StmtId> {
+        match self {
+            Terminator::Goto { .. } | Terminator::Exit => None,
+            Terminator::Branch { stmt, .. }
+            | Terminator::Return { stmt, .. }
+            | Terminator::Break { stmt, .. }
+            | Terminator::Continue { stmt, .. } => Some(*stmt),
         }
     }
 }
@@ -76,8 +125,10 @@ impl Terminator {
 /// Straight-line region in the side CFG.
 #[derive(Debug)]
 pub struct BasicBlock<'arena> {
-    pub stmts: Vec<StmtId, &'arena Arena>,
-    pub terminator: Option<Terminator>,
+    pub first_op: u32,
+    pub op_count: u32,
+    pub kill: Vec<LocalId, &'arena Arena>,
+    pub terminator: Option<Terminator<'arena>>,
     pub unreachable_cause: Option<UnreachableCause>,
 }
 
@@ -89,6 +140,23 @@ pub struct CfgFunction<'arena> {
     pub entry: BlockId,
     pub exit: BlockId,
     pub blocks: Vec<BasicBlock<'arena>, &'arena Arena>,
+    pub ops: Vec<LinearOp<'arena>, &'arena Arena>,
+}
+
+impl<'arena> CfgFunction<'arena> {
+    /// Returns the linear ops that belong to the given block.
+    #[must_use]
+    pub fn block_ops(&self, block: BlockId) -> &[LinearOp<'arena>] {
+        self.block_ops_by_ref(&self.blocks[block.0 as usize])
+    }
+
+    /// Returns the linear ops that belong to one block record.
+    #[must_use]
+    pub fn block_ops_by_ref(&self, block: &BasicBlock<'arena>) -> &[LinearOp<'arena>] {
+        let start = block.first_op as usize;
+        let end = start + block.op_count as usize;
+        &self.ops[start..end]
+    }
 }
 
 /// CFG for the whole program.
@@ -102,7 +170,9 @@ pub struct CfgProgram<'ast, 'arena> {
 #[derive(Debug)]
 pub struct ProgramCounts<'arena> {
     pub function_blocks: Vec<u32, &'arena Arena>,
+    pub function_ops: Vec<u32, &'arena Arena>,
     pub total_blocks: u32,
+    pub total_ops: u32,
     pub total_statements: u32,
 }
 
@@ -116,6 +186,7 @@ struct Cursor {
 struct LoopContext {
     break_target: BlockId,
     continue_target: BlockId,
+    body_scope: ScopeId,
 }
 
 struct FunctionBuilder<'ast, 'facts, 'arena> {
@@ -123,13 +194,16 @@ struct FunctionBuilder<'ast, 'facts, 'arena> {
     function: FunctionId,
     body_parent_stmt: Option<StmtId>,
     expected_blocks: u32,
+    expected_ops: u32,
     blocks: Vec<BasicBlock<'arena>, &'arena Arena>,
+    ops: Vec<LinearOp<'arena>, &'arena Arena>,
     arena: &'arena Arena,
 }
 
 struct ProgramBuilder<'ast, 'facts, 'count, 'arena> {
     facts: &'facts ProgramFacts<'ast, 'ast>,
     block_counts: &'count [u32],
+    op_counts: &'count [u32],
     cfgs: Vec<Option<CfgFunction<'arena>>, &'arena Arena>,
     stmts: Vec<StmtInfo<'ast>, &'arena Arena>,
     arena: &'arena Arena,
@@ -142,11 +216,13 @@ struct CountCursor {
 
 struct CountFunctionBuilder {
     blocks: u32,
+    ops: u32,
 }
 
 struct CountProgramBuilder<'ast, 'facts, 'arena> {
     facts: &'facts ProgramFacts<'ast, 'ast>,
     function_blocks: Vec<u32, &'arena Arena>,
+    function_ops: Vec<u32, &'arena Arena>,
     counted: Vec<bool, &'arena Arena>,
     arena: &'arena Arena,
 }
@@ -156,6 +232,7 @@ impl<'ast, 'facts, 'count, 'arena> ProgramBuilder<'ast, 'facts, 'count, 'arena> 
         facts: &'facts ProgramFacts<'ast, 'ast>,
         total_statements: u32,
         block_counts: &'count [u32],
+        op_counts: &'count [u32],
         arena: &'arena Arena,
     ) -> Self {
         let mut cfgs = Vec::with_capacity_in(facts.functions.len(), arena);
@@ -165,6 +242,7 @@ impl<'ast, 'facts, 'count, 'arena> ProgramBuilder<'ast, 'facts, 'count, 'arena> 
         Self {
             facts,
             block_counts,
+            op_counts,
             cfgs,
             stmts: Vec::with_capacity_in(total_statements as usize, arena),
             arena,
@@ -193,6 +271,7 @@ impl<'ast, 'facts, 'count, 'arena> ProgramBuilder<'ast, 'facts, 'count, 'arena> 
             function,
             body_parent_stmt,
             self.block_counts[function.0 as usize],
+            self.op_counts[function.0 as usize],
             self.arena,
         );
         let cfg = builder.build(info.body, self);
@@ -206,6 +285,7 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
         function: FunctionId,
         body_parent_stmt: Option<StmtId>,
         block_capacity: u32,
+        op_capacity: u32,
         arena: &'arena Arena,
     ) -> Self {
         Self {
@@ -213,7 +293,9 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
             function,
             body_parent_stmt,
             expected_blocks: block_capacity,
+            expected_ops: op_capacity,
             blocks: Vec::with_capacity_in(block_capacity as usize, arena),
+            ops: Vec::with_capacity_in(op_capacity as usize, arena),
             arena,
         }
     }
@@ -223,6 +305,13 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
         body: BlockRef<'ast>,
         program: &mut ProgramBuilder<'ast, 'facts, '_, 'arena>,
     ) -> CfgFunction<'arena> {
+        let root_scope = self
+            .facts
+            .scope_of_block(body)
+            .expect("Each function body should map to a lexical scope");
+        let mut scope_stack = Vec::new_in(self.arena);
+        scope_stack.push(root_scope);
+
         let entry = self.new_block(None);
         let exit = self.new_block(None);
         let cursor = self.lower_block(
@@ -230,6 +319,7 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
             Cursor { block: Some(entry), dead_cause: None },
             None,
             self.body_parent_stmt,
+            &mut scope_stack,
             program,
         );
 
@@ -242,6 +332,11 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
             self.expected_blocks,
             "Count pass and CFG lowering should agree on block counts",
         );
+        debug_assert_eq!(
+            self.ops.len() as u32,
+            self.expected_ops,
+            "Count pass and CFG lowering should agree on op counts",
+        );
 
         CfgFunction {
             function: self.function,
@@ -249,6 +344,7 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
             entry,
             exit,
             blocks: std::mem::replace(&mut self.blocks, Vec::new_in(self.arena)),
+            ops: std::mem::replace(&mut self.ops, Vec::new_in(self.arena)),
         }
     }
 
@@ -258,10 +354,16 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
         mut cursor: Cursor,
         loop_ctx: Option<LoopContext>,
         parent_stmt: Option<StmtId>,
+        scope_stack: &mut Vec<ScopeId, &'arena Arena>,
         program: &mut ProgramBuilder<'ast, 'facts, '_, 'arena>,
     ) -> Cursor {
+        debug_assert_eq!(
+            scope_stack.last().copied(),
+            self.facts.scope_of_block(block),
+            "CFG lowering should track the active lexical scope stack",
+        );
         for &stmt in block.stmts {
-            cursor = self.lower_stmt(stmt, cursor, loop_ctx, parent_stmt, program);
+            cursor = self.lower_stmt(stmt, cursor, loop_ctx, parent_stmt, scope_stack, program);
         }
         cursor
     }
@@ -272,6 +374,7 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
         mut cursor: Cursor,
         loop_ctx: Option<LoopContext>,
         parent_stmt: Option<StmtId>,
+        scope_stack: &mut Vec<ScopeId, &'arena Arena>,
         program: &mut ProgramBuilder<'ast, 'facts, '_, 'arena>,
     ) -> Cursor {
         match stmt {
@@ -280,14 +383,12 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
             | Stmt::AssignIndex { span, .. }
             | Stmt::Expression { span, .. } => {
                 let block = self.ensure_block(&mut cursor);
-                let stmt_id = self.push_stmt(program, stmt, *span, parent_stmt);
-                self.blocks[block.0 as usize].stmts.push(stmt_id);
+                let _ = self.push_stmt(program, block, stmt, *span, parent_stmt);
                 cursor
             }
             Stmt::FunctionDef { body, span, .. } => {
                 let block = self.ensure_block(&mut cursor);
-                let stmt_id = self.push_stmt(program, stmt, *span, parent_stmt);
-                self.blocks[block.0 as usize].stmts.push(stmt_id);
+                let stmt_id = self.push_stmt(program, block, stmt, *span, parent_stmt);
                 if let Some(function) = self.facts.function_by_body(body) {
                     program.build_function(function, Some(stmt_id));
                 }
@@ -295,28 +396,36 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
             }
             Stmt::Return { span, .. } => {
                 let block = self.ensure_block(&mut cursor);
-                let stmt_id = self.push_stmt(program, stmt, *span, parent_stmt);
-                self.blocks[block.0 as usize].stmts.push(stmt_id);
-                self.set_terminator(block, Terminator::Return { span: *span });
+                let stmt_id = self.push_stmt(program, block, stmt, *span, parent_stmt);
+                self.set_terminator(block, self.return_terminator(stmt_id, *span));
                 Cursor { block: None, dead_cause: Some(UnreachableCause::Return) }
             }
             Stmt::Break { span } => {
                 let block = self.ensure_block(&mut cursor);
-                let stmt_id = self.push_stmt(program, stmt, *span, parent_stmt);
-                self.blocks[block.0 as usize].stmts.push(stmt_id);
+                let stmt_id = self.push_stmt(program, block, stmt, *span, parent_stmt);
+                if let Some(loop_ctx) = loop_ctx {
+                    self.kill_scopes_through(block, scope_stack, loop_ctx.body_scope);
+                }
                 self.set_terminator(
                     block,
-                    Terminator::Break { target: loop_ctx.map(|ctx| ctx.break_target), span: *span },
+                    Terminator::Break {
+                        stmt: stmt_id,
+                        target: loop_ctx.map(|ctx| ctx.break_target),
+                        span: *span,
+                    },
                 );
                 Cursor { block: None, dead_cause: Some(UnreachableCause::Break) }
             }
             Stmt::Continue { span } => {
                 let block = self.ensure_block(&mut cursor);
-                let stmt_id = self.push_stmt(program, stmt, *span, parent_stmt);
-                self.blocks[block.0 as usize].stmts.push(stmt_id);
+                let stmt_id = self.push_stmt(program, block, stmt, *span, parent_stmt);
+                if let Some(loop_ctx) = loop_ctx {
+                    self.kill_scopes_through(block, scope_stack, loop_ctx.body_scope);
+                }
                 self.set_terminator(
                     block,
                     Terminator::Continue {
+                        stmt: stmt_id,
                         target: loop_ctx.map(|ctx| ctx.continue_target),
                         span: *span,
                     },
@@ -324,11 +433,19 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
                 Cursor { block: None, dead_cause: Some(UnreachableCause::Continue) }
             }
             Stmt::Block { block: nested, span } => {
+                let nested_scope = self
+                    .facts
+                    .scope_of_block(nested)
+                    .expect("Each lexical block should map to a scope");
                 let block = self.ensure_block(&mut cursor);
-                let stmt_id = self.push_stmt(program, stmt, *span, parent_stmt);
-                self.blocks[block.0 as usize].stmts.push(stmt_id);
+                let stmt_id = self.push_stmt(program, block, stmt, *span, parent_stmt);
+                scope_stack.push(nested_scope);
                 let nested_cursor =
-                    self.lower_block(nested, cursor, loop_ctx, Some(stmt_id), program);
+                    self.lower_block(nested, cursor, loop_ctx, Some(stmt_id), scope_stack, program);
+                scope_stack.pop();
+                if let Some(block) = nested_cursor.block {
+                    self.add_scope_kills(block, nested_scope);
+                }
                 if nested_cursor.block.is_some() {
                     nested_cursor
                 } else {
@@ -336,36 +453,52 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
                 }
             }
             Stmt::If { then_b, else_b, span, .. } => {
+                let then_scope = self
+                    .facts
+                    .scope_of_block(then_b)
+                    .expect("Each then-block should map to a scope");
                 let block = self.ensure_block(&mut cursor);
-                let stmt_id = self.push_stmt(program, stmt, *span, parent_stmt);
-                self.blocks[block.0 as usize].stmts.push(stmt_id);
+                let stmt_id = self.push_stmt(program, block, stmt, *span, parent_stmt);
 
                 let then_entry = self.new_block(None);
                 let else_entry = self.new_block(None);
                 self.set_terminator(
                     block,
-                    Terminator::Branch {
-                        then_target: then_entry,
-                        else_target: else_entry,
-                        span: *span,
-                    },
+                    self.branch_terminator(stmt_id, *span, then_entry, else_entry),
                 );
 
+                scope_stack.push(then_scope);
                 let then_cursor = self.lower_block(
                     then_b,
                     Cursor { block: Some(then_entry), dead_cause: None },
                     loop_ctx,
                     Some(stmt_id),
+                    scope_stack,
                     program,
                 );
+                scope_stack.pop();
+                if let Some(block) = then_cursor.block {
+                    self.add_scope_kills(block, then_scope);
+                }
                 let else_cursor = if let Some(else_b) = else_b {
-                    self.lower_block(
+                    let else_scope = self
+                        .facts
+                        .scope_of_block(else_b)
+                        .expect("Each else-block should map to a scope");
+                    scope_stack.push(else_scope);
+                    let else_cursor = self.lower_block(
                         else_b,
                         Cursor { block: Some(else_entry), dead_cause: None },
                         loop_ctx,
                         Some(stmt_id),
+                        scope_stack,
                         program,
-                    )
+                    );
+                    scope_stack.pop();
+                    if let Some(block) = else_cursor.block {
+                        self.add_scope_kills(block, else_scope);
+                    }
+                    else_cursor
                 } else {
                     Cursor { block: Some(else_entry), dead_cause: None }
                 };
@@ -393,29 +526,35 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
                 }
             }
             Stmt::Loop { body, span, .. } => {
+                let body_scope =
+                    self.facts.scope_of_block(body).expect("Each loop body should map to a scope");
                 let pre_loop = self.ensure_block(&mut cursor);
                 let cond_block = self.new_block(None);
                 self.set_terminator(pre_loop, Terminator::Goto { target: cond_block });
 
-                let stmt_id = self.push_stmt(program, stmt, *span, parent_stmt);
-                self.blocks[cond_block.0 as usize].stmts.push(stmt_id);
+                let stmt_id = self.push_stmt(program, cond_block, stmt, *span, parent_stmt);
 
                 let body_entry = self.new_block(None);
                 let exit = self.new_block(None);
                 self.set_terminator(
                     cond_block,
-                    Terminator::Branch { then_target: body_entry, else_target: exit, span: *span },
+                    self.branch_terminator(stmt_id, *span, body_entry, exit),
                 );
 
-                let loop_ctx = LoopContext { break_target: exit, continue_target: cond_block };
+                let loop_ctx =
+                    LoopContext { break_target: exit, continue_target: cond_block, body_scope };
+                scope_stack.push(body_scope);
                 let body_cursor = self.lower_block(
                     body,
                     Cursor { block: Some(body_entry), dead_cause: None },
                     Some(loop_ctx),
                     Some(stmt_id),
+                    scope_stack,
                     program,
                 );
+                scope_stack.pop();
                 if let Some(body_tail) = body_cursor.block {
+                    self.add_scope_kills(body_tail, body_scope);
                     self.set_terminator(body_tail, Terminator::Goto { target: cond_block });
                 }
 
@@ -427,6 +566,7 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
     fn push_stmt(
         &mut self,
         program: &mut ProgramBuilder<'ast, 'facts, '_, 'arena>,
+        block: BlockId,
         stmt: StmtRef<'ast>,
         span: Span,
         parent: Option<StmtId>,
@@ -437,12 +577,15 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
             "Resolver and CFG traversals should assign statement ids in the same order",
         );
         debug_assert_eq!(self.facts.stmt_effect(id).function, self.function);
+        let op = self.push_op(block, id, span);
         program.stmts.push(StmtInfo {
             stmt,
             function: self.function,
             parent,
             span,
             kind: stmt_kind(stmt),
+            block,
+            op,
         });
         id
     }
@@ -450,7 +593,9 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
     fn new_block(&mut self, cause: Option<UnreachableCause>) -> BlockId {
         let id = BlockId(self.blocks.len() as u32);
         self.blocks.push(BasicBlock {
-            stmts: Vec::new_in(self.arena),
+            first_op: 0,
+            op_count: 0,
+            kill: Vec::new_in(self.arena),
             terminator: None,
             unreachable_cause: cause,
         });
@@ -467,10 +612,79 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
         }
     }
 
-    fn set_terminator(&mut self, block: BlockId, terminator: Terminator) {
+    fn push_op(&mut self, block: BlockId, stmt: StmtId, span: Span) -> OpId {
+        let op = LinearOp::from_stmt(self.facts, stmt, span, self.arena);
+        let op_id = op.id;
+        self.append_op_to_block(block, op);
+        op_id
+    }
+
+    fn append_op_to_block(&mut self, block: BlockId, op: LinearOp<'arena>) {
+        let block = &mut self.blocks[block.0 as usize];
+        if block.op_count == 0 {
+            block.first_op = self.ops.len() as u32;
+        } else {
+            debug_assert_eq!(
+                block.first_op + block.op_count,
+                self.ops.len() as u32,
+                "Lowering should append each block's ops as one contiguous run",
+            );
+        }
+        block.op_count += 1;
+        self.ops.push(op);
+    }
+
+    fn set_terminator(&mut self, block: BlockId, terminator: Terminator<'arena>) {
         let slot = &mut self.blocks[block.0 as usize].terminator;
         if slot.is_none() {
             *slot = Some(terminator);
+        }
+    }
+
+    fn add_scope_kills(&mut self, block: BlockId, scope: ScopeId) {
+        let kill = &mut self.blocks[block.0 as usize].kill;
+        for &local in self.facts.scope_locals(scope) {
+            if self.facts.locals[local.0 as usize].owner == self.function && !kill.contains(&local)
+            {
+                kill.push(local);
+            }
+        }
+    }
+
+    fn kill_scopes_through(&mut self, block: BlockId, scope_stack: &[ScopeId], boundary: ScopeId) {
+        for &scope in scope_stack.iter().rev() {
+            self.add_scope_kills(block, scope);
+            if scope == boundary {
+                break;
+            }
+        }
+    }
+
+    fn branch_terminator(
+        &self,
+        stmt: StmtId,
+        span: Span,
+        then_target: BlockId,
+        else_target: BlockId,
+    ) -> Terminator<'arena> {
+        let effect = self.facts.stmt_effect(stmt);
+        Terminator::Branch {
+            stmt,
+            cond_reads: clone_slice_in(&effect.reads, self.arena),
+            cond_class: effect.expr_class,
+            then_target,
+            else_target,
+            span,
+        }
+    }
+
+    fn return_terminator(&self, stmt: StmtId, span: Span) -> Terminator<'arena> {
+        let effect = self.facts.stmt_effect(stmt);
+        Terminator::Return {
+            stmt,
+            reads: clone_slice_in(&effect.reads, self.arena),
+            expr_class: effect.expr_class,
+            span,
         }
     }
 }
@@ -480,18 +694,25 @@ impl<'ast, 'facts, 'arena> CountProgramBuilder<'ast, 'facts, 'arena> {
         let mut function_blocks = Vec::with_capacity_in(facts.functions.len(), arena);
         function_blocks.resize(facts.functions.len(), 0);
 
+        let mut function_ops = Vec::with_capacity_in(facts.functions.len(), arena);
+        function_ops.resize(facts.functions.len(), 0);
+
         let mut counted = Vec::with_capacity_in(facts.functions.len(), arena);
         counted.resize(facts.functions.len(), false);
 
-        Self { facts, function_blocks, counted, arena }
+        Self { facts, function_blocks, function_ops, counted, arena }
     }
 
     fn build(mut self) -> ProgramCounts<'arena> {
         self.count_function(self.facts.root_function);
         let total_blocks = self.function_blocks.iter().copied().sum();
+        let total_ops = self.function_ops.iter().copied().sum();
+        debug_assert_eq!(total_ops, self.facts.stmt_effects.len() as u32);
         ProgramCounts {
             function_blocks: self.function_blocks,
+            function_ops: self.function_ops,
             total_blocks,
+            total_ops,
             total_statements: self.facts.stmt_effects.len() as u32,
         }
     }
@@ -504,9 +725,10 @@ impl<'ast, 'facts, 'arena> CountProgramBuilder<'ast, 'facts, 'arena> {
         *slot = true;
 
         let info = self.facts.function(function);
-        let mut builder = CountFunctionBuilder { blocks: 0 };
-        let blocks = builder.count(info.body);
+        let mut builder = CountFunctionBuilder { blocks: 0, ops: 0 };
+        let (blocks, ops) = builder.count(info.body);
         self.function_blocks[function.0 as usize] = blocks;
+        self.function_ops[function.0 as usize] = ops;
 
         // The explicit stack bounds nested-function discovery without recursive AST walks.
         let mut stack = Vec::new_in(self.arena);
@@ -548,10 +770,11 @@ impl<'ast, 'facts, 'arena> CountProgramBuilder<'ast, 'facts, 'arena> {
 }
 
 impl CountFunctionBuilder {
-    fn count(&mut self, body: BlockRef<'_>) -> u32 {
+    fn count(&mut self, body: BlockRef<'_>) -> (u32, u32) {
         self.blocks = 2;
+        self.ops = 0;
         let _ = self.count_block(body, CountCursor { has_block: true }, false);
-        self.blocks
+        (self.blocks, self.ops)
     }
 
     fn count_block(
@@ -572,6 +795,7 @@ impl CountFunctionBuilder {
         mut cursor: CountCursor,
         in_loop: bool,
     ) -> CountCursor {
+        self.ops += 1;
         match stmt {
             Stmt::Assign { .. }
             | Stmt::AssignExisting { .. }
@@ -674,7 +898,14 @@ pub fn build_program_with_counts<'ast, 'arena>(
     counts: &ProgramCounts<'_>,
     arena: &'arena Arena,
 ) -> CfgProgram<'ast, 'arena> {
-    ProgramBuilder::new(facts, counts.total_statements, &counts.function_blocks, arena).build()
+    ProgramBuilder::new(
+        facts,
+        counts.total_statements,
+        &counts.function_blocks,
+        &counts.function_ops,
+        arena,
+    )
+    .build()
 }
 
 /// Builds the analysis CFG for the given program.
@@ -699,8 +930,12 @@ pub fn debug_dump_program<'ast, 'arena>(
         let info = facts.function(function_id);
         let _ = writeln!(
             out,
-            "fn {} {} entry=b{} exit=b{}",
-            function_id.0, info.name, function.entry.0, function.exit.0
+            "fn {} {} entry=b{} exit=b{} ops={}",
+            function_id.0,
+            info.name,
+            function.entry.0,
+            function.exit.0,
+            function.ops.len()
         );
         for (block_idx, block) in function.blocks.iter().enumerate() {
             let cause = match block.unreachable_cause {
@@ -710,45 +945,88 @@ pub fn debug_dump_program<'ast, 'arena>(
                 Some(UnreachableCause::NoFallthrough) => " no-fallthrough",
                 None => "",
             };
-            let _ = writeln!(out, "  b{block_idx}{cause}");
-            for &stmt_id in &block.stmts {
-                let stmt = &program.stmts[stmt_id.0 as usize];
+            let _ = writeln!(
+                out,
+                "  b{block_idx}{cause} first_op={} op_count={}",
+                block.first_op, block.op_count
+            );
+            for op in function.block_ops_by_ref(block) {
+                let stmt = &program.stmts[op.stmt.0 as usize];
                 let _ = writeln!(
                     out,
-                    "    s{} {:?} {}..{}",
-                    stmt_id.0, stmt.kind, stmt.span.start, stmt.span.end
+                    "    o{} s{} {:?} {}..{}",
+                    op.id.0, op.stmt.0, stmt.kind, stmt.span.start, stmt.span.end
                 );
             }
+            if !block.kill.is_empty() {
+                let _ = write!(out, "    kill");
+                for &local in &block.kill {
+                    let _ = write!(out, " l{}", local.0);
+                }
+                let _ = writeln!(out);
+            }
             let _ = write!(out, "    term ");
-            write_terminator_label(&mut out, block.terminator);
+            write_terminator_label(&mut out, block.terminator.as_ref());
             let _ = writeln!(out);
         }
     }
     out
 }
 
-fn write_terminator_label(out: &mut ArenaString<'_>, terminator: Option<Terminator>) {
+fn write_terminator_label(out: &mut ArenaString<'_>, terminator: Option<&Terminator<'_>>) {
     match terminator {
         Some(Terminator::Goto { target }) => {
             let _ = write!(out, "goto b{}", target.0);
         }
-        Some(Terminator::Branch { then_target, else_target, .. }) => {
-            let _ = write!(out, "branch b{} b{}", then_target.0, else_target.0);
+        Some(Terminator::Branch { stmt, then_target, else_target, .. }) => {
+            let _ = write!(out, "branch s{} b{} b{}", stmt.0, then_target.0, else_target.0);
         }
-        Some(Terminator::Return { .. }) => out.push_str("return"),
-        Some(Terminator::Break { target, .. }) => match target {
+        Some(Terminator::Return { stmt, .. }) => {
+            let _ = write!(out, "return s{}", stmt.0);
+        }
+        Some(Terminator::Break { stmt, target, .. }) => match target {
             Some(target) => {
-                let _ = write!(out, "break b{}", target.0);
+                let _ = write!(out, "break s{} b{}", stmt.0, target.0);
             }
-            None => out.push_str("break <invalid>"),
+            None => {
+                let _ = write!(out, "break s{} <invalid>", stmt.0);
+            }
         },
-        Some(Terminator::Continue { target, .. }) => match target {
+        Some(Terminator::Continue { stmt, target, .. }) => match target {
             Some(target) => {
-                let _ = write!(out, "continue b{}", target.0);
+                let _ = write!(out, "continue s{} b{}", stmt.0, target.0);
             }
-            None => out.push_str("continue <invalid>"),
+            None => {
+                let _ = write!(out, "continue s{} <invalid>", stmt.0);
+            }
         },
         Some(Terminator::Exit) => out.push_str("exit"),
         None => out.push_str("<none>"),
     }
+}
+
+impl<'arena> LinearOp<'arena> {
+    fn from_stmt(
+        facts: &ProgramFacts<'_, '_>,
+        stmt: StmtId,
+        span: Span,
+        arena: &'arena Arena,
+    ) -> Self {
+        let effect = facts.stmt_effect(stmt);
+        Self {
+            id: OpId(stmt.0),
+            stmt,
+            reads: clone_slice_in(&effect.reads, arena),
+            writes: clone_slice_in(&effect.writes, arena),
+            direct_callees: clone_slice_in(&effect.direct_callees, arena),
+            expr_class: effect.expr_class,
+            span,
+        }
+    }
+}
+
+fn clone_slice_in<'arena, T: Copy>(items: &[T], arena: &'arena Arena) -> Vec<T, &'arena Arena> {
+    let mut cloned = Vec::with_capacity_in(items.len(), arena);
+    cloned.extend(items.iter().copied());
+    cloned
 }

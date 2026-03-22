@@ -1,7 +1,7 @@
 //! Forward reachability analysis over the side CFG.
 
 use crate::analysis::cfg::{CfgProgram, StmtKind, UnreachableCause};
-use crate::analysis::ids::{BlockId, StmtId};
+use crate::analysis::ids::StmtId;
 use crate::arena::Arena;
 use crate::diagnostics::Span;
 use crate::syntax::parser::StmtRef;
@@ -38,11 +38,11 @@ pub fn reachable_statement_mask<'arena>(
             *slot = true;
 
             let block_info = &function.blocks[block.0 as usize];
-            for stmt in &block_info.stmts {
-                stmt_reachable[stmt.0 as usize] = true;
+            for op in function.block_ops_by_ref(block_info) {
+                stmt_reachable[op.stmt.0 as usize] = true;
             }
 
-            if let Some(terminator) = block_info.terminator {
+            if let Some(terminator) = block_info.terminator.as_ref() {
                 terminator.successors(|successor| {
                     if !block_reachable[successor.0 as usize] {
                         worklist.push(successor);
@@ -74,9 +74,7 @@ pub fn unreachable_statements<'ast, 'arena>(
         }
 
         let function = &program.functions[info.function.0 as usize];
-        let block_id = statement_block(function, StmtId(stmt_idx as u32))
-            .expect("Each lowered statement should belong to a block");
-        let cause = function.blocks[block_id.0 as usize].unreachable_cause;
+        let cause = function.blocks[info.block.0 as usize].unreachable_cause;
 
         warnings.push(UnreachableStmt {
             stmt_id: StmtId(stmt_idx as u32),
@@ -87,17 +85,6 @@ pub fn unreachable_statements<'ast, 'arena>(
     }
 
     warnings
-}
-
-fn statement_block(
-    function: &crate::analysis::cfg::CfgFunction<'_>,
-    stmt: StmtId,
-) -> Option<BlockId> {
-    function
-        .blocks
-        .iter()
-        .enumerate()
-        .find_map(|(idx, block)| block.stmts.contains(&stmt).then_some(BlockId(idx as u32)))
 }
 
 fn unreachable_message(cause: Option<UnreachableCause>, kind: StmtKind) -> &'static str {

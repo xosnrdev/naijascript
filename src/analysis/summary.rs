@@ -3,11 +3,13 @@
 use crate::analysis::effects::ExprClass;
 use crate::analysis::facts::ProgramFacts;
 use crate::analysis::ids::{FunctionId, LocalId};
+use crate::analysis::limits::DEFAULT_CAPS;
 use crate::arena::Arena;
 
 /// Conservative summary for one function body.
 #[derive(Debug)]
 pub struct FunctionSummary<'arena> {
+    pub available: bool,
     pub direct_callees: Vec<FunctionId, &'arena Arena>,
     pub transitive_callees: Vec<FunctionId, &'arena Arena>,
     pub direct_capture_reads: Vec<LocalId, &'arena Arena>,
@@ -27,9 +29,40 @@ struct PendingVisit {
 type Component<'arena> = Vec<FunctionId, &'arena Arena>;
 type ComponentList<'arena> = Vec<Component<'arena>, &'arena Arena>;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BudgetExceeded;
+
+struct SummaryBudget {
+    remaining_events: u64,
+}
+
+impl SummaryBudget {
+    const fn new(max_events: u64) -> Self {
+        Self { remaining_events: max_events }
+    }
+
+    fn note_event(&mut self) -> Result<(), BudgetExceeded> {
+        if self.remaining_events == 0 {
+            return Err(BudgetExceeded);
+        }
+
+        self.remaining_events -= 1;
+        Ok(())
+    }
+}
+
 /// Computes function summaries for the resolved program.
 pub fn compute_summaries<'ast, 'arena>(
     facts: &ProgramFacts<'ast, 'ast>,
+    arena: &'arena Arena,
+) -> Vec<FunctionSummary<'arena>, &'arena Arena> {
+    compute_summaries_with_max_events(facts, DEFAULT_CAPS.max_summary_events, arena)
+}
+
+/// Computes function summaries for the resolved program using a bounded event budget.
+pub fn compute_summaries_with_max_events<'ast, 'arena>(
+    facts: &ProgramFacts<'ast, 'ast>,
+    max_events: u64,
     arena: &'arena Arena,
 ) -> Vec<FunctionSummary<'arena>, &'arena Arena> {
     let body_classes = compute_body_classes(facts, arena);
@@ -39,9 +72,18 @@ pub fn compute_summaries<'ast, 'arena>(
         compute_strongly_connected_components(&reverse_edges, &finish_order, arena);
     let component_order = compute_component_order(facts, &components, &component_ids, arena);
     let mut summaries = initialize_summaries(facts, &body_classes, arena);
+    let mut budget = SummaryBudget::new(max_events);
 
-    for &component_idx in &component_order {
-        summarize_component(&components[component_idx as usize], facts, &mut summaries);
+    let mut remaining = component_order.iter().copied();
+    while let Some(component_idx) = remaining.next() {
+        let component = &components[component_idx as usize];
+        if summarize_component(component, facts, &mut summaries, &mut budget).is_err() {
+            mark_component_unavailable(component, &mut summaries);
+            for deferred_idx in remaining {
+                mark_component_unavailable(&components[deferred_idx as usize], &mut summaries);
+            }
+            break;
+        }
     }
 
     summaries
@@ -233,6 +275,7 @@ fn initialize_summaries<'ast, 'arena>(
         let body_class = body_classes[function_idx];
 
         summaries.push(FunctionSummary {
+            available: true,
             transitive_callees: clone_ids(&direct_callees, arena),
             transitive_capture_reads: clone_ids(&direct_capture_reads, arena),
             transitive_capture_writes: clone_ids(&direct_capture_writes, arena),
@@ -251,7 +294,8 @@ fn summarize_component(
     component: &[FunctionId],
     facts: &ProgramFacts<'_, '_>,
     summaries: &mut [FunctionSummary<'_>],
-) {
+    budget: &mut SummaryBudget,
+) -> Result<(), BudgetExceeded> {
     let mut changed = true;
     while changed {
         changed = false;
@@ -269,22 +313,28 @@ fn summarize_component(
                 let callee_idx = callee.0 as usize;
                 let (caller_summary, callee_summary) =
                     split_summary_pair(summaries, function_idx, callee_idx);
+                if !callee_summary.available {
+                    return Err(BudgetExceeded);
+                }
                 if extend_unique(
                     &mut caller_summary.transitive_callees,
                     &callee_summary.transitive_callees,
-                ) {
+                    budget,
+                )? {
                     changed = true;
                 }
                 if extend_unique(
                     &mut caller_summary.transitive_capture_reads,
                     &callee_summary.transitive_capture_reads,
-                ) {
+                    budget,
+                )? {
                     changed = true;
                 }
                 if extend_unique(
                     &mut caller_summary.transitive_capture_writes,
                     &callee_summary.transitive_capture_writes,
-                ) {
+                    budget,
+                )? {
                     changed = true;
                 }
                 transitive_class = transitive_class.join(callee_summary.transitive_class);
@@ -292,10 +342,24 @@ fn summarize_component(
 
             let caller_summary = &mut summaries[function_idx];
             if caller_summary.transitive_class != transitive_class {
+                budget.note_event()?;
                 caller_summary.transitive_class = transitive_class;
                 changed = true;
             }
         }
+    }
+
+    Ok(())
+}
+
+fn mark_component_unavailable(component: &[FunctionId], summaries: &mut [FunctionSummary<'_>]) {
+    for &function in component {
+        let summary = &mut summaries[function.0 as usize];
+        summary.available = false;
+        summary.transitive_callees.clear();
+        summary.transitive_capture_reads.clear();
+        summary.transitive_capture_writes.clear();
+        summary.transitive_class = ExprClass::Impure;
     }
 }
 
@@ -324,12 +388,27 @@ fn clone_ids<'arena, T: Copy>(items: &[T], arena: &'arena Arena) -> Vec<T, &'are
 fn extend_unique<T: Copy + PartialEq, A: std::alloc::Allocator>(
     dst: &mut Vec<T, A>,
     src: &[T],
-) -> bool {
+    budget: &mut SummaryBudget,
+) -> Result<bool, BudgetExceeded> {
     let mut changed = false;
     for &item in src {
-        changed |= push_unique(dst, item);
+        changed |= push_unique_bounded(dst, item, budget)?;
     }
-    changed
+    Ok(changed)
+}
+
+fn push_unique_bounded<T: Copy + PartialEq, A: std::alloc::Allocator>(
+    dst: &mut Vec<T, A>,
+    item: T,
+    budget: &mut SummaryBudget,
+) -> Result<bool, BudgetExceeded> {
+    if dst.contains(&item) {
+        return Ok(false);
+    }
+
+    budget.note_event()?;
+    dst.push(item);
+    Ok(true)
 }
 
 fn push_unique<T: Copy + PartialEq, A: std::alloc::Allocator>(

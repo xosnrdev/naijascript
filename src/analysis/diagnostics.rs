@@ -65,7 +65,8 @@ pub fn compute_function_reachability<'ast, 'arena>(
     while let Some(function) = worklist.pop() {
         let cfg = &program.functions[function.0 as usize];
         for block in &cfg.blocks {
-            for &stmt in &block.stmts {
+            for op in cfg.block_ops_by_ref(block) {
+                let stmt = op.stmt;
                 if !reachable[stmt.0 as usize] {
                     continue;
                 }
@@ -107,7 +108,8 @@ pub fn unused_variables<'ast, 'arena>(
         }
 
         for block in &cfg.blocks {
-            for &stmt in &block.stmts {
+            for op in cfg.block_ops_by_ref(block) {
+                let stmt = op.stmt;
                 if !reachable[stmt.0 as usize] {
                     continue;
                 }
@@ -117,7 +119,12 @@ pub fn unused_variables<'ast, 'arena>(
                     used_locals[local.0 as usize] = true;
                 }
                 for &callee in &stmt_facts.direct_callees {
-                    for &local in &summaries[callee.0 as usize].transitive_capture_reads {
+                    let summary = &summaries[callee.0 as usize];
+                    if !summary.available {
+                        mark_function_locals_used(&mut used_locals, facts, function);
+                        continue;
+                    }
+                    for &local in &summary.transitive_capture_reads {
                         used_locals[local.0 as usize] = true;
                     }
                 }
@@ -151,6 +158,16 @@ pub fn unused_variables<'ast, 'arena>(
     }
 
     warnings
+}
+
+fn mark_function_locals_used(
+    used_locals: &mut [bool],
+    facts: &ProgramFacts<'_, '_>,
+    function: FunctionId,
+) {
+    for local in facts.local_range(function) {
+        used_locals[local as usize] = true;
+    }
 }
 
 /// Computes unused-function warnings for reachable definitions with no reachable calls.

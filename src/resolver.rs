@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use crate::analysis::effects::{self, ExprClass};
 use crate::analysis::facts::ProgramFacts;
 use crate::analysis::ids::{FunctionId, LocalId, ScopeId, StmtId};
-use crate::analysis::opt::OptimizationPlan;
+use crate::analysis::opt::{OptimizationInputs, OptimizationPlan};
 use crate::analysis::{
     cfg, diagnostics as analysis_diagnostics, limits, liveness, opt, reachability, summary,
 };
@@ -153,6 +153,7 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
         self.current_owner = root_function;
         self.current_function = None;
         self.check_block(root);
+        self.facts.finalize_runtime_bindings();
         self.emit_analysis_warnings();
     }
 
@@ -168,6 +169,7 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
     fn check_block(&mut self, block: BlockRef<'ast>) {
         let scope_id =
             self.facts.push_scope(self.scope_stack.last().copied(), self.current_owner, block.span);
+        self.facts.record_block_scope(block, scope_id);
         if self.scope_stack.is_empty() && self.current_owner == self.facts.root_function {
             self.facts.set_root_scope(scope_id);
         }
@@ -225,6 +227,7 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                     self.variable_scopes.last_mut().expect("scope stack should never be empty")
                         [slot]
                         .1 = var_type;
+                    self.facts.record_stmt_local(stmt, local_id);
                     self.record_stmt_write(local_id);
                 } else {
                     let scope_id = self.current_scope();
@@ -239,12 +242,14 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                         .last_mut()
                         .expect("scope stack should never be empty")
                         .push((var, var_type, var_span, local_id));
+                    self.facts.record_stmt_local(stmt, local_id);
                     self.record_stmt_write(local_id);
                 }
             }
             // Handle variable reassignment: <variable> get <expression>
             Stmt::AssignExisting { var, var_span, expr, .. } => {
                 if let Some((_, local_id)) = self.lookup_var_info(var) {
+                    self.facts.record_stmt_local(stmt, local_id);
                     self.record_stmt_write(local_id);
                     self.record_capture_write(local_id);
                 } else {
@@ -624,9 +629,15 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
             Expr::Number(..) | Expr::Bool(..) | Expr::Null(..) => {}
             Expr::String { parts, span } => {
                 if let StringParts::Interpolated(segments) = parts {
-                    for segment in *segments {
+                    for (segment_idx, segment) in segments.iter().enumerate() {
                         if let StringSegment::Variable(var) = segment {
                             if let Some((_, local_id)) = self.lookup_var_info(var) {
+                                self.facts.record_string_segment_local(
+                                    expr,
+                                    u32::try_from(segment_idx)
+                                        .expect("string segment index should fit in u32"),
+                                    local_id,
+                                );
                                 self.record_stmt_read(local_id);
                                 self.record_capture_read(local_id);
                             } else {
@@ -682,6 +693,7 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
             // Variables need to exist in our symbol table before we can use them
             Expr::Var(v, span) => {
                 if let Some((_, local_id)) = self.lookup_var_info(v) {
+                    self.facts.record_expr_local(expr, local_id);
                     self.record_stmt_read(local_id);
                     self.record_capture_read(local_id);
                 } else {
@@ -1151,6 +1163,8 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
         stmt: StmtRef<'ast>,
         return_types: &mut Vec<ValueType, &'res Arena>,
     ) {
+        // Nested function bodies are intentionally excluded because their returns
+        // do not contribute to the enclosing function's signature.
         match stmt {
             Stmt::Return { expr, .. } => {
                 if let Some(expr_ref) = expr {
@@ -1174,11 +1188,6 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
             }
             Stmt::Block { block, .. } => {
                 self.collect_return_types(block, return_types);
-            }
-            Stmt::FunctionDef { body, .. } => {
-                // For nested functions we don't collect its returns
-                // as they don't affect the outer function's return type
-                self.collect_return_types(body, return_types);
             }
             _ => {}
         }
@@ -1236,12 +1245,15 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
             self.arena,
         );
         self.optimization_plan = Some(opt::build_optimization_plan(
-            &self.facts,
-            &summaries,
-            &reachable,
-            &unused_assignments,
-            &unused_variables,
-            &unused_functions,
+            OptimizationInputs {
+                program: &program,
+                facts: &self.facts,
+                summaries: &summaries,
+                reachable: &reachable,
+                unused_assignments: &unused_assignments,
+                unused_variables: &unused_variables,
+                unused_functions: &unused_functions,
+            },
             self.facts_arena,
         ));
 

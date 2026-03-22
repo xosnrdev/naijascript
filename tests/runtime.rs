@@ -708,6 +708,59 @@ fn string_interpolation_resolve_whitespace() {
 }
 
 #[test]
+fn string_interpolation_reads_shadowed_local() {
+    assert_runtime!(
+        r#"
+        make name get "outer"
+        start
+            make name get "inner"
+            shout("Hello {name}")
+        end
+        shout(name)
+        "#,
+        output: vec![
+            Value::Str(ArenaCow::Borrowed("Hello inner")),
+            Value::Str(ArenaCow::Borrowed("outer"))
+        ]
+    );
+}
+
+#[test]
+fn array_mutation_preserves_shadowed_binding() {
+    assert_runtime!(
+        r#"
+        make arr get [1]
+        start
+            make arr get [2]
+            arr.push(3)
+            shout(arr.join(","))
+        end
+        shout(arr.join(","))
+        "#,
+        output: vec![
+            Value::Str(ArenaCow::Borrowed("2,3")),
+            Value::Str(ArenaCow::Borrowed("1"))
+        ]
+    );
+}
+
+#[test]
+fn index_assignment_preserves_shadowed_binding() {
+    assert_runtime!(
+        r"
+        make arr get [1]
+        start
+            make arr get [2]
+            arr[0] get 3
+            shout(arr[0])
+        end
+        shout(arr[0])
+        ",
+        output: vec![Value::Number(3.0), Value::Number(1.0)]
+    );
+}
+
+#[test]
 fn uninit_variable() {
     assert_runtime!("make x x get 5 shout(x)", output: vec![Value::Number(5.0)]);
 }

@@ -498,6 +498,21 @@ fn test_function_return_type_mul_mismatch() {
 }
 
 #[test]
+fn test_nested_function_return_does_not_widen_outer_return_type() {
+    assert_resolve!(
+        r"
+        do outer() start
+            do inner() start
+                return 1
+            end
+        end
+        make x get outer() minus 1
+        ",
+        SemanticError::TypeMismatch
+    );
+}
+
+#[test]
 fn test_non_array_type_index() {
     assert_resolve!("make val get 1[0]", SemanticError::TypeMismatch);
 }

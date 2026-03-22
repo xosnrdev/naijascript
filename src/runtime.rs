@@ -5,7 +5,7 @@ use std::ptr::NonNull;
 use std::{io, mem};
 
 use crate::analysis::facts::ProgramFacts;
-use crate::analysis::ids::FunctionId;
+use crate::analysis::ids::{FunctionId, LocalId, StmtId};
 use crate::analysis::opt::OptimizationPlan;
 use crate::arena::{Arena, ArenaCow, ArenaString, PoolSet};
 use crate::arena_format;
@@ -201,6 +201,13 @@ struct FunctionDef<'a> {
     body: BlockRef<'a>,
 }
 
+#[derive(Debug)]
+struct LocalSlot<'a> {
+    id: Option<LocalId>,
+    name: &'a str,
+    value: Value<'a>,
+}
+
 // Controls how function execution should proceed after statements
 #[derive(Debug, Clone, PartialEq)]
 enum ExecFlow<'a> {
@@ -212,8 +219,8 @@ enum ExecFlow<'a> {
 
 /// The runtime interface for `NaijaScript` using arena-allocated AST.
 pub struct Runtime<'a> {
-    // Variable scopes, each Vec is a scope, inner Vec is variables in that scope
-    env: Vec<Vec<(&'a str, Value<'a>), &'a Arena>, &'a Arena>,
+    // Variable scopes, each Vec is a scope, inner Vec is variables in that scope.
+    env: Vec<Vec<LocalSlot<'a>, &'a Arena>, &'a Arena>,
 
     // Function scopes mirror lexical block scopes so lookup stays lexical.
     function_scopes: Vec<Vec<FunctionDef<'a>, &'a Arena>, &'a Arena>,
@@ -239,8 +246,11 @@ pub struct Runtime<'a> {
     // Optional persistent analysis facts used for binding-safe runtime dispatch.
     facts: Option<NonNull<ProgramFacts<'a, 'a>>>,
 
-    // Optional conservative optimization plan. Only function-def pruning is applied.
+    // Optional conservative optimization plan used for safe statement and function pruning.
     optimization_plan: Option<NonNull<OptimizationPlan<'a>>>,
+
+    #[cfg(test)]
+    skipped_stmt_count: u32,
 }
 
 impl<'a> Runtime<'a> {
@@ -261,6 +271,8 @@ impl<'a> Runtime<'a> {
             stack_base: 0,
             facts: None,
             optimization_plan: None,
+            #[cfg(test)]
+            skipped_stmt_count: 0,
         }
     }
 
@@ -353,12 +365,20 @@ impl<'a> Runtime<'a> {
         match stmt {
             Stmt::Assign { var, expr, .. } => {
                 let val = self.eval_expr(expr)?;
-                self.define_var(var, val);
+                if let Some(local) = self.bound_stmt_local(stmt) {
+                    self.define_bound_local(local, var, val);
+                } else {
+                    self.define_var(var, val);
+                }
                 Ok(ExecFlow::Continue)
             }
             Stmt::AssignExisting { var, expr, .. } => {
                 let val = self.eval_expr(expr)?;
-                self.assign_var(var, val);
+                if let Some(local) = self.bound_stmt_local(stmt) {
+                    self.assign_bound_local(local, val);
+                } else {
+                    self.assign_var(var, val);
+                }
                 Ok(ExecFlow::Continue)
             }
             Stmt::AssignIndex { target, expr, span } => {
@@ -460,6 +480,16 @@ impl<'a> Runtime<'a> {
     fn exec_block_with_flow(&mut self, block: BlockRef<'a>) -> Result<ExecFlow<'a>, RuntimeError> {
         self.push_scope_with_capacity(0, self.frame);
         for stmt in block.stmts {
+            if self.stmt_is_pruned(stmt) {
+                #[cfg(test)]
+                {
+                    self.skipped_stmt_count = self
+                        .skipped_stmt_count
+                        .checked_add(1)
+                        .expect("Skipped statement count should stay within u32");
+                }
+                continue;
+            }
             match self.exec_stmt(stmt)? {
                 ExecFlow::Continue => {}
                 flow @ (ExecFlow::Return(..) | ExecFlow::Break | ExecFlow::LoopContinue) => {
@@ -477,8 +507,8 @@ impl<'a> Runtime<'a> {
     fn pop_scope(&mut self) {
         self.function_scopes.pop();
         if let Some(scope) = self.env.pop() {
-            for (_, val) in &scope {
-                unsafe { val.return_to_pool(&self.pool) };
+            for slot in &scope {
+                unsafe { slot.value.return_to_pool(&self.pool) };
             }
         }
     }
@@ -490,14 +520,17 @@ impl<'a> Runtime<'a> {
             Expr::Number(n, ..) => Ok(Value::Number(
                 n.parse::<f64>().expect("Scanner should guarantee valid number format"),
             )),
-            Expr::String { parts, .. } => Ok(self.eval_string_expr(parts)),
+            Expr::String { parts, .. } => Ok(self.eval_string_expr(expr, parts)),
             Expr::Bool(b, ..) => Ok(Value::Bool(*b)),
             Expr::Null(..) => Ok(Value::Null),
             Expr::Var(v, ..) => {
                 let frame = self.frame;
-                let val = self
-                    .lookup_var(v, frame)
-                    .expect("Semantic analysis should guarantee all variables are declared");
+                let val = if let Some(local) = self.bound_expr_local(expr) {
+                    self.lookup_local(local, frame)
+                } else {
+                    self.lookup_var(v, frame)
+                }
+                .expect("Semantic analysis should guarantee all variables are declared");
                 Ok(val)
             }
             Expr::Binary { op, lhs, rhs, span } => match op {
@@ -688,17 +721,20 @@ impl<'a> Runtime<'a> {
         assert_eq!(arg_values.len(), func_def.params.params.len());
 
         // Parameters live in their own lexical scope so block locals can shadow them.
+        let param_ids = self.bound_param_ids(func_def.id, func_def.params);
         self.push_scope_with_capacity(func_def.params.params.len(), self.frame);
         let param_scope =
             self.env.last_mut().expect("Parameter scope should exist immediately after push");
-        for (param, arg) in func_def.params.params.iter().zip(arg_values) {
+        for ((param, maybe_local), arg) in
+            func_def.params.params.iter().zip(param_ids.iter().copied()).zip(arg_values)
+        {
             let arg = match arg {
                 Value::Str(ArenaCow::Borrowed(s)) if self.pool.contains(s.as_ptr()) => {
                     Value::Str(ArenaCow::Owned(self.pool.alloc_str(s)))
                 }
                 other => other,
             };
-            param_scope.push((*param, arg));
+            param_scope.push(LocalSlot { id: maybe_local, name: param, value: arg });
         }
 
         // We execute the function body with proper return value handling
@@ -961,9 +997,12 @@ impl<'a> Runtime<'a> {
     ) -> Result<&mut Vec<Value<'a>, &'a Arena>, RuntimeError> {
         match object {
             Expr::Var(name, ..) => {
-                let var = self
-                    .lookup_var_mut(name)
-                    .expect("Semantic analysis guarantees variable exists");
+                let var = if let Some(local) = self.bound_expr_local(object) {
+                    self.lookup_local_mut(local)
+                } else {
+                    self.lookup_var_mut(name)
+                }
+                .expect("Semantic analysis guarantees variable exists");
                 match var {
                     Value::Array(arr) => Ok(arr),
                     _ => Err(RuntimeError::new_with_extras(
@@ -975,7 +1014,7 @@ impl<'a> Runtime<'a> {
                 }
             }
             Expr::Index { .. } => {
-                let (base_var, index_exprs) = self.flatten_index_target(object);
+                let (base_expr, base_var, index_exprs) = self.flatten_index_target(object);
 
                 let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.frame);
                 for (index_expr, index_span) in &index_exprs {
@@ -983,9 +1022,12 @@ impl<'a> Runtime<'a> {
                     evaluated_indices.push((idx, *index_span));
                 }
 
-                let mut slot = self
-                    .lookup_var_mut(base_var)
-                    .expect("Semantic analysis guarantees variable exists");
+                let mut slot = if let Some(local) = self.bound_expr_local(base_expr) {
+                    self.lookup_local_mut(local)
+                } else {
+                    self.lookup_var_mut(base_var)
+                }
+                .expect("Semantic analysis guarantees variable exists");
 
                 for (idx, index_span) in &evaluated_indices {
                     match slot {
@@ -1022,18 +1064,25 @@ impl<'a> Runtime<'a> {
         }
     }
 
-    fn eval_string_expr(&mut self, parts: &StringParts<'a>) -> Value<'a> {
+    fn eval_string_expr(&mut self, expr: ExprRef<'a>, parts: &StringParts<'a>) -> Value<'a> {
         match parts {
             StringParts::Static(content) => Value::Str(ArenaCow::borrowed(content)),
             StringParts::Interpolated(segments) => {
                 let mut result = ArenaString::with_capacity_in(segments.len(), self.frame);
-                for segment in *segments {
+                for (segment_idx, segment) in segments.iter().enumerate() {
                     match segment {
                         StringSegment::Literal(s) => result.push_str(s),
                         StringSegment::Variable(var) => {
-                            let value = self
-                                .lookup_var_ref(var)
-                                .expect("Semantic analysis should guarantee variable exists");
+                            let value = if let Some(local) = self.bound_string_segment_local(
+                                expr,
+                                u32::try_from(segment_idx)
+                                    .expect("string segment index should fit in u32"),
+                            ) {
+                                self.lookup_local_ref(local)
+                            } else {
+                                self.lookup_var_ref(var)
+                            }
+                            .expect("Semantic analysis should guarantee variable exists");
                             write!(result, "{value}").unwrap();
                         }
                     }
@@ -1043,16 +1092,42 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    fn define_bound_local(&mut self, local: LocalId, name: &'a str, val: Value<'a>) {
+        let has_frame = self.has_frame_arena();
+        if let Some(scope) = self.env.last_mut() {
+            if let Some(slot) = scope.iter_mut().rev().find(|slot| slot.id == Some(local)) {
+                Self::overwrite_slot(&mut slot.value, val, has_frame, &self.pool, self.frame);
+            } else {
+                let value = if has_frame { val.promote(&self.pool, self.frame) } else { val };
+                scope.push(LocalSlot { id: Some(local), name, value });
+            }
+        }
+    }
+
     fn define_var(&mut self, name: &'a str, val: Value<'a>) {
         let has_frame = self.has_frame_arena();
         if let Some(scope) = self.env.last_mut() {
-            if let Some((.., slot)) = scope.iter_mut().rev().find(|(var, ..)| *var == name) {
-                Self::overwrite_slot(slot, val, has_frame, &self.pool, self.frame);
+            if let Some(slot) = scope.iter_mut().rev().find(|slot| slot.name == name) {
+                Self::overwrite_slot(&mut slot.value, val, has_frame, &self.pool, self.frame);
             } else {
-                let val = if has_frame { val.promote(&self.pool, self.frame) } else { val };
-                scope.push((name, val));
+                let value = if has_frame { val.promote(&self.pool, self.frame) } else { val };
+                scope.push(LocalSlot { id: None, name, value });
             }
         }
+    }
+
+    fn assign_bound_local(&mut self, local: LocalId, val: Value<'a>) {
+        let has_frame = self.has_frame_arena();
+        let pool = &self.pool;
+        let frame = self.frame;
+
+        for scope in self.env.iter_mut().rev() {
+            if let Some(slot) = scope.iter_mut().rev().find(|slot| slot.id == Some(local)) {
+                Self::overwrite_slot(&mut slot.value, val, has_frame, pool, frame);
+                return;
+            }
+        }
+        unreachable!("Semantic analysis guarantees variable exists");
     }
 
     fn assign_var(&mut self, name: &'a str, val: Value<'a>) {
@@ -1061,8 +1136,8 @@ impl<'a> Runtime<'a> {
         let frame = self.frame;
 
         for scope in self.env.iter_mut().rev() {
-            if let Some((.., slot)) = scope.iter_mut().rev().find(|(var, ..)| *var == name) {
-                Self::overwrite_slot(slot, val, has_frame, pool, frame);
+            if let Some(slot) = scope.iter_mut().rev().find(|slot| slot.name == name) {
+                Self::overwrite_slot(&mut slot.value, val, has_frame, pool, frame);
                 return;
             }
         }
@@ -1132,7 +1207,7 @@ impl<'a> Runtime<'a> {
         value: Value<'a>,
         span: Span,
     ) -> Result<(), RuntimeError> {
-        let (base_var, index_exprs) = self.flatten_index_target(target);
+        let (base_expr, base_var, index_exprs) = self.flatten_index_target(target);
 
         let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.frame);
         for (index_expr, index_span) in &index_exprs {
@@ -1144,8 +1219,12 @@ impl<'a> Runtime<'a> {
         let value =
             if self.has_frame_arena() { value.promote(&self.pool, self.frame) } else { value };
 
-        let mut slot =
-            self.lookup_var_mut(base_var).expect("Semantic analysis guarantees variable exists");
+        let mut slot = if let Some(local) = self.bound_expr_local(base_expr) {
+            self.lookup_local_mut(local)
+        } else {
+            self.lookup_var_mut(base_var)
+        }
+        .expect("Semantic analysis guarantees variable exists");
 
         for (i, (idx, index_span)) in evaluated_indices.iter().enumerate() {
             let is_last = i + 1 == evaluated_indices.len();
@@ -1177,7 +1256,7 @@ impl<'a> Runtime<'a> {
     fn flatten_index_target(
         &self,
         mut target: ExprRef<'a>,
-    ) -> (&'a str, Vec<(ExprRef<'a>, Span), &'a Arena>) {
+    ) -> (ExprRef<'a>, &'a str, Vec<(ExprRef<'a>, Span), &'a Arena>) {
         let mut indices = Vec::new_in(self.frame);
         loop {
             match target {
@@ -1187,7 +1266,7 @@ impl<'a> Runtime<'a> {
                 }
                 Expr::Var(name, ..) => {
                     indices.reverse();
-                    return (*name, indices);
+                    return (target, *name, indices);
                 }
                 _ => unreachable!("Semantic analysis guarantees valid index assignment target",),
             }
@@ -1222,6 +1301,27 @@ impl<'a> Runtime<'a> {
     }
 
     #[inline]
+    fn lookup_local(&self, local: LocalId, clone_arena: &'a Arena) -> Option<Value<'a>> {
+        self.lookup_local_env(local).map(|value| value.clone_into(clone_arena))
+    }
+
+    #[inline]
+    fn lookup_local_ref(&self, local: LocalId) -> Option<&Value<'a>> {
+        self.lookup_local_env(local)
+    }
+
+    fn lookup_local_mut(&mut self, local: LocalId) -> Option<&mut Value<'a>> {
+        for scope in self.env.iter_mut().rev() {
+            for slot in scope.iter_mut().rev() {
+                if slot.id == Some(local) {
+                    return Some(&mut slot.value);
+                }
+            }
+        }
+        None
+    }
+
+    #[inline]
     fn lookup_var(&self, name: &str, clone_arena: &'a Arena) -> Option<Value<'a>> {
         self.lookup_env(name).map(|v| v.clone_into(clone_arena))
     }
@@ -1233,9 +1333,9 @@ impl<'a> Runtime<'a> {
 
     fn lookup_var_mut(&mut self, name: &str) -> Option<&mut Value<'a>> {
         for scope in self.env.iter_mut().rev() {
-            for (var, val) in scope.iter_mut().rev() {
-                if *var == name {
-                    return Some(val);
+            for slot in scope.iter_mut().rev() {
+                if slot.name == name {
+                    return Some(&mut slot.value);
                 }
             }
         }
@@ -1258,8 +1358,64 @@ impl<'a> Runtime<'a> {
             .expect("Semantic analysis guarantees function exists in runtime scope")
     }
 
+    fn bound_param_ids(
+        &self,
+        function_id: Option<FunctionId>,
+        params: ParamListRef<'a>,
+    ) -> Vec<Option<LocalId>, &'a Arena> {
+        let mut ids = Vec::with_capacity_in(params.params.len(), self.frame);
+        let Some(function_id) = function_id else {
+            ids.resize(params.params.len(), None);
+            return ids;
+        };
+
+        let Some(facts) = self.facts() else {
+            ids.resize(params.params.len(), None);
+            return ids;
+        };
+
+        let local_range = facts.local_range(function_id);
+        let expected_params =
+            u32::try_from(params.params.len()).expect("parameter count should fit in u32");
+        assert!(
+            expected_params <= local_range.end - local_range.start,
+            "Resolved parameter count should fit inside the function local range",
+        );
+        for offset in 0..expected_params {
+            ids.push(Some(LocalId(local_range.start + offset)));
+        }
+        ids
+    }
+
+    #[inline]
+    fn bound_stmt_local(&self, stmt: StmtRef<'a>) -> Option<LocalId> {
+        self.facts().and_then(|facts| facts.stmt_local(stmt))
+    }
+
+    #[inline]
+    fn bound_stmt_id(&self, stmt: StmtRef<'a>) -> Option<StmtId> {
+        self.facts().and_then(|facts| facts.stmt_id(stmt))
+    }
+
+    #[inline]
+    fn bound_expr_local(&self, expr: ExprRef<'a>) -> Option<LocalId> {
+        self.facts().and_then(|facts| facts.expr_local(expr))
+    }
+
+    #[inline]
+    fn bound_string_segment_local(&self, expr: ExprRef<'a>, segment_index: u32) -> Option<LocalId> {
+        self.facts().and_then(|facts| facts.string_segment_local(expr, segment_index))
+    }
+
     fn function_is_pruned(&self, id: FunctionId) -> bool {
-        self.optimization_plan().is_some_and(|plan| plan.removable_function_defs.contains(&id))
+        self.optimization_plan().is_some_and(|plan| plan.contains_removable_function_def(id))
+    }
+
+    fn stmt_is_pruned(&self, stmt: StmtRef<'a>) -> bool {
+        let Some(stmt_id) = self.bound_stmt_id(stmt) else {
+            return false;
+        };
+        self.optimization_plan().is_some_and(|plan| plan.contains_removable_stmt(stmt_id))
     }
 
     fn facts(&self) -> Option<&ProgramFacts<'a, 'a>> {
@@ -1276,7 +1432,94 @@ impl<'a> Runtime<'a> {
 
     fn lookup_env(&self, name: &str) -> Option<&Value<'a>> {
         self.env.iter().rev().find_map(|scope| {
-            scope.iter().rev().find_map(|(var, val)| if *var == name { Some(val) } else { None })
+            scope
+                .iter()
+                .rev()
+                .find_map(|slot| if slot.name == name { Some(&slot.value) } else { None })
         })
+    }
+
+    fn lookup_local_env(&self, local: LocalId) -> Option<&Value<'a>> {
+        self.env.iter().rev().find_map(|scope| {
+            scope
+                .iter()
+                .rev()
+                .find_map(|slot| if slot.id == Some(local) { Some(&slot.value) } else { None })
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Runtime, Value};
+    use crate::arena::Arena;
+    use crate::resolver::Resolver;
+    use crate::syntax::parser::Parser;
+    use crate::syntax::scanner::Lexer;
+
+    const TEST_ARENA_CAPACITY: usize = 8 << 20;
+
+    #[test]
+    fn run_with_analysis_counts_skipped_removable_statements() {
+        let arena = Arena::new(TEST_ARENA_CAPACITY).expect("test arena should allocate");
+        let frame = Arena::new(TEST_ARENA_CAPACITY).expect("test frame arena should allocate");
+        let src = "make x get 1 x get 2 x get 3 shout(x)";
+
+        let lexer = Lexer::new(src, &arena);
+        let mut parser = Parser::new(lexer, &arena);
+        let (root, parse_errors) = parser.parse_program();
+        assert!(parse_errors.diagnostics.is_empty(), "{:?}", parse_errors.diagnostics);
+
+        let mut resolver = Resolver::new(&arena);
+        resolver.resolve(root);
+        assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+
+        let plan = resolver
+            .optimization_plan
+            .as_ref()
+            .expect("resolver should always build an optimization plan");
+        let first_stmt_id = resolver
+            .facts
+            .stmt_id(root.stmts[1])
+            .expect("reassignment should have a stable statement id");
+        assert!(plan.contains_removable_stmt(first_stmt_id));
+
+        let mut runtime = Runtime::new(&arena, Some(&frame));
+        runtime.run_with_analysis(root, &resolver.facts, Some(plan));
+
+        assert_eq!(runtime.output, vec![Value::Number(3.0)]);
+        assert_eq!(runtime.skipped_stmt_count, 1);
+    }
+
+    #[test]
+    fn run_with_analysis_skips_safe_unused_declaration() {
+        let arena = Arena::new(TEST_ARENA_CAPACITY).expect("test arena should allocate");
+        let frame = Arena::new(TEST_ARENA_CAPACITY).expect("test frame arena should allocate");
+        let src = "make x get 1 shout(0)";
+
+        let lexer = Lexer::new(src, &arena);
+        let mut parser = Parser::new(lexer, &arena);
+        let (root, parse_errors) = parser.parse_program();
+        assert!(parse_errors.diagnostics.is_empty(), "{:?}", parse_errors.diagnostics);
+
+        let mut resolver = Resolver::new(&arena);
+        resolver.resolve(root);
+        assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+
+        let plan = resolver
+            .optimization_plan
+            .as_ref()
+            .expect("resolver should always build an optimization plan");
+        let decl_stmt_id = resolver
+            .facts
+            .stmt_id(root.stmts[0])
+            .expect("declaration should have a stable statement id");
+        assert!(plan.contains_removable_stmt(decl_stmt_id));
+
+        let mut runtime = Runtime::new(&arena, Some(&frame));
+        runtime.run_with_analysis(root, &resolver.facts, Some(plan));
+
+        assert_eq!(runtime.output, vec![Value::Number(0.0)]);
+        assert_eq!(runtime.skipped_stmt_count, 1);
     }
 }

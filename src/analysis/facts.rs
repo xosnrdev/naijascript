@@ -6,7 +6,7 @@ use crate::analysis::effects::ExprClass;
 use crate::analysis::ids::{FunctionId, INVALID_SCOPE_ID, LocalId, ScopeId, StmtId};
 use crate::arena::Arena;
 use crate::diagnostics::Span;
-use crate::syntax::parser::{BlockRef, ExprRef, ParamListRef, StmtRef};
+use crate::syntax::parser::{BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef};
 
 /// Stable name used for the synthetic top-level script function.
 pub const ROOT_FUNCTION_NAME: &str = "<script>";
@@ -17,7 +17,13 @@ pub struct ProgramFacts<'ast, 'arena> {
     pub root_function: FunctionId,
     pub functions: Vec<FunctionInfo<'ast>, &'arena Arena>,
     pub scopes: Vec<ScopeInfo, &'arena Arena>,
+    pub block_scopes: Vec<BlockScopeBinding<'ast>, &'arena Arena>,
+    pub scope_locals: Vec<Vec<LocalId, &'arena Arena>, &'arena Arena>,
     pub locals: Vec<LocalInfo<'ast>, &'arena Arena>,
+    pub stmt_ids: Vec<StmtIdBinding<'ast>, &'arena Arena>,
+    pub stmt_locals: Vec<StmtLocalBinding<'ast>, &'arena Arena>,
+    pub expr_locals: Vec<ExprLocalBinding<'ast>, &'arena Arena>,
+    pub string_segment_locals: Vec<StringSegmentLocalBinding<'ast>, &'arena Arena>,
     pub function_directs: Vec<FunctionDirectFacts<'arena>, &'arena Arena>,
     pub user_calls: Vec<UserCallBinding<'ast>, &'arena Arena>,
     pub stmt_effects: Vec<StmtEffectFacts<'ast, 'arena>, &'arena Arena>,
@@ -46,6 +52,13 @@ pub struct ScopeInfo {
     pub span: Span,
 }
 
+/// Mapping from an AST block node to its lexical scope id.
+#[derive(Debug)]
+pub struct BlockScopeBinding<'ast> {
+    pub block: BlockRef<'ast>,
+    pub scope: ScopeId,
+}
+
 /// Metadata describing a local declaration.
 #[derive(Debug)]
 pub struct LocalInfo<'ast> {
@@ -55,6 +68,35 @@ pub struct LocalInfo<'ast> {
     pub decl_span: Span,
     pub decl_stmt: Option<StmtId>,
     pub kind: LocalKind,
+}
+
+/// Binding from an AST statement node to its stable statement id.
+#[derive(Debug)]
+pub struct StmtIdBinding<'ast> {
+    pub stmt: StmtRef<'ast>,
+    pub id: StmtId,
+}
+
+/// Binding from an assignment statement to the local slot it writes.
+#[derive(Debug)]
+pub struct StmtLocalBinding<'ast> {
+    pub stmt: StmtRef<'ast>,
+    pub local: LocalId,
+}
+
+/// Binding from a variable expression to the local slot it reads.
+#[derive(Debug)]
+pub struct ExprLocalBinding<'ast> {
+    pub expr: ExprRef<'ast>,
+    pub local: LocalId,
+}
+
+/// Binding from one interpolated string segment to the local slot it reads.
+#[derive(Debug)]
+pub struct StringSegmentLocalBinding<'ast> {
+    pub expr: ExprRef<'ast>,
+    pub segment_index: u32,
+    pub local: LocalId,
 }
 
 /// Origin of a local binding.
@@ -99,7 +141,13 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
             root_function: FunctionId(0),
             functions: Vec::new_in(arena),
             scopes: Vec::new_in(arena),
+            block_scopes: Vec::new_in(arena),
+            scope_locals: Vec::new_in(arena),
             locals: Vec::new_in(arena),
+            stmt_ids: Vec::new_in(arena),
+            stmt_locals: Vec::new_in(arena),
+            expr_locals: Vec::new_in(arena),
+            string_segment_locals: Vec::new_in(arena),
             function_directs: Vec::new_in(arena),
             user_calls: Vec::new_in(arena),
             stmt_effects: Vec::new_in(arena),
@@ -182,6 +230,7 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
     ) -> ScopeId {
         let id = ScopeId(self.scopes.len() as u32);
         self.scopes.push(ScopeInfo { parent, owner, span });
+        self.scope_locals.push(Vec::new_in(self.functions.allocator()));
         id
     }
 
@@ -197,6 +246,7 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
     ) -> LocalId {
         let id = LocalId(self.locals.len() as u32);
         self.locals.push(LocalInfo { name, owner, declaring_scope, decl_span, decl_stmt, kind });
+        self.scope_locals[declaring_scope.0 as usize].push(id);
         self.functions[owner.0 as usize].locals_len += 1;
         id
     }
@@ -256,6 +306,88 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
         &self.function_directs[id.0 as usize]
     }
 
+    /// Records which lexical scope belongs to a parsed block node.
+    pub fn record_block_scope(&mut self, block: BlockRef<'ast>, scope: ScopeId) {
+        if self.scope_of_block(block).is_none() {
+            self.block_scopes.push(BlockScopeBinding { block, scope });
+        }
+    }
+
+    /// Records the bound local for an assignment statement.
+    pub fn record_stmt_local(&mut self, stmt: StmtRef<'ast>, local: LocalId) {
+        self.stmt_locals.push(StmtLocalBinding { stmt, local });
+    }
+
+    /// Records the bound local for a variable expression.
+    pub fn record_expr_local(&mut self, expr: ExprRef<'ast>, local: LocalId) {
+        self.expr_locals.push(ExprLocalBinding { expr, local });
+    }
+
+    /// Records the bound local for one interpolated string segment.
+    pub fn record_string_segment_local(
+        &mut self,
+        expr: ExprRef<'ast>,
+        segment_index: u32,
+        local: LocalId,
+    ) {
+        self.string_segment_locals.push(StringSegmentLocalBinding { expr, segment_index, local });
+    }
+
+    /// Returns the lexical scope id associated with a parsed block node.
+    #[must_use]
+    pub fn scope_of_block(&self, block: BlockRef<'ast>) -> Option<ScopeId> {
+        self.block_scopes
+            .iter()
+            .find(|binding| std::ptr::eq(binding.block, block))
+            .map(|binding| binding.scope)
+    }
+
+    /// Returns the bound local for an assignment statement.
+    #[must_use]
+    pub fn stmt_local(&self, stmt: StmtRef<'ast>) -> Option<LocalId> {
+        let key = stmt_ptr(stmt);
+        self.stmt_locals
+            .binary_search_by_key(&key, |binding| stmt_ptr(binding.stmt))
+            .ok()
+            .map(|idx| self.stmt_locals[idx].local)
+    }
+
+    /// Returns the stable statement id for one AST statement node.
+    #[must_use]
+    pub fn stmt_id(&self, stmt: StmtRef<'ast>) -> Option<StmtId> {
+        let key = stmt_ptr(stmt);
+        self.stmt_ids
+            .binary_search_by_key(&key, |binding| stmt_ptr(binding.stmt))
+            .ok()
+            .map(|idx| self.stmt_ids[idx].id)
+    }
+
+    /// Returns the bound local for a variable expression.
+    #[must_use]
+    pub fn expr_local(&self, expr: ExprRef<'ast>) -> Option<LocalId> {
+        let key = expr_ptr(expr);
+        self.expr_locals
+            .binary_search_by_key(&key, |binding| expr_ptr(binding.expr))
+            .ok()
+            .map(|idx| self.expr_locals[idx].local)
+    }
+
+    /// Returns the bound local for one interpolated string segment.
+    #[must_use]
+    pub fn string_segment_local(&self, expr: ExprRef<'ast>, segment_index: u32) -> Option<LocalId> {
+        let key = (expr_ptr(expr), segment_index);
+        self.string_segment_locals
+            .binary_search_by_key(&key, |binding| (expr_ptr(binding.expr), binding.segment_index))
+            .ok()
+            .map(|idx| self.string_segment_locals[idx].local)
+    }
+
+    /// Returns the locals declared directly in the given scope.
+    #[must_use]
+    pub fn scope_locals(&self, scope: ScopeId) -> &[LocalId] {
+        &self.scope_locals[scope.0 as usize]
+    }
+
     /// Finds the function id that owns the given body block.
     #[must_use]
     pub fn function_by_body(&self, body: BlockRef<'ast>) -> Option<FunctionId> {
@@ -268,10 +400,11 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
     /// Finds the direct user-function callee bound to this call expression.
     #[must_use]
     pub fn user_call_callee(&self, call: ExprRef<'ast>) -> Option<FunctionId> {
+        let key = expr_ptr(call);
         self.user_calls
-            .iter()
-            .find(|binding| std::ptr::eq(binding.call, call))
-            .map(|binding| binding.callee)
+            .binary_search_by_key(&key, |binding| expr_ptr(binding.call))
+            .ok()
+            .map(|idx| self.user_calls[idx].callee)
     }
 
     /// Returns the local-id range owned by a function.
@@ -298,6 +431,7 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
             direct_callees: Vec::new_in(self.functions.allocator()),
             expr_class: ExprClass::PureNoTrap,
         });
+        self.stmt_ids.push(StmtIdBinding { stmt, id });
         id
     }
 
@@ -305,6 +439,16 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
     #[must_use]
     pub fn stmt_effect(&self, stmt: StmtId) -> &StmtEffectFacts<'ast, 'arena> {
         &self.stmt_effects[stmt.0 as usize]
+    }
+
+    /// Sorts pointer-keyed runtime bindings once resolution is complete.
+    pub fn finalize_runtime_bindings(&mut self) {
+        self.stmt_ids.sort_by_key(|binding| stmt_ptr(binding.stmt));
+        self.stmt_locals.sort_by_key(|binding| stmt_ptr(binding.stmt));
+        self.expr_locals.sort_by_key(|binding| expr_ptr(binding.expr));
+        self.user_calls.sort_by_key(|binding| expr_ptr(binding.call));
+        self.string_segment_locals
+            .sort_by_key(|binding| (expr_ptr(binding.expr), binding.segment_index));
     }
 
     fn stmt_effect_mut(&mut self, stmt: StmtId) -> &mut StmtEffectFacts<'ast, 'arena> {
@@ -356,7 +500,7 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
         caller: FunctionId,
         callee: FunctionId,
     ) {
-        if self.user_call_callee(call).is_none() {
+        if !self.user_calls.iter().any(|binding| std::ptr::eq(binding.call, call)) {
             self.user_calls.push(UserCallBinding { call, caller, callee });
         }
     }
@@ -376,4 +520,12 @@ impl<'ast, 'arena> ProgramFacts<'ast, 'arena> {
             writes.push(local);
         }
     }
+}
+
+fn expr_ptr(expr: ExprRef<'_>) -> *const Expr<'_> {
+    std::ptr::from_ref::<Expr<'_>>(expr)
+}
+
+fn stmt_ptr(stmt: StmtRef<'_>) -> *const Stmt<'_> {
+    std::ptr::from_ref::<Stmt<'_>>(stmt)
 }
