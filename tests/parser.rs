@@ -178,6 +178,17 @@ fn test_parse_loop_missing_end() {
 }
 
 #[test]
+fn test_parse_block_error_recovers_after_stray_token() {
+    let src = r#"
+        if to say (true) start
+            make
+            shout("ok")
+        end
+    "#;
+    assert_parse!(src, SyntaxError::ExpectedStatement);
+}
+
+#[test]
 fn test_parse_trailing_tokens() {
     let src = "make x get 5 123";
     assert_parse!(src, SyntaxError::TrailingTokensAfterProgramEnd);
