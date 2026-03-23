@@ -10,7 +10,8 @@ use crate::analysis::opt::OptimizationPlan;
 use crate::arena::{Arena, ArenaCow, ArenaString, PoolSet};
 use crate::arena_format;
 use crate::builtins::{
-    ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
+    ArrayBuiltin, Builtin, GlobalBuiltin, NumberBuiltin, ProcessCommandBuiltin,
+    ProcessResultBuiltin, StringBuiltin,
 };
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 #[cfg(target_family = "wasm")]
@@ -18,10 +19,15 @@ use crate::helpers::KIBI;
 use crate::helpers::LenWriter;
 #[cfg(not(target_family = "wasm"))]
 use crate::helpers::MEBI;
+use crate::process::{
+    HostHandle, HostPolicy, HostValue, OutputPolicy, ProcessCommand, ProcessError, ProcessResult,
+    StdinPolicy,
+};
 use crate::syntax::parser::{
     ArgList, BinaryOp, BlockRef, Expr, ExprRef, ParamListRef, Stmt, StmtRef, StringParts,
     StringSegment, UnaryOp,
 };
+use crate::sys::{self, ProcessRunner};
 
 /// Runtime errors that can occur during code execution.
 #[derive(Debug, PartialEq, Eq)]
@@ -33,6 +39,13 @@ pub enum RuntimeErrorKind {
     /// Type mismatch error that can't be caught in semantic analysis
     TypeMismatch,
     InvalidIndex,
+    ProcessUnsupported,
+    ProcessDenied,
+    ProcessSpawnFailed(&'static str),
+    ProcessTimeout,
+    ProcessOutputLimitExceeded(&'static str),
+    ProcessInvalidUtf8(&'static str),
+    ProcessSpecInvalid(&'static str),
 }
 
 impl AsStr for RuntimeErrorKind {
@@ -44,6 +57,13 @@ impl AsStr for RuntimeErrorKind {
             RuntimeErrorKind::IndexOutOfBounds => "Index out of bounds",
             RuntimeErrorKind::TypeMismatch => "Type mismatch",
             RuntimeErrorKind::InvalidIndex => "Invalid index",
+            RuntimeErrorKind::ProcessUnsupported => "Unsupported process execution",
+            RuntimeErrorKind::ProcessDenied => "Process execution denied",
+            RuntimeErrorKind::ProcessSpawnFailed(..) => "Process spawn failed",
+            RuntimeErrorKind::ProcessTimeout => "Process timeout",
+            RuntimeErrorKind::ProcessOutputLimitExceeded(..) => "Process output limit exceeded",
+            RuntimeErrorKind::ProcessInvalidUtf8(..) => "Process output no be valid UTF-8",
+            RuntimeErrorKind::ProcessSpecInvalid(..) => "Invalid process configuration",
         }
     }
 }
@@ -94,7 +114,7 @@ const STACK_BUDGET: usize = 4 * MEBI;
 const FLOAT_EQ_EPS: f64 = 1e-12;
 
 /// The value types our runtime can work with at runtime.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Value<'a> {
     /// String literals reference original source when possible
     Str(ArenaCow<'a>),
@@ -104,6 +124,8 @@ pub enum Value<'a> {
     Bool(bool),
     /// Array literal values
     Array(Vec<Value<'a>, &'a Arena>),
+    /// Host-backed values exposed to scripts.
+    Host(HostHandle<'a>),
     /// Represents the absence of a value
     Null,
 }
@@ -116,6 +138,7 @@ impl<'a> Value<'a> {
             Value::Str(cow) => Value::Str(cow.clone()),
             Value::Number(n) => Value::Number(*n),
             Value::Bool(b) => Value::Bool(*b),
+            Value::Host(host) => Value::Host(host.clone_into(arena)),
             Value::Null => Value::Null,
             Value::Array(items) => {
                 let mut new = Vec::with_capacity_in(items.len(), arena);
@@ -158,6 +181,7 @@ impl<'a> Value<'a> {
             Value::Bool(b) => Value::Bool(b),
             Value::Null => Value::Null,
             Value::Str(cow) => Value::Str(cow.promote(pool, frame)),
+            Value::Host(host) => Value::Host(host.promote(pool, frame)),
             Value::Array(items) => {
                 let mut promoted = Vec::with_capacity_in(items.len(), pool.arena());
                 for item in items {
@@ -188,6 +212,7 @@ impl fmt::Display for Value<'_> {
                 }
                 write!(f, "]")
             }
+            Value::Host(host) => write!(f, "{}", host.get()),
             Value::Null => write!(f, "null"),
         }
     }
@@ -209,7 +234,7 @@ struct LocalSlot<'a> {
 }
 
 // Controls how function execution should proceed after statements
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 enum ExecFlow<'a> {
     Continue,
     Return(Value<'a>),
@@ -249,6 +274,9 @@ pub struct Runtime<'a> {
     // Optional conservative optimization plan used for safe statement and function pruning.
     optimization_plan: Option<NonNull<OptimizationPlan<'a>>>,
 
+    // Host capability policy for process execution and future host-backed features.
+    host_policy: HostPolicy,
+
     #[cfg(test)]
     skipped_stmt_count: u32,
 }
@@ -258,6 +286,15 @@ impl<'a> Runtime<'a> {
     /// If `frame` is `None`, the persistent arena is used for both roles
     /// (no frame resets, identical to pre-frame-arena behavior).
     pub fn new(arena: &'a Arena, frame: Option<&'a Arena>) -> Self {
+        Self::new_with_host_policy(arena, frame, HostPolicy::default())
+    }
+
+    /// Creates a new [`Runtime`] instance with the given host capability policy.
+    pub fn new_with_host_policy(
+        arena: &'a Arena,
+        frame: Option<&'a Arena>,
+        host_policy: HostPolicy,
+    ) -> Self {
         let frame = frame.unwrap_or(arena);
         let pool = PoolSet::new(arena);
         Self {
@@ -271,6 +308,7 @@ impl<'a> Runtime<'a> {
             stack_base: 0,
             facts: None,
             optimization_plan: None,
+            host_policy,
             #[cfg(test)]
             skipped_stmt_count: 0,
         }
@@ -334,7 +372,9 @@ impl<'a> Runtime<'a> {
                             message: ArenaCow::Borrowed("Call stack don full"),
                         }]
                     }
-                    RuntimeErrorKind::Io(msg) => {
+                    RuntimeErrorKind::Io(msg)
+                    | RuntimeErrorKind::ProcessSpawnFailed(msg)
+                    | RuntimeErrorKind::ProcessSpecInvalid(msg) => {
                         vec![Label { span: err.span, message: ArenaCow::Borrowed(msg) }]
                     }
                     RuntimeErrorKind::IndexOutOfBounds => vec![Label {
@@ -353,6 +393,34 @@ impl<'a> Runtime<'a> {
                     RuntimeErrorKind::InvalidIndex => vec![Label {
                         span: err.span,
                         message: ArenaCow::Borrowed("Index value no be whole number"),
+                    }],
+                    RuntimeErrorKind::ProcessUnsupported => vec![Label {
+                        span: err.span,
+                        message: ArenaCow::Borrowed("Dis platform no support process execution"),
+                    }],
+                    RuntimeErrorKind::ProcessDenied => vec![Label {
+                        span: err.span,
+                        message: ArenaCow::Borrowed("Host policy no allow process execution"),
+                    }],
+                    RuntimeErrorKind::ProcessTimeout => vec![Label {
+                        span: err.span,
+                        message: ArenaCow::Borrowed(
+                            "Process timeout finish before command complete",
+                        ),
+                    }],
+                    RuntimeErrorKind::ProcessOutputLimitExceeded(stream) => vec![Label {
+                        span: err.span,
+                        message: ArenaCow::Owned(arena_format!(
+                            self.arena,
+                            "Process output for {stream} pass the configured capture limit"
+                        )),
+                    }],
+                    RuntimeErrorKind::ProcessInvalidUtf8(stream) => vec![Label {
+                        span: err.span,
+                        message: ArenaCow::Owned(arena_format!(
+                            self.arena,
+                            "Captured {stream} no be valid UTF-8 text"
+                        )),
                     }],
                 };
                 self.errors.emit(err.span, Severity::Error, "runtime", err.kind.as_str(), labels);
@@ -808,6 +876,15 @@ impl<'a> Runtime<'a> {
                 let s = GlobalBuiltin::to_string(self.frame, &arg_values[0]);
                 Ok(Value::Str(ArenaCow::owned(s)))
             }
+            GlobalBuiltin::Command => {
+                let Value::Str(program) = &arg_values[0] else {
+                    unreachable!("Semantic analysis guarantees string arg")
+                };
+                Ok(Value::Host(HostHandle::new_in(
+                    self.frame,
+                    HostValue::ProcessCommand(ProcessCommand::new(program, self.frame)),
+                )))
+            }
         }
     }
 
@@ -818,37 +895,73 @@ impl<'a> Runtime<'a> {
         args: &'a ArgList<'a>,
         span: Span,
     ) -> Result<Value<'a>, RuntimeError> {
-        let Some(builtin) = MemberBuiltin::from_name(field) else {
-            let receiver = self.eval_expr(object)?;
-            return Err(RuntimeError::new_with_extras(
-                RuntimeErrorKind::TypeMismatch,
-                span,
-                field,
-                GlobalBuiltin::type_of(&receiver),
-            ));
-        };
-
-        // Mutable methods go directly to the mutable path without cloning the receiver.
-        if builtin.requires_mut_receiver() {
-            match builtin {
-                MemberBuiltin::Array(array_builtin) => {
-                    return self.eval_array_member_call_mut(
-                        object,
-                        array_builtin,
-                        field,
-                        args,
-                        span,
-                    );
-                }
-                _ => unreachable!("Only array methods require mutable receiver"),
-            }
+        // Mutable methods stay name-directed so lvalue receivers and index expressions are
+        // evaluated only on the mutation path.
+        if let Some(array_builtin) = ArrayBuiltin::from_name(field)
+            && array_builtin.requires_mut_receiver()
+        {
+            return self.eval_array_member_call_mut(object, array_builtin, field, args, span);
+        }
+        if let Some(command_builtin) = ProcessCommandBuiltin::from_name(field)
+            && command_builtin.requires_mut_receiver()
+        {
+            return self.eval_process_command_call_mut(object, command_builtin, field, args, span);
         }
 
         let receiver = self.eval_expr(object)?;
         match receiver {
-            Value::Str(s) => self.eval_string_member_call(&s, field, args),
-            Value::Number(n) => Ok(Self::eval_number_member_call(n, field)),
-            Value::Array(arr) => self.eval_array_member_call(&arr, field, args),
+            Value::Str(ref s) => match StringBuiltin::from_name(field) {
+                Some(..) => self.eval_string_member_call(s, field, args),
+                None => Err(RuntimeError::new_with_extras(
+                    RuntimeErrorKind::TypeMismatch,
+                    span,
+                    field,
+                    GlobalBuiltin::type_of(&receiver),
+                )),
+            },
+            Value::Number(n) => match NumberBuiltin::from_name(field) {
+                Some(..) => Ok(Self::eval_number_member_call(n, field)),
+                None => Err(RuntimeError::new_with_extras(
+                    RuntimeErrorKind::TypeMismatch,
+                    span,
+                    field,
+                    GlobalBuiltin::type_of(&receiver),
+                )),
+            },
+            Value::Array(ref arr) => match ArrayBuiltin::from_name(field) {
+                Some(..) => self.eval_array_member_call(arr, field, args),
+                None => Err(RuntimeError::new_with_extras(
+                    RuntimeErrorKind::TypeMismatch,
+                    span,
+                    field,
+                    GlobalBuiltin::type_of(&receiver),
+                )),
+            },
+            Value::Host(ref host) => match host.get() {
+                HostValue::ProcessCommand(command) => match ProcessCommandBuiltin::from_name(field)
+                {
+                    Some(command_builtin) => {
+                        self.eval_process_command_call(command, command_builtin, args, span)
+                    }
+                    None => Err(RuntimeError::new_with_extras(
+                        RuntimeErrorKind::TypeMismatch,
+                        span,
+                        field,
+                        GlobalBuiltin::type_of(&receiver),
+                    )),
+                },
+                HostValue::ProcessResult(result) => match ProcessResultBuiltin::from_name(field) {
+                    Some(result_builtin) => {
+                        Ok(self.eval_process_result_call(result, result_builtin))
+                    }
+                    None => Err(RuntimeError::new_with_extras(
+                        RuntimeErrorKind::TypeMismatch,
+                        span,
+                        field,
+                        GlobalBuiltin::type_of(&receiver),
+                    )),
+                },
+            },
             Value::Bool(..) => unimplemented!("Boolean methods not implemented yet"),
             Value::Null => Err(RuntimeError::new_with_extras(
                 RuntimeErrorKind::TypeMismatch,
@@ -896,6 +1009,95 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    fn eval_process_command_call_mut(
+        &mut self,
+        receiver: ExprRef<'a>,
+        builtin: ProcessCommandBuiltin,
+        field: &'a str,
+        args: &'a ArgList<'a>,
+        span: Span,
+    ) -> Result<Value<'a>, RuntimeError> {
+        match builtin {
+            ProcessCommandBuiltin::Arg => {
+                let value = self.eval_expr(args.args[0])?;
+                let arg = GlobalBuiltin::to_string(self.arena, &value);
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.push_arg(arg);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::Cwd => {
+                let path = self.eval_required_string(args.args[0], span)?;
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_cwd(path);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::Env => {
+                let key = self.eval_required_string(args.args[0], span)?;
+                let value = self.eval_expr(args.args[1])?;
+                let value = GlobalBuiltin::to_string(self.arena, &value);
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_env(key, value);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::StdinText => {
+                let value = self.eval_expr(args.args[0])?;
+                let text = GlobalBuiltin::to_string(self.arena, &value);
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_stdin_text(text);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::StdinInherit => {
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_stdin_policy(StdinPolicy::Inherit);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::StdinNull => {
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_stdin_policy(StdinPolicy::Null);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::StdoutCapture => {
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_stdout_policy(OutputPolicy::Capture);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::StdoutInherit => {
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_stdout_policy(OutputPolicy::Inherit);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::StdoutNull => {
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_stdout_policy(OutputPolicy::Null);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::StderrCapture => {
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_stderr_policy(OutputPolicy::Capture);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::StderrInherit => {
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_stderr_policy(OutputPolicy::Inherit);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::StderrNull => {
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_stderr_policy(OutputPolicy::Null);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::TimeoutMs => {
+                let timeout_ms = self.eval_timeout_ms(args.args[0], span)?;
+                let command = self.get_mutable_process_command(receiver, span, field)?;
+                command.set_timeout_ms(timeout_ms);
+                Ok(Value::Null)
+            }
+            ProcessCommandBuiltin::Run => {
+                unreachable!("run does not require mutable receiver")
+            }
+        }
+    }
+
     fn eval_array_member_call(
         &mut self,
         array: &Vec<Value<'a>, &'a Arena>,
@@ -917,6 +1119,49 @@ impl<'a> Runtime<'a> {
             ArrayBuiltin::Push | ArrayBuiltin::Pop | ArrayBuiltin::Reverse => {
                 unreachable!("Push, Pop, and Reverse require mutable receiver")
             }
+        }
+    }
+
+    fn eval_process_command_call(
+        &mut self,
+        command: &ProcessCommand<'a>,
+        builtin: ProcessCommandBuiltin,
+        _: &'a ArgList<'a>,
+        span: Span,
+    ) -> Result<Value<'a>, RuntimeError> {
+        match builtin {
+            ProcessCommandBuiltin::Run => {
+                if !self.host_policy.allow_process {
+                    return Err(RuntimeError::new(RuntimeErrorKind::ProcessDenied, span));
+                }
+
+                let spec = command
+                    .validate(&self.host_policy.process)
+                    .map_err(|err| RuntimeError::new(Self::map_process_error(err), span))?;
+                let result = sys::process::run(&spec, &self.host_policy.process, self.arena)
+                    .map_err(|err| RuntimeError::new(Self::map_process_error(err), span))?;
+                Ok(Value::Host(HostHandle::new_in(self.arena, HostValue::ProcessResult(result))))
+            }
+            _ => unreachable!("Only run is non-mutating for process_command"),
+        }
+    }
+
+    fn eval_process_result_call(
+        &self,
+        result: &ProcessResult<'a>,
+        builtin: ProcessResultBuiltin,
+    ) -> Value<'a> {
+        match builtin {
+            ProcessResultBuiltin::Success => Value::Bool(result.success),
+            ProcessResultBuiltin::ExitCode => {
+                result.exit_code.map_or(Value::Null, |code| Value::Number(f64::from(code)))
+            }
+            ProcessResultBuiltin::Stdout => result.stdout.as_ref().map_or(Value::Null, |stdout| {
+                Value::Str(ArenaCow::owned(ArenaString::from_str(self.frame, stdout.as_str())))
+            }),
+            ProcessResultBuiltin::Stderr => result.stderr.as_ref().map_or(Value::Null, |stderr| {
+                Value::Str(ArenaCow::owned(ArenaString::from_str(self.frame, stderr.as_str())))
+            }),
         }
     }
 
@@ -1072,6 +1317,145 @@ impl<'a> Runtime<'a> {
                 }
             }
             _ => Err(RuntimeError::new(RuntimeErrorKind::TypeMismatch, span)),
+        }
+    }
+
+    fn get_mutable_process_command(
+        &mut self,
+        object: ExprRef<'a>,
+        span: Span,
+        field: impl Into<String>,
+    ) -> Result<&mut ProcessCommand<'a>, RuntimeError> {
+        match object {
+            Expr::Var(name, ..) => {
+                let var = if let Some(local) = self.bound_expr_local(object) {
+                    self.lookup_local_mut(local)
+                } else {
+                    self.lookup_var_mut(name)
+                }
+                .expect("Semantic analysis guarantees variable exists");
+                match var {
+                    Value::Host(host) => match host.get_mut() {
+                        HostValue::ProcessCommand(command) => Ok(command),
+                        HostValue::ProcessResult(..) => Err(RuntimeError::new_with_extras(
+                            RuntimeErrorKind::TypeMismatch,
+                            span,
+                            field,
+                            "process_result",
+                        )),
+                    },
+                    _ => Err(RuntimeError::new_with_extras(
+                        RuntimeErrorKind::TypeMismatch,
+                        span,
+                        field,
+                        GlobalBuiltin::type_of(var),
+                    )),
+                }
+            }
+            Expr::Index { .. } => {
+                let (base_expr, base_var, index_exprs) = self.flatten_index_target(object);
+
+                let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.frame);
+                for (index_expr, index_span) in &index_exprs {
+                    let idx = self.eval_index_value(index_expr, *index_span)?;
+                    evaluated_indices.push((idx, *index_span));
+                }
+
+                let mut slot = if let Some(local) = self.bound_expr_local(base_expr) {
+                    self.lookup_local_mut(local)
+                } else {
+                    self.lookup_var_mut(base_var)
+                }
+                .expect("Semantic analysis guarantees variable exists");
+
+                for (idx, index_span) in &evaluated_indices {
+                    match slot {
+                        Value::Array(items) => {
+                            if *idx >= items.len() {
+                                return Err(RuntimeError::new(
+                                    RuntimeErrorKind::IndexOutOfBounds,
+                                    *index_span,
+                                ));
+                            }
+                            slot = unsafe { items.get_unchecked_mut(*idx) };
+                        }
+                        _ => {
+                            return Err(RuntimeError::new(
+                                RuntimeErrorKind::InvalidIndex,
+                                *index_span,
+                            ));
+                        }
+                    }
+                }
+
+                match slot {
+                    Value::Host(host) => match host.get_mut() {
+                        HostValue::ProcessCommand(command) => Ok(command),
+                        HostValue::ProcessResult(..) => Err(RuntimeError::new_with_extras(
+                            RuntimeErrorKind::TypeMismatch,
+                            span,
+                            field,
+                            "process_result",
+                        )),
+                    },
+                    _ => Err(RuntimeError::new_with_extras(
+                        RuntimeErrorKind::TypeMismatch,
+                        span,
+                        field,
+                        GlobalBuiltin::type_of(slot),
+                    )),
+                }
+            }
+            _ => Err(RuntimeError::new(RuntimeErrorKind::TypeMismatch, span)),
+        }
+    }
+
+    fn eval_required_string(
+        &mut self,
+        expr: ExprRef<'a>,
+        span: Span,
+    ) -> Result<ArenaString<'a>, RuntimeError> {
+        let value = self.eval_expr(expr)?;
+        let Value::Str(text) = value else {
+            return Err(RuntimeError::new(RuntimeErrorKind::TypeMismatch, span));
+        };
+        Ok(ArenaString::from_str(self.arena, &text))
+    }
+
+    fn eval_timeout_ms(&mut self, expr: ExprRef<'a>, span: Span) -> Result<u32, RuntimeError> {
+        let value = self.eval_expr(expr)?;
+        let Value::Number(number) = value else {
+            return Err(RuntimeError::new(
+                RuntimeErrorKind::ProcessSpecInvalid("Timeout must be number"),
+                span,
+            ));
+        };
+        if !number.is_finite() || number <= 0.0 || number.fract() != 0.0 {
+            return Err(RuntimeError::new(
+                RuntimeErrorKind::ProcessSpecInvalid("Timeout must be positive whole number"),
+                span,
+            ));
+        }
+        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+        Ok(number as u32)
+    }
+
+    fn map_process_error(err: ProcessError) -> RuntimeErrorKind {
+        match err {
+            ProcessError::Unsupported => RuntimeErrorKind::ProcessUnsupported,
+            ProcessError::Denied => RuntimeErrorKind::ProcessDenied,
+            ProcessError::SpawnFailed(err) => {
+                let msg: &'static str = Box::leak(err.to_string().into_boxed_str());
+                RuntimeErrorKind::ProcessSpawnFailed(msg)
+            }
+            ProcessError::Timeout => RuntimeErrorKind::ProcessTimeout,
+            ProcessError::OutputLimitExceeded(stream) => {
+                RuntimeErrorKind::ProcessOutputLimitExceeded(stream.as_str())
+            }
+            ProcessError::InvalidUtf8(stream) => {
+                RuntimeErrorKind::ProcessInvalidUtf8(stream.as_str())
+            }
+            ProcessError::SpecInvalid(msg) => RuntimeErrorKind::ProcessSpecInvalid(msg),
         }
     }
 

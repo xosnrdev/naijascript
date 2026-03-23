@@ -12,7 +12,8 @@ use crate::analysis::{
 use crate::arena::{Arena, ArenaCow};
 use crate::arena_format;
 use crate::builtins::{
-    ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, StringBuiltin,
+    ArrayBuiltin, Builtin, GlobalBuiltin, MemberBuiltin, NumberBuiltin, ProcessCommandBuiltin,
+    ProcessResultBuiltin, StringBuiltin,
 };
 use crate::diagnostics::{AsStr, Diagnostics, Label, Severity, Span};
 use crate::helpers::ValueType;
@@ -675,6 +676,44 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
         }
     }
 
+    fn expect_member_string_arg(&mut self, field: &str, arg: ExprRef<'ast>, span: Span) {
+        if let Some(arg_ty) = self.infer_expr_type(arg)
+            && arg_ty != ValueType::String
+            && arg_ty != ValueType::Dynamic
+        {
+            self.emit_error(
+                span,
+                SemanticError::TypeMismatch,
+                vec![Label {
+                    span,
+                    message: ArenaCow::Owned(arena_format!(
+                        self.arena,
+                        "Method `{field}` dey expect string but na {arg_ty} dey here",
+                    )),
+                }],
+            );
+        }
+    }
+
+    fn expect_member_number_arg(&mut self, field: &str, arg: ExprRef<'ast>, span: Span) {
+        if let Some(arg_ty) = self.infer_expr_type(arg)
+            && arg_ty != ValueType::Number
+            && arg_ty != ValueType::Dynamic
+        {
+            self.emit_error(
+                span,
+                SemanticError::TypeMismatch,
+                vec![Label {
+                    span,
+                    message: ArenaCow::Owned(arena_format!(
+                        self.arena,
+                        "Method `{field}` dey expect number but na {arg_ty} dey here",
+                    )),
+                }],
+            );
+        }
+    }
+
     #[inline]
     fn check_expr(&mut self, expr: ExprRef<'ast>) {
         match expr {
@@ -908,6 +947,23 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                                     }],
                                 );
                             }
+                            if matches!(builtin, GlobalBuiltin::Command)
+                                && !args.args.is_empty()
+                                && let Some(arg_ty) = self.infer_expr_type(args.args[0])
+                                && arg_ty != ValueType::String
+                                && arg_ty != ValueType::Dynamic
+                            {
+                                self.emit_error(
+                                    *span,
+                                    SemanticError::TypeMismatch,
+                                    vec![Label {
+                                        span: *span,
+                                        message: ArenaCow::Borrowed(
+                                            "Function `command` dey expect string",
+                                        ),
+                                    }],
+                                );
+                            }
                         } else if let Some((callee_id, arity)) =
                             self.lookup_func(func_name).map(|sig| (sig.id, sig.param_names.len()))
                         {
@@ -960,17 +1016,34 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                                 ValueType::Number => {
                                     NumberBuiltin::from_name(field).map(MemberBuiltin::Number)
                                 }
+                                ValueType::ProcessCommand => {
+                                    ProcessCommandBuiltin::from_name(field)
+                                        .map(MemberBuiltin::ProcessCommand)
+                                }
+                                ValueType::ProcessResult => ProcessResultBuiltin::from_name(field)
+                                    .map(MemberBuiltin::ProcessResult),
                                 ValueType::Bool | ValueType::Null | ValueType::Dynamic => None,
                             };
 
                             if let Some(builtin) = builtin {
-                                if builtin.requires_mut_receiver()
-                                    && let Some(local_id) = self.expr_root_local(object)
-                                {
-                                    self.record_stmt_read(local_id);
-                                    self.record_stmt_write(local_id);
-                                    self.record_capture_read(local_id);
-                                    self.record_capture_write(local_id);
+                                if builtin.requires_mut_receiver() {
+                                    if let Some(local_id) = self.expr_root_local(object) {
+                                        self.record_stmt_read(local_id);
+                                        self.record_stmt_write(local_id);
+                                        self.record_capture_read(local_id);
+                                        self.record_capture_write(local_id);
+                                    } else if matches!(builtin, MemberBuiltin::ProcessCommand(..)) {
+                                        self.emit_error(
+                                            *span,
+                                            SemanticError::TypeMismatch,
+                                            vec![Label {
+                                                span: *span,
+                                                message: ArenaCow::Borrowed(
+                                                    "Dis method need variable or array slot receiver",
+                                                ),
+                                            }],
+                                        );
+                                    }
                                 }
                                 if args.args.len() != builtin.arity() {
                                     self.emit_error(
@@ -987,27 +1060,27 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                                                 args.args.len()
                                             )),
                                         }],
-                                    );
+                                                );
                                 }
 
-                                // TODO: Extend Builtin trait with arg_types() method for generic argument type validation
-                                if matches!(builtin, MemberBuiltin::Array(ArrayBuiltin::Join))
-                                    && !args.args.is_empty()
-                                    && let Some(arg_ty) = self.infer_expr_type(args.args[0])
-                                    && arg_ty != ValueType::String
-                                    && arg_ty != ValueType::Dynamic
-                                {
-                                    self.emit_error(
-                                                    *span,
-                                                    SemanticError::TypeMismatch,
-                                                    vec![Label {
-                                                        span: *span,
-                                                        message: ArenaCow::Owned(arena_format!(
-                                                            self.arena,
-                                                            "Method `{field}` dey expect string but na {arg_ty} dey here",
-                                                        )),
-                                                    }],
-                                                );
+                                match builtin {
+                                    MemberBuiltin::ProcessCommand(ProcessCommandBuiltin::Cwd)
+                                    | MemberBuiltin::Array(ArrayBuiltin::Join)
+                                        if !args.args.is_empty() =>
+                                    {
+                                        self.expect_member_string_arg(field, args.args[0], *span);
+                                    }
+                                    MemberBuiltin::ProcessCommand(ProcessCommandBuiltin::Env)
+                                        if args.args.len() >= 2 =>
+                                    {
+                                        self.expect_member_string_arg(field, args.args[0], *span);
+                                    }
+                                    MemberBuiltin::ProcessCommand(
+                                        ProcessCommandBuiltin::TimeoutMs,
+                                    ) if !args.args.is_empty() => {
+                                        self.expect_member_number_arg(field, args.args[0], *span);
+                                    }
+                                    _ => {}
                                 }
                             } else {
                                 // We defer method validation at runtime for dynamic receivers
@@ -1177,11 +1250,32 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                         self.lookup_func(func_name).map(|func_sig| func_sig.return_type)
                     }
                 }
-                Expr::Member { field, .. } => {
-                    if let Some(builtin) = MemberBuiltin::from_name(field) {
-                        Some(builtin.return_type())
-                    } else {
-                        Some(ValueType::Dynamic)
+                Expr::Member { object, field, .. } => {
+                    let receiver_ty = self.infer_expr_type(object)?;
+                    match receiver_ty {
+                        ValueType::String => StringBuiltin::from_name(field)
+                            .map_or(Some(ValueType::Dynamic), |builtin| {
+                                Some(builtin.return_type())
+                            }),
+                        ValueType::Array => ArrayBuiltin::from_name(field)
+                            .map_or(Some(ValueType::Dynamic), |builtin| {
+                                Some(builtin.return_type())
+                            }),
+                        ValueType::Number => NumberBuiltin::from_name(field)
+                            .map_or(Some(ValueType::Dynamic), |builtin| {
+                                Some(builtin.return_type())
+                            }),
+                        ValueType::ProcessCommand => ProcessCommandBuiltin::from_name(field)
+                            .map_or(Some(ValueType::Dynamic), |builtin| {
+                                Some(builtin.return_type())
+                            }),
+                        ValueType::ProcessResult => ProcessResultBuiltin::from_name(field)
+                            .map_or(Some(ValueType::Dynamic), |builtin| {
+                                Some(builtin.return_type())
+                            }),
+                        ValueType::Bool | ValueType::Null | ValueType::Dynamic => {
+                            Some(ValueType::Dynamic)
+                        }
                     }
                 }
                 _ => None,

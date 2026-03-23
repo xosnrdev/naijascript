@@ -432,14 +432,17 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
                 }
             }
             _ => {
+                let span = self.cur.span;
                 self.emit_error(
-                    self.cur.span,
+                    span,
                     SyntaxError::ExpectedStatement,
-                    vec![Label {
-                        span: self.cur.span,
-                        message: ArenaCow::Borrowed("I dey expect statement"),
-                    }],
+                    vec![Label { span, message: ArenaCow::Borrowed("I dey expect statement") }],
                 );
+
+                // Error recovery must always make progress. A stray sync token like
+                // `)` would otherwise be re-parsed forever inside block bodies.
+                self.bump();
+                self.synchronize();
 
                 let expr = self.alloc(Expr::Null(Range::default()));
                 self.alloc(Stmt::Expression { expr, span: Range::default() })

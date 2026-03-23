@@ -292,7 +292,9 @@ fn array_output() {
     let src = "make nums get [1, 2, 3] shout(nums)";
     with_pipeline("", |arena, (_, _), _, _| {
         let mut value = Vec::with_capacity_in(3, arena);
-        value.extend_from_slice(&[Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)]);
+        value.push(Value::Number(1.0));
+        value.push(Value::Number(2.0));
+        value.push(Value::Number(3.0));
         assert_runtime!(src, output: vec![Value::Array(value)]);
     });
 }

@@ -4,6 +4,7 @@ use naijascript::analysis::cfg::{
 use naijascript::analysis::diagnostics::{
     compute_function_reachability, unused_functions, unused_variables,
 };
+use naijascript::analysis::effects::ExprClass;
 use naijascript::analysis::facts::ProgramFacts;
 use naijascript::analysis::ids::{BlockId, FunctionId, LocalId, StmtId};
 use naijascript::analysis::limits::{AnalysisCaps, DEFAULT_CAPS, first_exceeded_limit};
@@ -711,5 +712,72 @@ fn optimization_plan_marks_unreachable_statements_and_unused_function_defs_remov
         }));
         assert_eq!(unused_functions.len(), 1);
         assert_eq!(plan.removable_function_defs.len(), 1);
+    });
+}
+
+#[test]
+fn process_command_and_run_have_expected_effect_classes() {
+    let src = r#"
+        make cmd get command("echo")
+        cmd.run()
+    "#;
+    with_pipeline(src, |_, (root, parse_errors), resolver, _| {
+        assert!(parse_errors.diagnostics.is_empty());
+        resolver.resolve(root);
+        assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+
+        let facts = &resolver.facts;
+        let build_stmt =
+            facts.stmt_id(root.stmts[0]).expect("command assignment should have a statement id");
+        let run_stmt = facts.stmt_id(root.stmts[1]).expect("run call should have a statement id");
+
+        assert_eq!(facts.stmt_effect(build_stmt).expr_class, ExprClass::PureNoTrap);
+        assert_eq!(facts.stmt_effect(run_stmt).expr_class, ExprClass::Impure);
+    });
+}
+
+#[test]
+fn process_builder_mutation_stays_non_removable() {
+    let src = r#"
+        make cmd get command("echo")
+        cmd.arg("hello")
+    "#;
+    with_pipeline(src, |arena, (root, parse_errors), resolver, _| {
+        assert!(parse_errors.diagnostics.is_empty());
+        resolver.resolve(root);
+        assert!(!resolver.errors.has_errors(), "{:?}", resolver.errors.diagnostics);
+
+        let facts = &resolver.facts;
+        let program = build_program(facts, arena);
+        let reachable = reachable_statement_mask(&program, arena);
+        let summaries = compute_summaries(facts, arena);
+        let function_reachability =
+            compute_function_reachability(&program, facts, &reachable, arena);
+        let unused_assignments = unused_assignments(&program, facts, &summaries, &reachable, arena);
+        let unused_variables = unused_variables(
+            &program,
+            facts,
+            &summaries,
+            &reachable,
+            &function_reachability,
+            arena,
+        );
+        let unused_functions = unused_functions(facts, &reachable, &function_reachability, arena);
+        let plan = build_optimization_plan(
+            OptimizationInputs {
+                program: &program,
+                facts,
+                summaries: &summaries,
+                reachable: &reachable,
+                unused_assignments: &unused_assignments,
+                unused_variables: &unused_variables,
+                unused_functions: &unused_functions,
+            },
+            arena,
+        );
+
+        let mutation_stmt =
+            facts.stmt_id(root.stmts[1]).expect("builder mutation should have a statement id");
+        assert!(!plan.removable_stmts.contains(&mutation_stmt));
     });
 }

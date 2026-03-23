@@ -10,9 +10,10 @@ use windows_sys::Win32::System::Console::{
 };
 use windows_sys::Win32::System::Memory;
 
-use super::{Stdin, VirtualMemory};
+use super::{ProcessRunner, Stdin, VirtualMemory, process_common};
 use crate::arena::{Arena, ArenaString};
 use crate::helpers::KIBI;
+use crate::process::{ProcessCaps, ProcessError, ProcessResult, ProcessSpec};
 use crate::runtime::Value;
 
 pub struct WindowsVirtualMemory;
@@ -87,6 +88,18 @@ impl Stdin for WindowsStdin {
         io::stdout().flush()?;
 
         if is_console() { read_line_console(arena) } else { read_line_pipe(arena) }
+    }
+}
+
+pub struct WindowsProcessRunner;
+
+impl ProcessRunner for WindowsProcessRunner {
+    fn run<'arena>(
+        spec: &ProcessSpec<'_>,
+        caps: &ProcessCaps,
+        arena: &'arena Arena,
+    ) -> Result<ProcessResult<'arena>, ProcessError> {
+        process_common::run_host_process(spec, caps, arena)
     }
 }
 

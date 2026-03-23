@@ -2,8 +2,9 @@ use std::alloc::{Layout, alloc, dealloc};
 use std::ptr::NonNull;
 use std::{io, mem};
 
-use super::{Stdin, VirtualMemory};
+use super::{ProcessRunner, Stdin, VirtualMemory};
 use crate::arena::{Arena, ArenaString};
+use crate::process::{ProcessCaps, ProcessError, ProcessResult, ProcessSpec};
 use crate::runtime::Value;
 
 pub struct WasmVirtualMemory;
@@ -15,11 +16,11 @@ impl VirtualMemory for WasmVirtualMemory {
         NonNull::new(unsafe { alloc(layout) }).ok_or(u32::MAX)
     }
 
-    unsafe fn commit(_base: NonNull<u8>, _size: usize) -> Result<(), u32> {
+    unsafe fn commit(_: NonNull<u8>, _: usize) -> Result<(), u32> {
         Ok(())
     }
 
-    unsafe fn decommit(_base: NonNull<u8>, _size: usize) {}
+    unsafe fn decommit(_: NonNull<u8>, _: usize) {}
 
     unsafe fn release(base: NonNull<u8>, size: usize) {
         if let Ok(layout) = Layout::from_size_align(size, mem::align_of::<usize>()) {
@@ -31,7 +32,19 @@ impl VirtualMemory for WasmVirtualMemory {
 pub struct WasmStdin;
 
 impl Stdin for WasmStdin {
-    fn read_line<'a>(_prompt: &Value<'a>, _arena: &'a Arena) -> Result<ArenaString<'a>, io::Error> {
+    fn read_line<'a>(_: &Value<'a>, _: &'a Arena) -> Result<ArenaString<'a>, io::Error> {
         Err(io::Error::new(io::ErrorKind::Unsupported, "Dis platform lack I/O support"))
+    }
+}
+
+pub struct WasmProcessRunner;
+
+impl ProcessRunner for WasmProcessRunner {
+    fn run<'arena>(
+        _: &ProcessSpec<'_>,
+        _: &ProcessCaps,
+        _: &'arena Arena,
+    ) -> Result<ProcessResult<'arena>, ProcessError> {
+        Err(ProcessError::Unsupported)
     }
 }
