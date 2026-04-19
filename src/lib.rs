@@ -1,4 +1,4 @@
-#![feature(allocator_api, new_range_api)]
+#![feature(allocator_api)]
 #![allow(
     clippy::many_single_char_names,
     clippy::similar_names,
