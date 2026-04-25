@@ -108,7 +108,7 @@ jobs:
         with:
           path: dist
       - name: ${{ github.event_name == 'workflow_dispatch' && 'Create nightly release' || 'Create release' }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: ${{ github.event_name == 'workflow_dispatch' && format('Nightly Build {0}', github.run_number) || github.ref_name }}
           tag_name: ${{ github.event_name == 'workflow_dispatch' && format('nightly-{0}', github.run_number) || github.ref_name }}
