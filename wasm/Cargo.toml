@@ -19,7 +19,7 @@ wasm-opt = [
 crate-type = ["cdylib"]
 
 [dependencies]
-ansi-to-html = "0.2.2"
+ansi-to-html = "0.2.3"
 html-escape = "0.2.13"
 naijascript = { path = "../" }
 wasm-bindgen = "0.2.100"
