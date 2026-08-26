@@ -526,41 +526,7 @@ impl<'a> Runtime<'a> {
                 }
                 Ok(ExecFlow::Continue)
             }
-            Stmt::ForEach { var, collection, body, .. } => {
-                let collection = self.eval_expr(collection)?;
-                let mut values = Vec::new_in(self.frame);
-                match collection {
-                    Value::Array(items) => values.extend(items),
-                    Value::Record(entries) => {
-                        values.extend(entries.into_iter().map(|(_, value)| value));
-                    }
-                    _ => unreachable!("Resolver guarantees foreach collection type"),
-                }
-                let bound_local = self.bound_stmt_local(stmt);
-                for value in values {
-                    self.push_scope_with_capacity(1, self.frame);
-                    if let Some(local) = bound_local {
-                        self.define_bound_local(local, var, value);
-                    } else {
-                        self.define_var(var, value);
-                    }
-                    self.hoist_block_functions(body);
-                    let mut flow = ExecFlow::Continue;
-                    for child in body.stmts {
-                        flow = self.exec_stmt(child)?;
-                        if flow != ExecFlow::Continue {
-                            break;
-                        }
-                    }
-                    self.pop_scope();
-                    match flow {
-                        ExecFlow::Break => break,
-                        ExecFlow::Continue | ExecFlow::LoopContinue => {}
-                        flow @ ExecFlow::Return(..) => return Ok(flow),
-                    }
-                }
-                Ok(ExecFlow::Continue)
-            }
+            Stmt::ForEach { .. } => self.exec_foreach(stmt),
             Stmt::Block { block, .. } => self.exec_block_with_flow(block),
             Stmt::FunctionDef { .. } => Ok(ExecFlow::Continue),
             Stmt::Return { expr, .. } => {
@@ -575,6 +541,48 @@ impl<'a> Runtime<'a> {
                 Ok(ExecFlow::Continue)
             }
         }
+    }
+
+    // Kept out of `exec_stmt` (via `#[inline(never)]`) so its locals do not inflate
+    // the frame of the hot recursive statement dispatcher and shrink recursion depth.
+    #[inline(never)]
+    fn exec_foreach(&mut self, stmt: StmtRef<'a>) -> Result<ExecFlow<'a>, RuntimeError> {
+        let Stmt::ForEach { var, collection, body, .. } = stmt else {
+            unreachable!("exec_foreach requires a foreach statement")
+        };
+        let collection = self.eval_expr(collection)?;
+        let mut values = Vec::new_in(self.frame);
+        match collection {
+            Value::Array(items) => values.extend(items),
+            Value::Record(entries) => {
+                values.extend(entries.into_iter().map(|(_, value)| value));
+            }
+            _ => unreachable!("Resolver guarantees foreach collection type"),
+        }
+        let bound_local = self.bound_stmt_local(stmt);
+        for value in values {
+            self.push_scope_with_capacity(1, self.frame);
+            if let Some(local) = bound_local {
+                self.define_bound_local(local, var, value);
+            } else {
+                self.define_var(var, value);
+            }
+            self.hoist_block_functions(body);
+            let mut flow = ExecFlow::Continue;
+            for child in body.stmts {
+                flow = self.exec_stmt(child)?;
+                if flow != ExecFlow::Continue {
+                    break;
+                }
+            }
+            self.pop_scope();
+            match flow {
+                ExecFlow::Break => break,
+                ExecFlow::Continue | ExecFlow::LoopContinue => {}
+                flow @ ExecFlow::Return(..) => return Ok(flow),
+            }
+        }
+        Ok(ExecFlow::Continue)
     }
 
     #[inline]
@@ -1696,30 +1704,26 @@ impl<'a> Runtime<'a> {
         value: Value<'a>,
         span: Span,
     ) -> Result<(), RuntimeError> {
-        if let Expr::Index { array: array @ Expr::Var(name, ..), index, index_span, .. } = target {
-            if let Value::Str(key) = self.eval_expr(index)? {
-                let value = if self.has_frame_arena() {
-                    value.promote(&self.pool, self.frame)
-                } else {
-                    value
-                };
-                let record = if let Some(local) = self.bound_expr_local(array) {
-                    self.lookup_local_mut(local)
-                } else {
-                    self.lookup_var_mut(name)
-                }
-                .expect("Resolver guarantees variable exists");
-                let Value::Record(entries) = record else {
-                    return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span));
-                };
-                if let Some((_, slot)) = entries.iter_mut().find(|(entry_key, _)| entry_key == &key)
-                {
-                    *slot = value;
-                } else {
-                    entries.push((key, value));
-                }
-                return Ok(());
+        if let Expr::Index { array: array @ Expr::Var(name, ..), index, index_span, .. } = target
+            && let Value::Str(key) = self.eval_expr(index)?
+        {
+            let value =
+                if self.has_frame_arena() { value.promote(&self.pool, self.frame) } else { value };
+            let record = if let Some(local) = self.bound_expr_local(array) {
+                self.lookup_local_mut(local)
+            } else {
+                self.lookup_var_mut(name)
             }
+            .expect("Resolver guarantees variable exists");
+            let Value::Record(entries) = record else {
+                return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span));
+            };
+            if let Some((_, slot)) = entries.iter_mut().find(|(entry_key, _)| entry_key == &key) {
+                *slot = value;
+            } else {
+                entries.push((key, value));
+            }
+            return Ok(());
         }
         let (base_expr, base_var, index_exprs) = self.flatten_index_target(target);
 
