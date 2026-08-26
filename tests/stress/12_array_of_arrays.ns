@@ -4,10 +4,10 @@
 
 make matrix get []
 make row get 0
-jasi (row small pass 100) start
+jaara (row small pass 100) start
     make inner get []
     make col get 0
-    jasi (col small pass 100) start
+    jaara (col small pass 100) start
         inner.push(row times 100 add col)
         col get col add 1
     end

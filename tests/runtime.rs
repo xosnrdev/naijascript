@@ -71,17 +71,17 @@ fn arithmetic_precedence() {
 
 #[test]
 fn if_then_branch() {
-    assert_runtime!("if to say (1 na 1) start shout(42) end", output: vec![Value::Number(42.0)]);
+    assert_runtime!("if na so (1 na 1) start shout(42) end", output: vec![Value::Number(42.0)]);
 }
 
 #[test]
 fn if_else_branch() {
-    assert_runtime!("if to say (1 na 2) start shout(1) end if not so start shout(2) end", output: vec![Value::Number(2.0)]);
+    assert_runtime!("if na so (1 na 2) start shout(1) end if no be so start shout(2) end", output: vec![Value::Number(2.0)]);
 }
 
 #[test]
 fn loop_execution() {
-    assert_runtime!("make x get 1 jasi (x small pass 3) start shout(x) x get x add 1 end", output: vec![Value::Number(1.0), Value::Number(2.0)]);
+    assert_runtime!("make x get 1 jaara (x small pass 3) start shout(x) x get x add 1 end", output: vec![Value::Number(1.0), Value::Number(2.0)]);
 }
 
 #[test]
@@ -89,8 +89,8 @@ fn test_break_exits_loop() {
     assert_runtime!(
         r"
         make i get 0
-        jasi (i small pass 10) start
-            if to say (i na 5) start
+        jaara (i small pass 10) start
+            if na so (i na 5) start
                 comot
             end
             i get i add 1
@@ -107,9 +107,9 @@ fn test_continue_skips_iteration() {
         r"
         make sum get 0
         make i get 0
-        jasi (i small pass 10) start
+        jaara (i small pass 10) start
             i get i add 1
-            if to say (i mod 2 na 0) start
+            if na so (i mod 2 na 0) start
                 next
             end
             sum get sum add i
@@ -125,9 +125,9 @@ fn test_break_in_nested_block() {
     assert_runtime!(
         r"
         make i get 0
-        jasi (i small pass 10) start
+        jaara (i small pass 10) start
             start
-                if to say (i na 3) start
+                if na so (i na 3) start
                     comot
                 end
             end
@@ -145,10 +145,10 @@ fn test_continue_in_nested_block() {
         r"
         make count get 0
         make i get 0
-        jasi (i small pass 5) start
+        jaara (i small pass 5) start
             i get i add 1
             start
-                if to say (i na 2) start
+                if na so (i na 2) start
                     next
                 end
             end
@@ -177,12 +177,59 @@ fn operator_precedence() {
 
 #[test]
 fn comparison_greater_than() {
-    assert_runtime!("if to say (5 pass 3) start shout(1) end", output: vec![Value::Number(1.0)]);
+    assert_runtime!("if na so (5 pass 3) start shout(1) end", output: vec![Value::Number(1.0)]);
+}
+
+#[test]
+fn extended_comparison_operators() {
+    assert_runtime!(
+        "shout(1 no be 2) shout(1 no pass 2) shout(2 no pass 2) shout(3 no small pass 2)",
+        output: vec![
+            Value::Bool(true),
+            Value::Bool(true),
+            Value::Bool(true),
+            Value::Bool(true)
+        ]
+    );
+}
+
+#[test]
+fn record_literal_index_assignment_and_typeof() {
+    assert_runtime!(
+        r#"make person get {name: "Ada", "age": 37}
+           person["age"] get 38
+           person["city"] get "Lagos"
+           shout(person["name"])
+           shout(person["age"])
+           shout(person["city"])
+           shout(typeof(person))"#,
+        output: vec![
+            Value::Str(ArenaCow::Borrowed("Ada")),
+            Value::Number(38.0),
+            Value::Str(ArenaCow::Borrowed("Lagos")),
+            Value::Str(ArenaCow::Borrowed("record"))
+        ]
+    );
+}
+
+#[test]
+fn foreach_iterates_arrays_and_record_values() {
+    assert_runtime!(
+        r#"for each item inside [1, 2, 3] start shout(item) end
+           for each value inside {first: "A", second: "B"} start shout(value) end"#,
+        output: vec![
+            Value::Number(1.0),
+            Value::Number(2.0),
+            Value::Number(3.0),
+            Value::Str(ArenaCow::Borrowed("A")),
+            Value::Str(ArenaCow::Borrowed("B"))
+        ]
+    );
 }
 
 #[test]
 fn string_equality() {
-    assert_runtime!(r#"if to say ("abc" na "abc") start shout(1) end"#, output: vec![Value::Number(1.0)]);
+    assert_runtime!(r#"if na so ("abc" na "abc") start shout(1) end"#, output: vec![Value::Number(1.0)]);
 }
 
 #[test]
@@ -192,7 +239,7 @@ fn string_concatenation() {
 
 #[test]
 fn loop_with_mutation() {
-    assert_runtime!("make sum get 0 make i get 1 jasi (i small pass 3) start sum get sum add i i get i add 1 end shout(sum)", output: vec![Value::Number(3.0)]);
+    assert_runtime!("make sum get 0 make i get 1 jaara (i small pass 3) start sum get sum add i i get i add 1 end shout(sum)", output: vec![Value::Number(3.0)]);
 }
 
 #[test]
@@ -217,7 +264,7 @@ fn decimal_arithmetic() {
 
 #[test]
 fn comparison_in_condition() {
-    assert_runtime!("make x get 10 make y get 5 if to say (x pass y) start shout(x minus y) end", output: vec![Value::Number(5.0)]);
+    assert_runtime!("make x get 10 make y get 5 if na so (x pass y) start shout(x minus y) end", output: vec![Value::Number(5.0)]);
 }
 
 #[test]
@@ -244,14 +291,14 @@ fn boolean_assignment() {
 
 #[test]
 fn boolean_comparison() {
-    assert_runtime!("if to say (true na true) start shout(1) end", output: vec![Value::Number(1.0)]);
-    assert_runtime!("if to say (true na false) start shout(1) end if not so start shout(2) end", output: vec![Value::Number(2.0)]);
+    assert_runtime!("if na so (true na true) start shout(1) end", output: vec![Value::Number(1.0)]);
+    assert_runtime!("if na so (true na false) start shout(1) end if no be so start shout(2) end", output: vec![Value::Number(2.0)]);
 }
 
 #[test]
 fn boolean_ordering() {
-    assert_runtime!("if to say (false small pass true) start shout(1) end", output: vec![Value::Number(1.0)]);
-    assert_runtime!("if to say (true pass false) start shout(1) end", output: vec![Value::Number(1.0)]);
+    assert_runtime!("if na so (false small pass true) start shout(1) end", output: vec![Value::Number(1.0)]);
+    assert_runtime!("if na so (true pass false) start shout(1) end", output: vec![Value::Number(1.0)]);
 }
 
 #[test]
@@ -406,14 +453,14 @@ fn mutual_recursion_across_forward_reference() {
     assert_runtime!(
         r"
         do is_even(n) start
-            if to say (n na 0) start
+            if na so (n na 0) start
                 return true
             end
             return is_odd(n minus 1)
         end
 
         do is_odd(n) start
-            if to say (n na 0) start
+            if na so (n na 0) start
                 return false
             end
             return is_even(n minus 1)
@@ -543,7 +590,7 @@ fn decimal_number_string_concatenation() {
 #[test]
 fn boolean_parameter_operations() {
     assert_runtime!(
-        r#"do check(flag) start if to say (flag na true) start shout("YES") end end check(true)"#,
+        r#"do check(flag) start if na so (flag na true) start shout("YES") end end check(true)"#,
         output: vec![Value::Str(ArenaCow::Borrowed("YES"))]
     );
 }
@@ -553,7 +600,7 @@ fn control_flow_else_return_type() {
     assert_runtime!(
         r#"
         do join(a) start
-            if to say (true) start
+            if na so (true) start
                 return a add "baz"
             end
             return a
@@ -565,7 +612,7 @@ fn control_flow_else_return_type() {
     assert_runtime!(
         r#"
         do join(a) start
-            if to say (false) start
+            if na so (false) start
                 return a add "baz"
             end
             return a

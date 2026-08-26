@@ -11,7 +11,7 @@ shout(foo na 0)
 shout(foo na "")
 shout(foo na false)
 
-if to say(not null) start
+if na so(not null) start
     shout("null is falsy")
 end
 

@@ -10,7 +10,7 @@ license.workspace = true
 publish.workspace = true 
 
 [workspace]
-members = [".", "wasm"]
+members = [".", "wasm", "wasm-abi"]
 
 [workspace.package]
 edition = "2024"

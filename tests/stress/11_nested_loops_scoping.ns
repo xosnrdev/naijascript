@@ -4,11 +4,11 @@
 
 make total get 0
 make i get 0
-jasi (i small pass 50) start
+jaara (i small pass 50) start
     make j get 0
-    jasi (j small pass 50) start
+    jaara (j small pass 50) start
         make k get 0
-        jasi (k small pass 50) start
+        jaara (k small pass 50) start
             total get total add 1
             k get k add 1
         end

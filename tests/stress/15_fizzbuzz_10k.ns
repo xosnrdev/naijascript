@@ -3,19 +3,19 @@
 # accumulation in bulk.
 
 make i get 1
-jasi (i small pass 10001) start
-    if to say (i mod 15 na 0) start
+jaara (i small pass 10001) start
+    if na so (i mod 15 na 0) start
         shout("FizzBuzz")
     end
-    if not so start
-        if to say (i mod 3 na 0) start
+    if no be so start
+        if na so (i mod 3 na 0) start
             shout("Fizz")
         end
-        if not so start
-            if to say (i mod 5 na 0) start
+        if no be so start
+            if na so (i mod 5 na 0) start
                 shout("Buzz")
             end
-            if not so start
+            if no be so start
                 shout(i)
             end
         end

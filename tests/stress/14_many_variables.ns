@@ -12,7 +12,7 @@ make g get "ggg"
 make h get "hhh"
 
 make i get 0
-jasi (i small pass 5000) start
+jaara (i small pass 5000) start
     a get "a_" add to_string(i)
     b get "b_" add to_string(i)
     c get "c_" add to_string(i)

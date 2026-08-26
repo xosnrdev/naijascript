@@ -5,10 +5,10 @@ Conditionals control flow by evaluating boolean expressions and running code blo
 ## Syntax
 
 ```naijascript
-if to say (condition) start
+if na so (condition) start
     # Executes block if condition is true
 end
-if not so start
+if no be so start
     # Executes block if condition is false
 end
 ```
@@ -28,7 +28,7 @@ Available comparison operators:
 If statement:
 
 ```naijascript
-if to say (foo pass 10) start
+if na so (foo pass 10) start
     shout("foo is greater than 10")
 end
 ```
@@ -36,11 +36,11 @@ end
 Else statement:
 
 ```naijascript
-if to say (foo na 0) start
+if na so (foo na 0) start
     shout("foo is zero")
 end
 
-if not so start
+if no be so start
     shout("foo is not zero")
 end
 ```
@@ -50,16 +50,16 @@ Else-if statement:
 ```naijascript
 make n get 3
 
-if to say (n small pass 2) start
+if na so (n small pass 2) start
     shout("small")
 end
 
-if not so start
-    if to say (n na 2) start
+if no be so start
+    if na so (n na 2) start
         shout("exactly two")
     end
 
-    if not so start
+    if no be so start
         shout("greater than two")
     end
 end

@@ -1,0 +1,16 @@
+[package]
+name = "naijascript-wasm-abi"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+description = "Host-neutral linear-memory ABI for the NaijaScript interpreter"
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+naijascript = { path = ".." }
+serde_json = "1"

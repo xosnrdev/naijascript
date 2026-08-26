@@ -7,16 +7,16 @@ do cegtpa(nums) start
     make count get 0
 
     make length get nums.len()
-    if to say(length small pass 1 or length na 1) start
+    if na so(length small pass 1 or length na 1) start
         return count
     end
 
     make running_sum get nums[0]
     make i get 1
 
-    jasi(i small pass length) start
+    jaara(i small pass length) start
         make avg get running_sum divide i
-        if to say(nums[i] pass avg) start
+        if na so(nums[i] pass avg) start
             count get count add 1
         end
         running_sum get running_sum add nums[i]

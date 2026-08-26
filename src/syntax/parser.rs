@@ -29,8 +29,11 @@ pub enum BinaryOp {
     And,    // "and" keyword (logical)
     Or,     // "or" keyword (logical)
     Eq,     // "na" keyword (equals)
+    Ne,     // "no be" keyword (not equals)
     Gt,     // "pass" keyword (greater than)
     Lt,     // "small pass" keyword (less than)
+    Le,     // "no pass" keyword (less than or equal)
+    Ge,     // "no small pass" keyword (greater than or equal)
 }
 
 /// Unary operators for logical and arithmetic negation.
@@ -51,6 +54,12 @@ pub struct ParamList<'ast> {
 #[derive(Debug)]
 pub struct ArgList<'ast> {
     pub args: &'ast [ExprRef<'ast>],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RecordEntry<'ast> {
+    pub key: &'ast str,
+    pub value: ExprRef<'ast>,
 }
 
 /// Represents the parts of a string literal.
@@ -98,16 +107,24 @@ pub enum Stmt<'ast> {
         expr: ExprRef<'ast>,
         span: Span,
     },
-    // "if to say(...) start...end"
+    // "if na so(...) start...end"
     If {
         cond: ExprRef<'ast>,
         then_b: BlockRef<'ast>,
         else_b: Option<BlockRef<'ast>>,
         span: Span,
     },
-    // "jasi(...) start...end"
+    // "jaara(...) start...end"
     Loop {
         cond: ExprRef<'ast>,
+        body: BlockRef<'ast>,
+        span: Span,
+    },
+    // "for each item inside collection start...end"
+    ForEach {
+        var: &'ast str,
+        var_span: Span,
+        collection: ExprRef<'ast>,
         body: BlockRef<'ast>,
         span: Span,
     },
@@ -149,6 +166,8 @@ pub enum Expr<'ast> {
     Call { callee: ExprRef<'ast>, args: ArgListRef<'ast>, span: Span },
     // Array literal: [expr, expr, ...]
     Array { elements: &'ast [ExprRef<'ast>], span: Span },
+    // Record literal: {key: value, "other": value}
+    Record { entries: &'ast [RecordEntry<'ast>], span: Span },
     // logical/arithmetic negation
     Unary { op: UnaryOp, expr: ExprRef<'ast>, span: Span },
     Bool(bool, Span), // "true", "false"
@@ -173,6 +192,7 @@ impl Expr<'_> {
             | Expr::Call { span, .. }
             | Expr::Index { span, .. }
             | Expr::Array { span, .. }
+            | Expr::Record { span, .. }
             | Expr::Member { span, .. } => *span,
         }
     }
@@ -194,6 +214,9 @@ pub enum SyntaxError {
     ExpectedLParen,
     ExpectedRParen,
     ExpectedRBracket,
+    ExpectedRBrace,
+    ExpectedColon,
+    ExpectedInside,
     ExpectedStartBlock,
     UnterminatedBlock,
     ExpectedComparisonOperator,
@@ -212,6 +235,9 @@ impl AsStr for SyntaxError {
             SyntaxError::ExpectedLParen => "Missing left parenthesis",
             SyntaxError::ExpectedRParen => "Missing right parenthesis",
             SyntaxError::ExpectedRBracket => "Missing right bracket",
+            SyntaxError::ExpectedRBrace => "Missing right brace",
+            SyntaxError::ExpectedColon => "Missing colon",
+            SyntaxError::ExpectedInside => "Missing `inside` in collection loop",
             SyntaxError::ExpectedStartBlock => "Missing start block",
             SyntaxError::UnterminatedBlock => "Missing end block",
             SyntaxError::ExpectedComparisonOperator => "Missing comparison operator",
@@ -295,8 +321,9 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
         while matches!(
             self.cur.token,
             Token::Make
-                | Token::IfToSay
-                | Token::Jasi
+                | Token::IfNaSo
+                | Token::Jaara
+                | Token::ForEach
                 | Token::Do
                 | Token::Return
                 | Token::Identifier(..)
@@ -338,8 +365,9 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
                 | Token::Comma
                 | Token::End
                 | Token::Make
-                | Token::IfToSay
-                | Token::Jasi
+                | Token::IfNaSo
+                | Token::Jaara
+                | Token::ForEach
                 | Token::Do
                 | Token::Return
                 | Token::Comot
@@ -356,8 +384,9 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
             Token::Do => self.parse_function_def(start),
             Token::Return => self.parse_return(start),
             Token::Make => self.parse_assignment(start),
-            Token::IfToSay => self.parse_if(start),
-            Token::Jasi => self.parse_loop(start),
+            Token::IfNaSo => self.parse_if(start),
+            Token::Jaara => self.parse_loop(start),
+            Token::ForEach => self.parse_foreach(start),
             Token::Comot => {
                 self.bump(); // consume `comot`
                 let end = self.cur.span.end;
@@ -692,7 +721,7 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
 
     fn parse_if(&mut self, start: usize) -> StmtRef<'ast> {
         let if_span = self.cur.span;
-        self.bump(); // consume `if to say`
+        self.bump(); // consume `if na so`
 
         if let Token::LParen = self.cur.token {
             self.bump(); // consume `(`
@@ -702,7 +731,7 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
                 SyntaxError::ExpectedLParen,
                 vec![Label {
                     span: if_span,
-                    message: ArenaCow::Borrowed("I dey expect `(` after `if to say`"),
+                    message: ArenaCow::Borrowed("I dey expect `(` after `if na so`"),
                 }],
             );
         }
@@ -724,7 +753,7 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
             );
         }
 
-        // Parse `if to say` block
+        // Parse `if na so` block
         if let Token::Start = self.cur.token {
             self.bump(); // consume `start` block
         } else {
@@ -740,7 +769,7 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
 
         let then_b = self.parse_block_body();
 
-        // Parse `if to say` block
+        // Parse `if na so` block
         if let Token::End = self.cur.token {
             self.bump(); // consume `end` block
         } else {
@@ -754,10 +783,10 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
             );
         }
 
-        // Parse `if not so` block
-        let else_b = if let Token::IfNotSo = self.cur.token {
+        // Parse `if no be so` block
+        let else_b = if let Token::IfNoBeSo = self.cur.token {
             let else_span = self.cur.span;
-            self.bump(); // consume `if not so`
+            self.bump(); // consume `if no be so`
             let start_span = self.cur.span;
             if let Token::Start = self.cur.token {
                 self.bump(); // consume `start` block
@@ -767,7 +796,9 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
                     SyntaxError::ExpectedStartBlock,
                     vec![Label {
                         span: else_span,
-                        message: ArenaCow::Borrowed("I dey expect `start` block after `if not so`"),
+                        message: ArenaCow::Borrowed(
+                            "I dey expect `start` block after `if no be so`",
+                        ),
                     }],
                 );
             }
@@ -795,7 +826,7 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
 
     fn parse_loop(&mut self, start: usize) -> StmtRef<'ast> {
         let jasi_span = self.cur.span;
-        self.bump(); // consume `jasi`
+        self.bump(); // consume `jaara`
 
         if let Token::LParen = self.cur.token {
             self.bump(); // consume `(`
@@ -805,7 +836,7 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
                 SyntaxError::ExpectedLParen,
                 vec![Label {
                     span: jasi_span,
-                    message: ArenaCow::Borrowed("I dey expect `(` after `jasi`"),
+                    message: ArenaCow::Borrowed("I dey expect `(` after `jaara`"),
                 }],
             );
         }
@@ -858,6 +889,45 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
 
         let end = self.cur.span.end;
         self.alloc(Stmt::Loop { cond, body, span: Range::from(start..end) })
+    }
+
+    fn parse_foreach(&mut self, start: usize) -> StmtRef<'ast> {
+        self.bump(); // consume `for each`
+        let (var, var_span) = match &self.cur.token {
+            Token::Identifier(name) => (*name, self.cur.span),
+            _ => {
+                let span = self.cur.span;
+                self.emit_error(
+                    span,
+                    SyntaxError::ExpectedIdentifier,
+                    vec![Label {
+                        span,
+                        message: ArenaCow::Borrowed("I dey expect loop variable after `for each`"),
+                    }],
+                );
+                ("_", span)
+            }
+        };
+        self.bump();
+        if matches!(self.cur.token, Token::Inside) {
+            self.bump();
+        } else {
+            self.emit_error(self.cur.span, SyntaxError::ExpectedInside, Vec::new());
+        }
+        let collection = self.parse_expression(0);
+        if matches!(self.cur.token, Token::Start) {
+            self.bump();
+        } else {
+            self.emit_error(self.cur.span, SyntaxError::ExpectedStartBlock, Vec::new());
+        }
+        let body = self.parse_block_body();
+        if matches!(self.cur.token, Token::End) {
+            self.bump();
+        } else {
+            self.emit_error(self.cur.span, SyntaxError::UnterminatedBlock, Vec::new());
+        }
+        let end = self.cur.span.end;
+        self.alloc(Stmt::ForEach { var, var_span, collection, body, span: Range::from(start..end) })
     }
 
     #[inline]
@@ -962,6 +1032,50 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
 
                 let elements = Arena::vec_into_slice(elements);
                 self.alloc(Expr::Array { elements, span: Range::from(start..end) })
+            }
+            Token::LBrace => {
+                self.bump();
+                let mut entries = Vec::new_in(self.arena);
+                while !matches!(self.cur.token, Token::RBrace | Token::EOF) {
+                    let key = match mem::take(&mut self.cur.token) {
+                        Token::Identifier(key) => key,
+                        Token::String(key) => self.alloc_str(&key),
+                        _ => {
+                            self.emit_error(
+                                self.cur.span,
+                                SyntaxError::ExpectedIdentifier,
+                                Vec::new(),
+                            );
+                            "_"
+                        }
+                    };
+                    self.bump();
+                    if matches!(self.cur.token, Token::Colon) {
+                        self.bump();
+                    } else {
+                        self.emit_error(self.cur.span, SyntaxError::ExpectedColon, Vec::new());
+                    }
+                    let value = self.parse_expression(0);
+                    entries.push(RecordEntry { key, value });
+                    if matches!(self.cur.token, Token::Comma) {
+                        self.bump();
+                        if matches!(self.cur.token, Token::RBrace) {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                let end = if matches!(self.cur.token, Token::RBrace) {
+                    let end = self.cur.span.end;
+                    self.bump();
+                    end
+                } else {
+                    self.emit_error(self.cur.span, SyntaxError::ExpectedRBrace, Vec::new());
+                    self.cur.span.end
+                };
+                let entries = Arena::vec_into_slice(entries);
+                self.alloc(Expr::Record { entries, span: Range::from(start..end) })
             }
             _ => {
                 self.emit_error(
@@ -1116,8 +1230,11 @@ impl<'src: 'ast, 'ast> Parser<'src, 'ast> {
                 Token::Add => (BinaryOp::Add, 10, 11),
                 Token::Minus => (BinaryOp::Minus, 10, 11),
                 Token::Na => (BinaryOp::Eq, 7, 8),
+                Token::NoBe => (BinaryOp::Ne, 7, 8),
                 Token::Pass => (BinaryOp::Gt, 7, 8),
                 Token::SmallPass => (BinaryOp::Lt, 7, 8),
+                Token::NoPass => (BinaryOp::Le, 7, 8),
+                Token::NoSmallPass => (BinaryOp::Ge, 7, 8),
                 Token::And => (BinaryOp::And, 5, 6),
                 Token::Or => (BinaryOp::Or, 1, 2),
                 _ => break,

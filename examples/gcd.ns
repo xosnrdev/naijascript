@@ -1,10 +1,10 @@
 # Euclidean Algorithm for Greatest Common Divisor
 
 do gcd(a, b) start
-    if to say (b na 0) start
+    if na so (b na 0) start
         return a
     end
-    if not so start
+    if no be so start
         return gcd(b, a mod b)
     end
 end

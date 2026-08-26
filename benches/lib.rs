@@ -73,7 +73,7 @@ fn bench_parse_arithmetic_expr(c: &mut Criterion) {
 fn bench_parse_fn_def(c: &mut Criterion) {
     let src = r"
         do fibonacci(n) start
-            if to say (n small pass 2) start
+            if na so (n small pass 2) start
                 return n
             end
             return fibonacci(n minus 1) add fibonacci(n minus 2)
@@ -94,10 +94,10 @@ fn bench_parse_fn_def(c: &mut Criterion) {
 fn bench_parse_ctrl_flow(c: &mut Criterion) {
     let src = r#"
         make i get 0
-        jasi (i small pass 10) start
-            if to say (i mod 2 na 0) start
+        jaara (i small pass 10) start
+            if na so (i mod 2 na 0) start
                 shout("even")
-            end if not so start
+            end if no be so start
                 shout("odd")
             end
             i get i add 1

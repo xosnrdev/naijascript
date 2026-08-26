@@ -26,6 +26,7 @@ pub enum StmtKind {
     AssignIndex,
     If,
     Loop,
+    ForEach,
     Block,
     FunctionDef,
     Return,
@@ -543,7 +544,7 @@ impl<'ast, 'facts, 'arena> FunctionBuilder<'ast, 'facts, 'arena> {
                     }
                 }
             }
-            Stmt::Loop { body, span, .. } => {
+            Stmt::Loop { body, span, .. } | Stmt::ForEach { body, span, .. } => {
                 let body_scope =
                     self.facts.scope_of_block(body).expect("Each loop body should map to a scope");
                 let pre_loop = self.ensure_block(&mut cursor);
@@ -770,7 +771,9 @@ impl<'ast, 'facts, 'arena> CountProgramBuilder<'ast, 'facts, 'arena> {
                         stack.push(nested);
                     }
                 }
-                Stmt::Loop { body, .. } | Stmt::Block { block: body, .. } => {
+                Stmt::Loop { body, .. }
+                | Stmt::ForEach { body, .. }
+                | Stmt::Block { block: body, .. } => {
                     for &nested in body.stmts.iter().rev() {
                         stack.push(nested);
                     }
@@ -861,7 +864,7 @@ impl CountFunctionBuilder {
                     CountCursor { has_block: false }
                 }
             }
-            Stmt::Loop { body, .. } => {
+            Stmt::Loop { body, .. } | Stmt::ForEach { body, .. } => {
                 self.ensure_block(&mut cursor);
                 self.new_block();
                 self.new_block();
@@ -891,6 +894,7 @@ fn stmt_kind(stmt: StmtRef<'_>) -> StmtKind {
         Stmt::AssignIndex { .. } => StmtKind::AssignIndex,
         Stmt::If { .. } => StmtKind::If,
         Stmt::Loop { .. } => StmtKind::Loop,
+        Stmt::ForEach { .. } => StmtKind::ForEach,
         Stmt::Block { .. } => StmtKind::Block,
         Stmt::FunctionDef { .. } => StmtKind::FunctionDef,
         Stmt::Return { .. } => StmtKind::Return,

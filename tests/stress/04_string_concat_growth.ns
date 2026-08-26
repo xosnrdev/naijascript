@@ -5,7 +5,7 @@
 
 make s get ""
 make i get 0
-jasi (i small pass 5000) start
+jaara (i small pass 5000) start
     s get s add "x"
     i get i add 1
 end

@@ -2,14 +2,14 @@
 # overflow guard catches indirect recursion, not just self-recursion.
 
 do is_even(n) start
-    if to say (n na 0) start
+    if na so (n na 0) start
         return true
     end
     return is_odd(n minus 1)
 end
 
 do is_odd(n) start
-    if to say (n na 0) start
+    if na so (n na 0) start
         return false
     end
     return is_even(n minus 1)

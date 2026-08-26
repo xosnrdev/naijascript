@@ -8,7 +8,7 @@ end
 
 make tag get "initial"
 make i get 0
-jasi (i small pass 10000) start
+jaara (i small pass 10000) start
     tag get make_label(i)
     i get i add 1
 end

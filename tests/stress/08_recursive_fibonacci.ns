@@ -3,7 +3,7 @@
 # and stack overflow guard for the ~25-level recursion depth.
 
 do fib(n) start
-    if to say (n small pass 2) start
+    if na so (n small pass 2) start
         return n
     end
     return fib(n minus 1) add fib(n minus 2)

@@ -103,6 +103,7 @@ impl GlobalBuiltin {
             Value::Str(..) => "string",
             Value::Bool(..) => "boolean",
             Value::Array(..) => "array",
+            Value::Record(..) => "record",
             Value::Host(host) => match host.get() {
                 HostValue::ProcessCommand(..) => "process_command",
                 HostValue::ProcessResult(..) => "process_result",

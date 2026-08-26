@@ -245,7 +245,7 @@ fn summary_converges_for_self_recursive_capture_updates() {
         make total get 0
         do ping(n) start
             total get total add 1
-            if to say (n pass 0) start
+            if na so (n pass 0) start
                 return ping(n minus 1)
             end
             return total
@@ -434,9 +434,9 @@ fn cfg_debug_dump_reports_branch_and_dead_tail_shape() {
 fn cfg_blocks_reference_contiguous_op_slices() {
     with_pipeline(
         r"
-        if to say (true) start
+        if na so (true) start
             shout(1)
-        end if not so start
+        end if no be so start
             shout(2)
         end
         shout(3)
@@ -517,7 +517,7 @@ fn cfg_records_scope_exit_kills_for_nested_block_fallthrough() {
 #[test]
 fn cfg_records_scope_exit_kills_for_continue_edges() {
     with_pipeline(
-        "jasi (true) start make x get 1 next end",
+        "jaara (true) start make x get 1 next end",
         |arena, (root, parse_errors), resolver, _| {
             assert!(parse_errors.diagnostics.is_empty());
             resolver.resolve(root);

@@ -283,7 +283,7 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                 self.check_assign_index(target, expr);
                 self.set_stmt_expr_class(ExprClass::Impure);
             }
-            // Handle "if to say(condition) start...end" with optional "if not so"
+            // Handle "if na so(condition) start...end" with optional "if no be so"
             Stmt::If { cond, then_b, else_b, .. } => {
                 self.check_expr(cond);
                 self.check_boolean_expr(cond);
@@ -294,13 +294,35 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                     self.check_block(eb);
                 }
             }
-            // Handle "jasi(condition) start...end" loop statements
+            // Handle "jaara(condition) start...end" loop statements
             Stmt::Loop { cond, body, .. } => {
                 self.check_expr(cond);
                 self.check_boolean_expr(cond);
                 self.set_stmt_expr_class(self.classify_expr(cond));
                 self.in_loop += 1;
                 self.check_block(body);
+                self.in_loop -= 1;
+            }
+            Stmt::ForEach { var, var_span, collection, body, .. } => {
+                self.check_expr(collection);
+                let collection_ty = self.infer_expr_type(collection);
+                if !matches!(
+                    collection_ty,
+                    Some(ValueType::Array | ValueType::Record | ValueType::Dynamic)
+                ) {
+                    self.emit_error(
+                        collection.span(),
+                        SemanticError::TypeMismatch,
+                        vec![Label {
+                            span: collection.span(),
+                            message: ArenaCow::Borrowed("Collection loop need array or record"),
+                        }],
+                    );
+                }
+                self.set_stmt_expr_class(self.classify_expr(collection));
+                self.in_loop += 1;
+                let local_id = self.check_foreach_body(var, var_span, body);
+                self.facts.record_stmt_local(stmt, local_id);
                 self.in_loop -= 1;
             }
             // Handle nested blocks
@@ -348,6 +370,35 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
         }
 
         self.current_stmt = previous_stmt;
+    }
+
+    fn check_foreach_body(
+        &mut self,
+        var: &'ast str,
+        var_span: &'ast Span,
+        body: BlockRef<'ast>,
+    ) -> LocalId {
+        let scope_id =
+            self.facts.push_scope(self.scope_stack.last().copied(), self.current_owner, body.span);
+        self.facts.record_block_scope(body, scope_id);
+        self.scope_stack.push(scope_id);
+        self.variable_scopes.push(Vec::new_in(self.arena));
+        self.function_scopes.push(Vec::new_in(self.arena));
+        let local_id = self.facts.push_param(var, self.current_owner, scope_id, *var_span);
+        self.variable_scopes.last_mut().unwrap().push((
+            var,
+            ValueType::Dynamic,
+            var_span,
+            local_id,
+        ));
+        self.predeclare_block_functions(body);
+        for &stmt in body.stmts {
+            self.check_stmt(stmt);
+        }
+        self.variable_scopes.pop();
+        self.function_scopes.pop();
+        self.scope_stack.pop();
+        local_id
     }
 
     fn check_assign_index(&mut self, target: ExprRef<'ast>, expr: ExprRef<'ast>) {
@@ -666,6 +717,7 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                 | Expr::Call { span, .. }
                 | Expr::Index { span, .. }
                 | Expr::Array { span, .. }
+                | Expr::Record { span, .. }
                 | Expr::Member { span, .. } => *span,
             };
             self.emit_error(
@@ -754,30 +806,52 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                     self.check_expr(element);
                 }
             }
+            Expr::Record { entries, .. } => {
+                for entry in *entries {
+                    self.check_expr(entry.value);
+                }
+            }
             Expr::Index { array, index, index_span, span } => {
                 self.check_expr(array);
                 self.check_expr(index);
 
                 let array_ty = self.infer_expr_type(array);
-                if array_ty != Some(ValueType::Array) && array_ty != Some(ValueType::Dynamic) {
+                if !matches!(
+                    array_ty,
+                    Some(ValueType::Array | ValueType::Record | ValueType::Dynamic)
+                ) {
                     self.emit_error(
                         *span,
                         SemanticError::TypeMismatch,
                         vec![Label {
                             span: *span,
-                            message: ArenaCow::Borrowed("Dis expression type no be array"),
+                            message: ArenaCow::Borrowed(
+                                "Dis expression type no be array or record",
+                            ),
                         }],
                     );
                 }
 
                 let index_ty = self.infer_expr_type(index);
-                if index_ty != Some(ValueType::Number) && index_ty != Some(ValueType::Dynamic) {
+                let valid_index = match array_ty {
+                    Some(ValueType::Array) => {
+                        matches!(index_ty, Some(ValueType::Number | ValueType::Dynamic))
+                    }
+                    Some(ValueType::Record) => {
+                        matches!(index_ty, Some(ValueType::String | ValueType::Dynamic))
+                    }
+                    Some(ValueType::Dynamic) => true,
+                    _ => false,
+                };
+                if !valid_index {
                     self.emit_error(
                         *index_span,
                         SemanticError::TypeMismatch,
                         vec![Label {
                             span: *index_span,
-                            message: ArenaCow::Borrowed("Dis index type no be number"),
+                            message: ArenaCow::Borrowed(
+                                "Array index need number; record index need string",
+                            ),
                         }],
                     );
                 }
@@ -846,7 +920,12 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                             }
                         }
                     }
-                    BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => match (l, r) {
+                    BinaryOp::Eq
+                    | BinaryOp::Ne
+                    | BinaryOp::Gt
+                    | BinaryOp::Lt
+                    | BinaryOp::Le
+                    | BinaryOp::Ge => match (l, r) {
                         (Some(ValueType::Number), Some(ValueType::Number))
                         | (Some(ValueType::String), Some(ValueType::String))
                         | (Some(ValueType::Bool), Some(ValueType::Bool))
@@ -1022,7 +1101,10 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                                 }
                                 ValueType::ProcessResult => ProcessResultBuiltin::from_name(field)
                                     .map(MemberBuiltin::ProcessResult),
-                                ValueType::Bool | ValueType::Null | ValueType::Dynamic => None,
+                                ValueType::Bool
+                                | ValueType::Record
+                                | ValueType::Null
+                                | ValueType::Dynamic => None,
                             };
 
                             if let Some(builtin) = builtin {
@@ -1122,6 +1204,11 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                     class.join(self.classify_expr(element))
                 })
             }
+            Expr::Record { entries, .. } => {
+                entries.iter().fold(ExprClass::PureNoTrap, |class, entry| {
+                    class.join(self.classify_expr(entry.value))
+                })
+            }
             Expr::Index { array, index, .. } => self
                 .classify_expr(array)
                 .join(self.classify_expr(index))
@@ -1174,6 +1261,7 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
             Expr::String { .. } => Some(ValueType::String),
             Expr::Bool(..) => Some(ValueType::Bool),
             Expr::Array { .. } => Some(ValueType::Array),
+            Expr::Record { .. } => Some(ValueType::Record),
             Expr::Index { .. } => Some(ValueType::Dynamic),
             Expr::Var(v, ..) => self.lookup_var_info(v).map(|(t, _)| t),
             Expr::Binary { op, lhs, rhs, .. } => {
@@ -1202,7 +1290,12 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                             _ => None,
                         }
                     }
-                    BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => match (l, r) {
+                    BinaryOp::Eq
+                    | BinaryOp::Ne
+                    | BinaryOp::Gt
+                    | BinaryOp::Lt
+                    | BinaryOp::Le
+                    | BinaryOp::Ge => match (l, r) {
                         (ValueType::Number, ValueType::Number)
                         | (ValueType::String, ValueType::String)
                         | (ValueType::Bool, ValueType::Bool)
@@ -1273,9 +1366,10 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                             .map_or(Some(ValueType::Dynamic), |builtin| {
                                 Some(builtin.return_type())
                             }),
-                        ValueType::Bool | ValueType::Null | ValueType::Dynamic => {
-                            Some(ValueType::Dynamic)
-                        }
+                        ValueType::Bool
+                        | ValueType::Record
+                        | ValueType::Null
+                        | ValueType::Dynamic => Some(ValueType::Dynamic),
                     }
                 }
                 _ => None,
@@ -1331,6 +1425,9 @@ impl<'ast, 'res> Resolver<'ast, 'res> {
                 }
             }
             Stmt::Loop { body, .. } => {
+                self.collect_return_types(body, return_types);
+            }
+            Stmt::ForEach { body, .. } => {
                 self.collect_return_types(body, return_types);
             }
             Stmt::Block { block, .. } => {

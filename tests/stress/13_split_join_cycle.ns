@@ -4,7 +4,7 @@
 
 make data get "alpha,bravo,charlie,delta,echo,foxtrot,golf,hotel"
 make i get 0
-jasi (i small pass 5000) start
+jaara (i small pass 5000) start
     make parts get data.split(",")
     data get parts.join("-")
     make parts2 get data.split("-")

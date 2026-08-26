@@ -37,7 +37,7 @@ Use `return` to send a value back to the caller:
 
 ```naijascript
 do max(foo, bar) start
-    if to say (foo small pass bar) start
+    if na so (foo small pass bar) start
         return bar
     end
     return foo

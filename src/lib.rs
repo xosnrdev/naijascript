@@ -14,6 +14,7 @@ pub mod analysis;
 pub mod builtins;
 pub mod diagnostics;
 pub mod helpers;
+pub mod modules;
 pub mod process;
 pub mod resolver;
 pub mod runtime;

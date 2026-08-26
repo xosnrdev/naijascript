@@ -18,7 +18,7 @@ When you write:
 
 ```naijascript
 make age get 25
-if to say (age pass 18) start
+if na so (age pass 18) start
     shout("You fit vote!")
 end
 ```

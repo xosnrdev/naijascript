@@ -1,0 +1,41 @@
+name: Host-neutral WASM ABI
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/**"
+      - "wasm-abi/**"
+      - ".github/workflows/wasm-abi.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/**"
+      - "wasm-abi/**"
+      - ".github/workflows/wasm-abi.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust and wasm target
+        run: |
+          rustup toolchain install nightly --no-self-update --profile minimal --component rustfmt
+          rustup target add wasm32-unknown-unknown
+      - name: Check host-neutral wasm crate
+        run: cargo check -p naijascript-wasm-abi --target wasm32-unknown-unknown
+      - name: Build release artifact
+        run: cargo build -p naijascript-wasm-abi --release --target wasm32-unknown-unknown
+      - name: Check formatting
+        run: cargo fmt --all -- --check

@@ -39,7 +39,7 @@ shout(foo na false) # prints false
 `null` behaves as falsy in conditional checks:
 
 ```naijascript
-if to say(not null) start
+if na so(not null) start
     shout("null is falsy")
 end
 ```

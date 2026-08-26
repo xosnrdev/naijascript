@@ -124,6 +124,8 @@ pub enum Value<'a> {
     Bool(bool),
     /// Array literal values
     Array(Vec<Value<'a>, &'a Arena>),
+    /// Insertion-ordered record with string keys.
+    Record(Vec<(ArenaCow<'a>, Value<'a>), &'a Arena>),
     /// Host-backed values exposed to scripts.
     Host(HostHandle<'a>),
     /// Represents the absence of a value
@@ -146,6 +148,13 @@ impl<'a> Value<'a> {
                     new.push(item.clone_into(arena));
                 }
                 Value::Array(new)
+            }
+            Value::Record(entries) => {
+                let mut new = Vec::with_capacity_in(entries.len(), arena);
+                for (key, value) in entries {
+                    new.push((key.clone(), value.clone_into(arena)));
+                }
+                Value::Record(new)
             }
         }
     }
@@ -189,6 +198,13 @@ impl<'a> Value<'a> {
                 }
                 Value::Array(promoted)
             }
+            Value::Record(entries) => {
+                let mut promoted = Vec::with_capacity_in(entries.len(), pool.arena());
+                for (key, value) in entries {
+                    promoted.push((key.promote(pool, frame), value.promote(pool, frame)));
+                }
+                Value::Record(promoted)
+            }
         }
     }
 }
@@ -211,6 +227,16 @@ impl fmt::Display for Value<'_> {
                     }
                 }
                 write!(f, "]")
+            }
+            Value::Record(entries) => {
+                write!(f, "{{")?;
+                for (idx, (key, value)) in entries.iter().enumerate() {
+                    if idx > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, r#""{key}": {value}"#)?;
+                }
+                write!(f, "}}")
             }
             Value::Host(host) => write!(f, "{}", host.get()),
             Value::Null => write!(f, "null"),
@@ -500,6 +526,41 @@ impl<'a> Runtime<'a> {
                 }
                 Ok(ExecFlow::Continue)
             }
+            Stmt::ForEach { var, collection, body, .. } => {
+                let collection = self.eval_expr(collection)?;
+                let mut values = Vec::new_in(self.frame);
+                match collection {
+                    Value::Array(items) => values.extend(items),
+                    Value::Record(entries) => {
+                        values.extend(entries.into_iter().map(|(_, value)| value));
+                    }
+                    _ => unreachable!("Resolver guarantees foreach collection type"),
+                }
+                let bound_local = self.bound_stmt_local(stmt);
+                for value in values {
+                    self.push_scope_with_capacity(1, self.frame);
+                    if let Some(local) = bound_local {
+                        self.define_bound_local(local, var, value);
+                    } else {
+                        self.define_var(var, value);
+                    }
+                    self.hoist_block_functions(body);
+                    let mut flow = ExecFlow::Continue;
+                    for child in body.stmts {
+                        flow = self.exec_stmt(child)?;
+                        if flow != ExecFlow::Continue {
+                            break;
+                        }
+                    }
+                    self.pop_scope();
+                    match flow {
+                        ExecFlow::Break => break,
+                        ExecFlow::Continue | ExecFlow::LoopContinue => {}
+                        flow @ ExecFlow::Return(..) => return Ok(flow),
+                    }
+                }
+                Ok(ExecFlow::Continue)
+            }
             Stmt::Block { block, .. } => self.exec_block_with_flow(block),
             Stmt::FunctionDef { .. } => Ok(ExecFlow::Continue),
             Stmt::Return { expr, .. } => {
@@ -654,8 +715,11 @@ impl<'a> Runtime<'a> {
                                 }
                             }
                             BinaryOp::Eq => Ok(Value::Bool((lv - rv).abs() <= FLOAT_EQ_EPS)),
+                            BinaryOp::Ne => Ok(Value::Bool((lv - rv).abs() > FLOAT_EQ_EPS)),
                             BinaryOp::Gt => Ok(Value::Bool(lv > rv)),
                             BinaryOp::Lt => Ok(Value::Bool(lv < rv)),
+                            BinaryOp::Le => Ok(Value::Bool(lv <= rv)),
+                            BinaryOp::Ge => Ok(Value::Bool(lv >= rv)),
                             _ => unreachable!("Semantic analysis guarantees valid number ops"),
                         },
                         (Value::Str(ls), Value::Str(rs)) => match op {
@@ -667,8 +731,11 @@ impl<'a> Runtime<'a> {
                                 Ok(Value::Str(ArenaCow::Owned(s)))
                             }
                             BinaryOp::Eq => Ok(Value::Bool(ls == rs)),
+                            BinaryOp::Ne => Ok(Value::Bool(ls != rs)),
                             BinaryOp::Gt => Ok(Value::Bool(ls > rs)),
                             BinaryOp::Lt => Ok(Value::Bool(ls < rs)),
+                            BinaryOp::Le => Ok(Value::Bool(ls <= rs)),
+                            BinaryOp::Ge => Ok(Value::Bool(ls >= rs)),
                             _ => unreachable!("Semantic analysis guarantees valid string ops"),
                         },
                         (Value::Str(ls), Value::Number(n)) => {
@@ -693,17 +760,26 @@ impl<'a> Runtime<'a> {
                         }
                         (Value::Bool(lv), Value::Bool(rv)) => match op {
                             BinaryOp::Eq => Ok(Value::Bool(lv == rv)),
+                            BinaryOp::Ne => Ok(Value::Bool(lv != rv)),
                             BinaryOp::Gt => Ok(Value::Bool(lv && !rv)), // false < true
                             BinaryOp::Lt => Ok(Value::Bool(!lv & rv)),
+                            BinaryOp::Le => Ok(Value::Bool(!lv || rv)),
+                            BinaryOp::Ge => Ok(Value::Bool(lv || !rv)),
                             _ => unreachable!("Semantic analysis guarantees valid bool ops"),
                         },
                         (Value::Null, Value::Null) => match op {
                             BinaryOp::Eq => Ok(Value::Bool(true)),
-                            BinaryOp::Gt | BinaryOp::Lt => Ok(Value::Bool(false)),
+                            BinaryOp::Ne | BinaryOp::Gt | BinaryOp::Lt => Ok(Value::Bool(false)),
+                            BinaryOp::Le | BinaryOp::Ge => Ok(Value::Bool(true)),
                             _ => unreachable!("Semantic analysis guarantees valid null ops"),
                         },
                         (Value::Null, ..) | (.., Value::Null) => match op {
-                            BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Lt => Ok(Value::Bool(false)),
+                            BinaryOp::Eq
+                            | BinaryOp::Gt
+                            | BinaryOp::Lt
+                            | BinaryOp::Le
+                            | BinaryOp::Ge => Ok(Value::Bool(false)),
+                            BinaryOp::Ne => Ok(Value::Bool(true)),
                             _ => unreachable!("Semantic analysis guarantees valid null ops"),
                         },
                         _ => {
@@ -730,31 +806,43 @@ impl<'a> Runtime<'a> {
                 }
                 Ok(Value::Array(values))
             }
+            Expr::Record { entries, .. } => {
+                let mut values = Vec::with_capacity_in(entries.len(), self.frame);
+                for entry in *entries {
+                    values.push((ArenaCow::borrowed(entry.key), self.eval_expr(entry.value)?));
+                }
+                Ok(Value::Record(values))
+            }
             Expr::Index { array, index, index_span, .. } => {
-                let array_value = self.eval_expr(array)?;
+                let collection = self.eval_expr(array)?;
                 let index_value = self.eval_expr(index)?;
-                let Value::Array(mut items) = array_value else {
-                    unreachable!("Semantic analysis guarantees only arrays can be indexed")
-                };
-
-                let Value::Number(index_number) = index_value else {
-                    return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span));
-                };
-
-                if !index_number.is_finite() || index_number.fract() != 0.0 {
-                    return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span));
+                match (collection, index_value) {
+                    (Value::Array(mut items), Value::Number(index_number)) => {
+                        if !index_number.is_finite() || index_number.fract() != 0.0 {
+                            return Err(RuntimeError::new(
+                                RuntimeErrorKind::InvalidIndex,
+                                *index_span,
+                            ));
+                        }
+                        #[allow(clippy::cast_possible_truncation)]
+                        let idx = index_number as isize;
+                        if idx < 0 || idx >= items.len().cast_signed() {
+                            return Err(RuntimeError::new(
+                                RuntimeErrorKind::IndexOutOfBounds,
+                                *index_span,
+                            ));
+                        }
+                        Ok(mem::replace(&mut items[idx.cast_unsigned()], Value::Null))
+                    }
+                    (Value::Record(mut entries), Value::Str(key)) => entries
+                        .iter_mut()
+                        .find(|(entry_key, _)| entry_key == &key)
+                        .map(|(_, value)| mem::replace(value, Value::Null))
+                        .ok_or_else(|| {
+                            RuntimeError::new(RuntimeErrorKind::IndexOutOfBounds, *index_span)
+                        }),
+                    _ => Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span)),
                 }
-
-                #[allow(clippy::cast_possible_truncation)]
-                let idx = index_number as isize;
-                if idx < 0 || idx >= items.len().cast_signed() {
-                    return Err(RuntimeError::new(RuntimeErrorKind::IndexOutOfBounds, *index_span));
-                }
-
-                // SAFETY: `idx` is >= 0 and < items.len()
-                let slot = unsafe { items.get_unchecked_mut(idx.cast_unsigned()) };
-                let slot = mem::replace(slot, Value::Null);
-                Ok(slot)
             }
             Expr::Member { .. } => {
                 unreachable!("Semantic analysis guarantees member access is always a function call")
@@ -937,6 +1025,12 @@ impl<'a> Runtime<'a> {
                     GlobalBuiltin::type_of(&receiver),
                 )),
             },
+            Value::Record(..) => Err(RuntimeError::new_with_extras(
+                RuntimeErrorKind::TypeMismatch,
+                span,
+                field,
+                "record",
+            )),
             Value::Host(ref host) => match host.get() {
                 HostValue::ProcessCommand(command) => match ProcessCommandBuiltin::from_name(field)
                 {
@@ -1565,7 +1659,7 @@ impl<'a> Runtime<'a> {
             return Value::Str(ArenaCow::Owned(result));
         }
 
-        if matches!(val, Value::Array(_)) {
+        if matches!(val, Value::Array(_) | Value::Record(_)) {
             // Arrays promoted to persistent via pool.
             let promoted = val.promote(&self.pool, self.frame);
             unsafe { self.frame.reset(frame_offset) };
@@ -1602,6 +1696,31 @@ impl<'a> Runtime<'a> {
         value: Value<'a>,
         span: Span,
     ) -> Result<(), RuntimeError> {
+        if let Expr::Index { array: array @ Expr::Var(name, ..), index, index_span, .. } = target {
+            if let Value::Str(key) = self.eval_expr(index)? {
+                let value = if self.has_frame_arena() {
+                    value.promote(&self.pool, self.frame)
+                } else {
+                    value
+                };
+                let record = if let Some(local) = self.bound_expr_local(array) {
+                    self.lookup_local_mut(local)
+                } else {
+                    self.lookup_var_mut(name)
+                }
+                .expect("Resolver guarantees variable exists");
+                let Value::Record(entries) = record else {
+                    return Err(RuntimeError::new(RuntimeErrorKind::InvalidIndex, *index_span));
+                };
+                if let Some((_, slot)) = entries.iter_mut().find(|(entry_key, _)| entry_key == &key)
+                {
+                    *slot = value;
+                } else {
+                    entries.push((key, value));
+                }
+                return Ok(());
+            }
+        }
         let (base_expr, base_var, index_exprs) = self.flatten_index_target(target);
 
         let mut evaluated_indices = Vec::with_capacity_in(index_exprs.len(), self.frame);

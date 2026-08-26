@@ -4,7 +4,7 @@
 
 make result get "seed"
 make i get 0
-jasi (i small pass 10000) start
+jaara (i small pass 10000) start
     result get "iteration_" add to_string(i) add "_payload"
     i get i add 1
 end

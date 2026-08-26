@@ -47,19 +47,19 @@ fn test_parse_shout_statement() {
 
 #[test]
 fn test_parse_if_statement() {
-    let src = "if to say (x na 1) start shout(1) end";
+    let src = "if na so (x na 1) start shout(1) end";
     assert_parse!(src);
 }
 
 #[test]
 fn test_parse_if_else_statement() {
-    let src = "if to say (x na 1) start shout(1) end if not so start shout(2) end";
+    let src = "if na so (x na 1) start shout(1) end if no be so start shout(2) end";
     assert_parse!(src);
 }
 
 #[test]
 fn test_parse_loop_statement() {
-    let src = "jasi (x pass 0) start shout(x) end";
+    let src = "jaara (x pass 0) start shout(x) end";
     assert_parse!(src);
 }
 
@@ -137,20 +137,34 @@ fn test_parse_array_index_missing_rbracket() {
 
 #[test]
 fn test_parse_condition_na() {
-    let src = "if to say (x na 1) start end";
+    let src = "if na so (x na 1) start end";
     assert_parse!(src);
 }
 
 #[test]
 fn test_parse_condition_pass() {
-    let src = "if to say (x pass 1) start end";
+    let src = "if na so (x pass 1) start end";
     assert_parse!(src);
 }
 
 #[test]
 fn test_parse_condition_small_pass() {
-    let src = "if to say (x small pass 1) start end";
+    let src = "if na so (x small pass 1) start end";
     assert_parse!(src);
+}
+
+#[test]
+fn test_parse_extended_comparisons() {
+    assert_parse!("shout(1 no be 2) shout(1 no pass 2) shout(2 no small pass 2)");
+}
+
+#[test]
+fn test_parse_record_literals_and_foreach() {
+    assert_parse!(
+        r#"make person get {name: "Ada", "age": 37,}
+           person["age"] get 38
+           for each value inside person start shout(value) end"#
+    );
 }
 
 #[test]
@@ -167,20 +181,20 @@ fn test_parse_shout_missing_parenthesis() {
 
 #[test]
 fn test_parse_if_missing_start() {
-    let src = "if to say (x na 1) shout(1) end";
+    let src = "if na so (x na 1) shout(1) end";
     assert_parse!(src, SyntaxError::ExpectedStartBlock);
 }
 
 #[test]
 fn test_parse_loop_missing_end() {
-    let src = "jasi (x pass 0) start shout(x)";
+    let src = "jaara (x pass 0) start shout(x)";
     assert_parse!(src, SyntaxError::UnterminatedBlock);
 }
 
 #[test]
 fn test_parse_block_error_recovers_after_stray_token() {
     let src = r#"
-        if to say (true) start
+        if na so (true) start
             make
             shout("ok")
         end
@@ -202,7 +216,7 @@ fn test_parse_boolean_literals() {
 
 #[test]
 fn test_parse_boolean_comparison() {
-    let src = "if to say (true na false) start end";
+    let src = "if na so (true na false) start end";
     assert_parse!(src);
 }
 
@@ -250,7 +264,7 @@ fn test_parse_function_def_missing_end() {
 
 #[test]
 fn test_parse_function_def_keyword_as_param() {
-    let src = "do foo(jasi) start end";
+    let src = "do foo(jaara) start end";
     assert_parse!(src, SyntaxError::ReservedKeyword);
 }
 

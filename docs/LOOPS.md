@@ -1,11 +1,11 @@
 # Loops
 
-Loops repeat a block while a boolean condition holds. NaijaScript uses the `jasi` construct for pre-checked looping (while-style).
+Loops repeat a block while a boolean condition holds. NaijaScript uses the `jaara` construct for pre-checked looping (while-style).
 
 ## Syntax
 
 ```naijascript
-jasi (condition) start
+jaara (condition) start
     # Executes block continuously while condition is true
 end
 ```
@@ -19,6 +19,20 @@ Available comparison operators:
 | `na`         | equal to     |
 | `pass`       | greater than |
 | `small pass` | less than    |
+| `no be`      | not equal to |
+| `no pass`    | less than or equal |
+| `no small pass` | greater than or equal |
+
+## Collection iteration
+
+Use `for each <name> inside <collection>` to visit array elements or record
+values. The loop variable is scoped to the loop body.
+
+```naijascript
+for each name inside ["Ada", "Bola"] start
+    shout(name)
+end
+```
 
 ## Examples
 
@@ -27,7 +41,7 @@ Simple counter loop (prints 0 through 4):
 ```naijascript
 make foo get 0
 
-jasi (foo small pass 5) start
+jaara (foo small pass 5) start
     shout(foo)
     foo get foo add 1
 end
@@ -38,19 +52,19 @@ FizzBuzz (1 to 100):
 ```naijascript
 make foo get 1
 
-jasi (foo small pass 101) start
-    if to say (foo mod 15 na 0) start
+jaara (foo small pass 101) start
+    if na so (foo mod 15 na 0) start
         shout("FizzBuzz")
     end
-    if not so start
-        if to say (foo mod 3 na 0) start
+    if no be so start
+        if na so (foo mod 3 na 0) start
             shout("Fizz")
         end
-        if not so start
-            if to say (foo mod 5 na 0) start
+        if no be so start
+            if na so (foo mod 5 na 0) start
                 shout("Buzz")
             end
-            if not so start
+            if no be so start
                 shout(foo)
             end
         end
@@ -67,8 +81,8 @@ Exit the innermost loop immediately:
 
 ```naijascript
 make i get 0
-jasi (i small pass 10) start
-    if to say (i na 5) start
+jaara (i small pass 10) start
+    if na so (i na 5) start
         comot  # Exit loop when i reaches 5
     end
     shout(i)
@@ -83,9 +97,9 @@ Skip to the next iteration of the innermost loop:
 
 ```naijascript
 make i get 0
-jasi (i small pass 5) start
+jaara (i small pass 5) start
     i get i add 1
-    if to say (i mod 2 na 0) start
+    if na so (i mod 2 na 0) start
         next  # Skip even numbers
     end
     shout(i)
@@ -99,10 +113,10 @@ end
 
 ```naijascript
 make outer get 0
-jasi (outer small pass 3) start
+jaara (outer small pass 3) start
     make inner get 0
-    jasi (inner small pass 3) start
-        if to say (inner na 1) start
+    jaara (inner small pass 3) start
+        if na so (inner na 1) start
             comot  # Exits inner loop only
         end
         inner get inner add 1

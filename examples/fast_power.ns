@@ -1,16 +1,16 @@
 # Fast Exponentiation using Divide and Conquer
 
 do power(base, exp) start
-    if to say (exp na 0) start
+    if na so (exp na 0) start
         return 1
     end
-    if not so start
-        if to say (exp mod 2 na 0) start
+    if no be so start
+        if na so (exp mod 2 na 0) start
             # Even exponent: base^n = (base^(n/2))^2
             make half get power(base, exp divide 2)
             return half times half
         end
-        if not so start
+        if no be so start
             # Odd exponent: base^n = base * base^(n-1)
             return base times power(base, exp minus 1)
         end

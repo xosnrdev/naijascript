@@ -2,24 +2,24 @@
 
 # Recursive approach
 do fib_recursive(n) start
-    if to say (n small pass 2) start
+    if na so (n small pass 2) start
         return n
     end
-    if not so start
+    if no be so start
         return fib_recursive(n minus 1) add fib_recursive(n minus 2)
     end
 end
 
 # Iterative approach
 do fib_iterative(n) start
-    if to say (n small pass 2) start
+    if na so (n small pass 2) start
         return n
     end
-    if not so start
+    if no be so start
         make a get 0
         make b get 1
         make i get 2
-        jasi (i small pass n add 1) start
+        jaara (i small pass n add 1) start
             make temp get a add b
             a get b
             b get temp
@@ -43,7 +43,7 @@ shout("F({n}) = {result}")
 # Show first 10 Fibonacci numbers
 shout("First 10 Fibonacci numbers:")
 make i get 0
-jasi (i small pass 10) start
+jaara (i small pass 10) start
     shout(fib_iterative(i))
     i get i add 1
 end

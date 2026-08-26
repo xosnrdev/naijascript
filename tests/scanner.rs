@@ -22,7 +22,7 @@ macro_rules! assert_tokens {
 
 #[test]
 fn test_scan_keywords() {
-    let src = "make get add minus times divide mod jasi start end na pass small pass if to say if not so true false and not or do return , . null comot next";
+    let src = "make get add minus times divide mod jaara start end na pass small pass if na so if no be so true false and not or do return , . null comot next";
     assert_tokens!(
         src,
         &[
@@ -33,14 +33,14 @@ fn test_scan_keywords() {
             Token::Times,
             Token::Divide,
             Token::Mod,
-            Token::Jasi,
+            Token::Jaara,
             Token::Start,
             Token::End,
             Token::Na,
             Token::Pass,
             Token::SmallPass,
-            Token::IfToSay,
-            Token::IfNotSo,
+            Token::IfNaSo,
+            Token::IfNoBeSo,
             Token::True,
             Token::False,
             Token::And,
@@ -53,6 +53,23 @@ fn test_scan_keywords() {
             Token::Null,
             Token::Comot,
             Token::Next,
+        ]
+    );
+}
+
+#[test]
+fn test_scan_stage_three_keywords_and_punctuation() {
+    assert_tokens!(
+        "no be no pass no small pass for each inside { }:",
+        &[
+            Token::NoBe,
+            Token::NoPass,
+            Token::NoSmallPass,
+            Token::ForEach,
+            Token::Inside,
+            Token::LBrace,
+            Token::RBrace,
+            Token::Colon,
         ]
     );
 }

@@ -296,12 +296,12 @@ fn test_assign_to_undeclared_variable() {
 
 #[test]
 fn test_undeclared_variable_in_condition() {
-    assert_resolve!("if to say (x na 1) start end", SemanticError::UndeclaredIdentifier);
+    assert_resolve!("if na so (x na 1) start end", SemanticError::UndeclaredIdentifier);
 }
 
 #[test]
 fn test_string_number_comparison() {
-    assert_resolve!(r#"if to say ("foo" na 1) start end"#, SemanticError::TypeMismatch);
+    assert_resolve!(r#"if na so ("foo" na 1) start end"#, SemanticError::TypeMismatch);
 }
 
 #[test]
@@ -311,7 +311,7 @@ fn test_string_subtraction() {
 
 #[test]
 fn test_string_number_comparison_in_loop() {
-    assert_resolve!(r#"jasi ("foo" pass 1) start end"#, SemanticError::TypeMismatch);
+    assert_resolve!(r#"jaara ("foo" pass 1) start end"#, SemanticError::TypeMismatch);
 }
 
 #[test]
@@ -331,12 +331,12 @@ fn test_string_modulus() {
 
 #[test]
 fn test_boolean_number_comparison() {
-    assert_resolve!("if to say (true na 1) start end", SemanticError::TypeMismatch);
+    assert_resolve!("if na so (true na 1) start end", SemanticError::TypeMismatch);
 }
 
 #[test]
 fn test_boolean_string_comparison() {
-    assert_resolve!(r#"if to say (true na "test") start end"#, SemanticError::TypeMismatch);
+    assert_resolve!(r#"if na so (true na "test") start end"#, SemanticError::TypeMismatch);
 }
 
 #[test]
@@ -436,7 +436,7 @@ fn test_dead_code_after_return() {
 fn test_dead_code_after_break_in_loop() {
     assert_resolve!(
         "
-        jasi (true) start
+        jaara (true) start
             comot
             shout(1)
         end
@@ -449,7 +449,7 @@ fn test_dead_code_after_break_in_loop() {
 fn test_dead_code_after_continue_in_loop() {
     assert_resolve!(
         "
-        jasi (true) start
+        jaara (true) start
             next
             shout(1)
         end
@@ -463,10 +463,10 @@ fn test_dead_code_after_non_fallthrough_if() {
     assert_resolve!(
         "
         do foo() start
-            if to say (true) start
+            if na so (true) start
                 return 1
             end
-            if not so start
+            if no be so start
                 return 2
             end
             shout(3)
@@ -570,6 +570,24 @@ fn test_non_array_type_index() {
 #[test]
 fn test_array_index_type_not_number() {
     assert_resolve!("make nums get [1, 2] make val get nums[true]", SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_record_index_requires_string() {
+    assert_resolve!("make data get {name: 1} shout(data[0])", SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_foreach_requires_collection() {
+    assert_resolve!("for each item inside 1 start shout(item) end", SemanticError::TypeMismatch);
+}
+
+#[test]
+fn test_foreach_variable_is_block_scoped() {
+    assert_resolve!(
+        "for each item inside [1] start shout(item) end shout(item)",
+        SemanticError::UndeclaredIdentifier
+    );
 }
 
 #[test]

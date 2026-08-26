@@ -20,7 +20,7 @@ end
 
 make i get 0
 make total get 0
-jasi (i small pass 5000) start
+jaara (i small pass 5000) start
     total get total add step_a(i)
     i get i add 1
 end

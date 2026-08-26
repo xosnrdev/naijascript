@@ -2,23 +2,23 @@
 # Numerical algorithm demonstrating iterative approximation
 
 do sqrt_newton(n) start
-    if to say (n small pass 0) start
+    if na so (n small pass 0) start
         return 0
     end
     
     make x get n divide 2  # Initial guess
     make precision get 0.000001
     
-    jasi (true) start
+    jaara (true) start
         make new_x get (x add (n divide x)) divide 2
         
         # Check for convergence using absolute difference
         make diff get new_x minus x
-        if to say (diff small pass 0) start
+        if na so (diff small pass 0) start
             diff get 0 minus diff  # Get absolute value
         end
         
-        if to say (diff small pass precision) start
+        if na so (diff small pass precision) start
             return new_x
         end
         

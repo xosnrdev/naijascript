@@ -4,13 +4,13 @@
 
 make i get 0
 make count get 0
-jasi (i small pass 5000) start
+jaara (i small pass 5000) start
     make base get "  Hello World  "
     make trimmed get base.trim()
     make upper get trimmed.to_uppercase()
     make lower get upper.to_lowercase()
     make found get lower.find("world")
-    if to say (found pass 0 minus 1) start
+    if na so (found pass 0 minus 1) start
         count get count add 1
     end
     make replaced get lower.replace("world", "naija")

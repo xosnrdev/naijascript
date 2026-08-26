@@ -33,20 +33,25 @@ pub enum Token<'a> {
     Not, // "not" - logical not
 
     // Control flow
-    Jasi,  // "jasi" - while loop construct
-    Start, // "start" - block beginning
-    End,   // "end" - block ending
-    Comot, // "comot" - break
-    Next,  // "next" - continue
+    Jaara,   // "jaara" - while loop construct
+    ForEach, // "for each" - collection loop
+    Inside,  // "inside" - foreach separator
+    Start,   // "start" - block beginning
+    End,     // "end" - block ending
+    Comot,   // "comot" - break
+    Next,    // "next" - continue
 
     // Comparison operators
-    Na,        // "na" - equality
-    Pass,      // "pass" - greater than
-    SmallPass, // "small pass" - less than
+    Na,          // "na" - equality
+    Pass,        // "pass" - greater than
+    SmallPass,   // "small pass" - less than
+    NoBe,        // "no be" - not equal
+    NoPass,      // "no pass" - less than or equal
+    NoSmallPass, // "no small pass" - greater than or equal
 
     // Conditional constructs
-    IfToSay, // "if to say" - if statement
-    IfNotSo, // "if not so" - else statement
+    IfNaSo,   // "if na so" - if statement
+    IfNoBeSo, // "if no be so" - else statement
 
     // Function constructs
     Do,     // "do" - function definition
@@ -66,6 +71,9 @@ pub enum Token<'a> {
     RBracket, // "]"
     Comma,    // ","
     Dot,      // "."
+    LBrace,   // "{"
+    RBrace,   // "}"
+    Colon,    // ":"
 
     // Special tokens
     #[default]
@@ -85,7 +93,9 @@ impl std::fmt::Display for Token<'_> {
             Token::And => write!(f, "and"),
             Token::Or => write!(f, "or"),
             Token::Not => write!(f, "not"),
-            Token::Jasi => write!(f, "jasi"),
+            Token::Jaara => write!(f, "jaara"),
+            Token::ForEach => write!(f, "for each"),
+            Token::Inside => write!(f, "inside"),
             Token::Start => write!(f, "start"),
             Token::End => write!(f, "end"),
             Token::Comot => write!(f, "comot"),
@@ -93,8 +103,11 @@ impl std::fmt::Display for Token<'_> {
             Token::Na => write!(f, "na"),
             Token::Pass => write!(f, "pass"),
             Token::SmallPass => write!(f, "small pass"),
-            Token::IfToSay => write!(f, "if to say"),
-            Token::IfNotSo => write!(f, "if not so"),
+            Token::NoBe => write!(f, "no be"),
+            Token::NoPass => write!(f, "no pass"),
+            Token::NoSmallPass => write!(f, "no small pass"),
+            Token::IfNaSo => write!(f, "if na so"),
+            Token::IfNoBeSo => write!(f, "if no be so"),
             Token::True => write!(f, "true"),
             Token::False => write!(f, "false"),
             Token::Null => write!(f, "null"),
@@ -122,7 +135,9 @@ impl Token<'_> {
                 | Token::And
                 | Token::Or
                 | Token::Not
-                | Token::Jasi
+                | Token::Jaara
+                | Token::ForEach
+                | Token::Inside
                 | Token::Start
                 | Token::End
                 | Token::Comot
@@ -130,8 +145,11 @@ impl Token<'_> {
                 | Token::Na
                 | Token::Pass
                 | Token::SmallPass
-                | Token::IfToSay
-                | Token::IfNotSo
+                | Token::NoBe
+                | Token::NoPass
+                | Token::NoSmallPass
+                | Token::IfNaSo
+                | Token::IfNoBeSo
                 | Token::True
                 | Token::False
                 | Token::Null

@@ -1,0 +1,9 @@
+make person get {name: "Ada", city: "Lagos"}
+person["language"] get "NaijaScript"
+
+for each value inside person start
+    shout(value)
+end
+
+shout(2 no be 3)
+shout(2 no pass 2)

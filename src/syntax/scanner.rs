@@ -177,7 +177,7 @@ impl<'arena, 'input: 'arena> Lexer<'arena, 'input> {
 
     // Try to consume a specific word at current position
     //
-    // This is crucial for multi-word keywords like "if to say" and "small pass".
+    // This is crucial for multi-word keywords like "if na so" and "small pass".
     // The function checks if the next word matches the expected one,
     // and only consumes it if:
     // 1. It's followed by a non-alphabetic character (prevents partial matches)
@@ -364,6 +364,18 @@ impl<'arena, 'input: 'arena> Lexer<'arena, 'input> {
                 self.pos += 1;
                 Some(Token::Dot)
             }
+            b'{' => {
+                self.pos += 1;
+                Some(Token::LBrace)
+            }
+            b'}' => {
+                self.pos += 1;
+                Some(Token::RBrace)
+            }
+            b':' => {
+                self.pos += 1;
+                Some(Token::Colon)
+            }
             _ => None,
         }
     }
@@ -431,17 +443,20 @@ impl<'arena, 'input: 'arena> Lexer<'arena, 'input> {
     fn scan_identifier_or_keyword(&mut self, start: usize) -> Token<'arena> {
         let word = self.read_word();
 
-        // "if to say" (if-statement) or "if not so" (else-statement)
+        // "if na so" (if-statement) or "if no be so" (else-statement)
         if word == "if" {
             // Save position so we can rollback if needed
             let save = self.pos;
-            // Try "if to say" = if statement
-            if self.try_consume_word("to") && self.try_consume_word("say") {
-                return Token::IfToSay;
+            // Try "if na so" = if statement
+            if self.try_consume_word("na") && self.try_consume_word("so") {
+                return Token::IfNaSo;
             }
-            // Try "if not so" = else statement
-            if self.try_consume_word("not") && self.try_consume_word("so") {
-                return Token::IfNotSo;
+            // Try "if no be so" = else statement
+            if self.try_consume_word("no")
+                && self.try_consume_word("be")
+                && self.try_consume_word("so")
+            {
+                return Token::IfNoBeSo;
             }
             // It's neither, then it's just the identifier "if"
             self.pos = save;
@@ -456,6 +471,30 @@ impl<'arena, 'input: 'arena> Lexer<'arena, 'input> {
             self.pos = save;
             return Token::Identifier("small");
         }
+        if word == "for" {
+            let save = self.pos;
+            if self.try_consume_word("each") {
+                return Token::ForEach;
+            }
+            self.pos = save;
+            return Token::Identifier("for");
+        }
+        if word == "no" {
+            let save = self.pos;
+            if self.try_consume_word("be") {
+                return Token::NoBe;
+            }
+            self.pos = save;
+            if self.try_consume_word("pass") {
+                return Token::NoPass;
+            }
+            self.pos = save;
+            if self.try_consume_word("small") && self.try_consume_word("pass") {
+                return Token::NoSmallPass;
+            }
+            self.pos = save;
+            return Token::Identifier("no");
+        }
         match word {
             "make" => Token::Make,
             "get" => Token::Get,
@@ -467,7 +506,8 @@ impl<'arena, 'input: 'arena> Lexer<'arena, 'input> {
             "and" => Token::And,
             "or" => Token::Or,
             "not" => Token::Not,
-            "jasi" => Token::Jasi,
+            "jaara" => Token::Jaara,
+            "inside" => Token::Inside,
             "start" => Token::Start,
             "end" => Token::End,
             "comot" => Token::Comot,

@@ -17,7 +17,7 @@ cmd.arg("status")
 cmd.stdout_capture()
 make res get cmd.run()
 
-if to say (res.success()) start
+if na so (res.success()) start
     shout(res.stdout())
 end
 ```
@@ -69,7 +69,7 @@ cmd.arg("HEAD")
 cmd.stdout_capture()
 
 make res get cmd.run()
-if to say (res.success()) start
+if na so (res.success()) start
     shout("commit: {res.stdout()}")
 end
 ```
