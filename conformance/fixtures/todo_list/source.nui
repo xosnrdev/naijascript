@@ -1,0 +1,28 @@
+# Keyed-list conformance fixture.
+# Renders a host-supplied list with stable keys and a filter toggle so renderers
+# must preserve identity, ordering, and conditional subtrees.
+screen TodoList(items: List(Text)) start
+  state showAll : Boolean get true
+
+  when toggle(evt: TapEvent) start
+    showAll get not showAll
+  end
+
+  view start
+    stack(axis: Axis.vertical, spacing: 4px) start
+      label start
+        text "Items"
+      end
+      button(label: "Toggle", onTap: @toggle) /
+      show showAll start
+        scroll(axis: Axis.vertical) start
+          each item in items key item start
+            label start
+              text item
+            end
+          end
+        end
+      end
+    end
+  end
+end

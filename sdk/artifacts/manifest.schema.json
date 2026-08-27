@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://naijascript.dev/schemas/artifact-manifest/1.json",
+  "title": "NaijaScript Build Artifact Manifest",
+  "description": "Describes a single released NaijaScript engine WASM artifact and the exact ABI/protocol versions and capabilities it pins. A host loads the manifest, verifies the wasm sha256, and requires an exact abi_version and protocol_version match before instantiating.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "abi_version",
+    "engine_version",
+    "protocol_version",
+    "wasm",
+    "targets",
+    "capabilities",
+    "built_at",
+    "git_commit"
+  ],
+  "properties": {
+    "abi_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The C-ABI major version exported by ns_abi_version(). A host MUST require an exact match."
+    },
+    "engine_version": {
+      "type": "string",
+      "description": "Semantic version of the engine build.",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The UI patch/event/IR protocol major version (ui-patch/N). A host MUST require an exact match."
+    },
+    "wasm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "bytes"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the wasm module, relative to the manifest.",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "description": "Lowercase hex SHA-256 of the exact wasm bytes.",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "description": "Size of the wasm module in bytes.",
+          "minimum": 0
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "description": "Rust/LLVM target triples this artifact is intended for (e.g. wasm32-unknown-unknown).",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "The negotiated capability set the artifact supports. Mirrors the Capabilities/Limits shapes in UI_IR_PROTOCOL.md.",
+      "additionalProperties": false,
+      "required": ["primitives", "event_kinds", "limits"],
+      "properties": {
+        "protocol_versions": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "uniqueItems": true
+        },
+        "ir_versions": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "uniqueItems": true
+        },
+        "primitives": {
+          "type": "array",
+          "description": "Supported primitive kinds (schema identifiers, not platform widget names).",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "event_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["tap", "change", "submit", "focus"]
+          },
+          "uniqueItems": true
+        },
+        "extensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "limits": {
+          "type": "object",
+          "description": "Mandatory, positive, host-configured resource ceilings enforced before allocation or dispatch.",
+          "additionalProperties": false,
+          "required": [
+            "max_nodes",
+            "max_depth",
+            "max_children_per_node",
+            "max_props_per_node",
+            "max_text_bytes",
+            "max_patch_ops",
+            "max_event_bytes"
+          ],
+          "properties": {
+            "max_nodes": { "type": "integer", "minimum": 1 },
+            "max_depth": { "type": "integer", "minimum": 1 },
+            "max_children_per_node": { "type": "integer", "minimum": 1 },
+            "max_props_per_node": { "type": "integer", "minimum": 1 },
+            "max_text_bytes": { "type": "integer", "minimum": 1 },
+            "max_patch_ops": { "type": "integer", "minimum": 1 },
+            "max_event_bytes": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "built_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Build timestamp in RFC 3339 / ISO 8601 format (UTC recommended)."
+    },
+    "git_commit": {
+      "type": "string",
+      "description": "Full 40-character git commit SHA the artifact was built from.",
+      "pattern": "^[0-9a-f]{7,40}$"
+    }
+  }
+}

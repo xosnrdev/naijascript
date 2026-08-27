@@ -1,0 +1,4 @@
+[
+  { "action": "tap", "match": { "primitive": "button", "props": { "label": "Toggle" } } },
+  { "action": "tap", "match": { "primitive": "button", "props": { "label": "Toggle" } } }
+]

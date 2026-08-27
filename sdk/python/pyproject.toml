@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "naijascript-sdk"
+version = "0.1.0"
+description = "Thin Python wrapper around the NaijaScript host-neutral WASM ABI (eval + UI engine)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["naijascript", "wasm", "ui", "wasmtime"]
+
+# Runtime dependency: the WASM runtime that hosts the ABI module.
+# (Declared only; this SDK does not install it for you.)
+dependencies = [
+    "wasmtime>=20.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/naijascript/naijascript"
+Specification = "https://github.com/naijascript/naijascript/tree/main/docs/spec"
+
+[tool.hatch.build.targets.wheel]
+packages = ["naijascript_sdk"]

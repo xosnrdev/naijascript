@@ -1,0 +1,5 @@
+[
+  { "action": "tap", "match": { "primitive": "button", "props": { "label": "Increment" } } },
+  { "action": "tap", "match": { "primitive": "button", "props": { "label": "Increment" } } },
+  { "action": "tap", "match": { "primitive": "button", "props": { "label": "Reset" } } }
+]

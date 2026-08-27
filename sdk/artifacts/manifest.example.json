@@ -1,0 +1,40 @@
+{
+  "abi_version": 1,
+  "engine_version": "0.1.0",
+  "protocol_version": 1,
+  "wasm": {
+    "path": "naijascript_abi.wasm",
+    "sha256": "3b7a5e1c9d2f0a486b1c8e7d5a4f3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f60",
+    "bytes": 1843204
+  },
+  "targets": [
+    "wasm32-unknown-unknown"
+  ],
+  "capabilities": {
+    "protocol_versions": [1],
+    "ir_versions": [1],
+    "primitives": [
+      "stack",
+      "row",
+      "scroll",
+      "label",
+      "button",
+      "input",
+      "image",
+      "spacer"
+    ],
+    "event_kinds": ["tap", "change", "submit", "focus"],
+    "extensions": [],
+    "limits": {
+      "max_nodes": 10000,
+      "max_depth": 128,
+      "max_children_per_node": 1024,
+      "max_props_per_node": 64,
+      "max_text_bytes": 65536,
+      "max_patch_ops": 20000,
+      "max_event_bytes": 65536
+    }
+  },
+  "built_at": "2026-08-26T19:24:00Z",
+  "git_commit": "0000000000000000000000000000000000000000"
+}

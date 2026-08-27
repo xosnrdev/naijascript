@@ -3,6 +3,8 @@
 //! This crate deliberately has no `wasm-bindgen`, WASI, browser, JNI, or Apple
 //! framework dependency. See `README.md` for the complete ownership contract.
 
+pub mod ui;
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 

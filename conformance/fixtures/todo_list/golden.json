@@ -1,0 +1,357 @@
+{
+  "final_tree": {
+    "children": [
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "id": "79404161265283099",
+                "kind": "text",
+                "text": "Items"
+              }
+            ],
+            "handlers": {},
+            "id": "4891398171137084831",
+            "kind": "element",
+            "primitive": "label",
+            "props": {}
+          },
+          {
+            "children": [],
+            "handlers": {
+              "tap": {
+                "generation": 1,
+                "id": "1046861018096378525"
+              }
+            },
+            "id": "11810426896832352527",
+            "kind": "element",
+            "primitive": "button",
+            "props": {
+              "label": {
+                "type": "text",
+                "value": "Toggle"
+              }
+            }
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "id": "14682661900763066513",
+                    "kind": "text",
+                    "text": "Write spec"
+                  }
+                ],
+                "handlers": {},
+                "id": "5433878495018904113",
+                "kind": "element",
+                "primitive": "label",
+                "props": {}
+              },
+              {
+                "children": [
+                  {
+                    "id": "6991342860131427971",
+                    "kind": "text",
+                    "text": "Build engine"
+                  }
+                ],
+                "handlers": {},
+                "id": "7025129464849618455",
+                "kind": "element",
+                "primitive": "label",
+                "props": {}
+              },
+              {
+                "children": [
+                  {
+                    "id": "12555137147693405849",
+                    "kind": "text",
+                    "text": "Ship renderers"
+                  }
+                ],
+                "handlers": {},
+                "id": "12344184534777218697",
+                "kind": "element",
+                "primitive": "label",
+                "props": {}
+              }
+            ],
+            "handlers": {},
+            "id": "9466217284967085049",
+            "kind": "element",
+            "primitive": "scroll",
+            "props": {
+              "axis": {
+                "case": "vertical",
+                "enum": "Axis",
+                "type": "enum"
+              }
+            }
+          }
+        ],
+        "handlers": {},
+        "id": "3198898072492570261",
+        "kind": "element",
+        "primitive": "stack",
+        "props": {
+          "axis": {
+            "case": "vertical",
+            "enum": "Axis",
+            "type": "enum"
+          },
+          "spacing": {
+            "px": 4.0,
+            "type": "length"
+          }
+        }
+      }
+    ],
+    "handlers": {},
+    "id": "14431886177350502749",
+    "kind": "element",
+    "primitive": "stack",
+    "props": {}
+  },
+  "mount": {
+    "abi_version": 1,
+    "session_id": 1,
+    "status": "ok",
+    "tree": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "id": "79404161265283099",
+                  "kind": "text",
+                  "text": "Items"
+                }
+              ],
+              "handlers": {},
+              "id": "4891398171137084831",
+              "kind": "element",
+              "primitive": "label",
+              "props": {}
+            },
+            {
+              "children": [],
+              "handlers": {
+                "tap": {
+                  "generation": 1,
+                  "id": "1046861018096378525"
+                }
+              },
+              "id": "11810426896832352527",
+              "kind": "element",
+              "primitive": "button",
+              "props": {
+                "label": {
+                  "type": "text",
+                  "value": "Toggle"
+                }
+              }
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "id": "14682661900763066513",
+                      "kind": "text",
+                      "text": "Write spec"
+                    }
+                  ],
+                  "handlers": {},
+                  "id": "5433878495018904113",
+                  "kind": "element",
+                  "primitive": "label",
+                  "props": {}
+                },
+                {
+                  "children": [
+                    {
+                      "id": "6991342860131427971",
+                      "kind": "text",
+                      "text": "Build engine"
+                    }
+                  ],
+                  "handlers": {},
+                  "id": "7025129464849618455",
+                  "kind": "element",
+                  "primitive": "label",
+                  "props": {}
+                },
+                {
+                  "children": [
+                    {
+                      "id": "12555137147693405849",
+                      "kind": "text",
+                      "text": "Ship renderers"
+                    }
+                  ],
+                  "handlers": {},
+                  "id": "12344184534777218697",
+                  "kind": "element",
+                  "primitive": "label",
+                  "props": {}
+                }
+              ],
+              "handlers": {},
+              "id": "9466217284967085049",
+              "kind": "element",
+              "primitive": "scroll",
+              "props": {
+                "axis": {
+                  "case": "vertical",
+                  "enum": "Axis",
+                  "type": "enum"
+                }
+              }
+            }
+          ],
+          "handlers": {},
+          "id": "3198898072492570261",
+          "kind": "element",
+          "primitive": "stack",
+          "props": {
+            "axis": {
+              "case": "vertical",
+              "enum": "Axis",
+              "type": "enum"
+            },
+            "spacing": {
+              "px": 4.0,
+              "type": "length"
+            }
+          }
+        }
+      ],
+      "handlers": {},
+      "id": "14431886177350502749",
+      "kind": "element",
+      "primitive": "stack",
+      "props": {}
+    },
+    "tree_revision": 1,
+    "type": "mount"
+  },
+  "protocol_version": 1,
+  "status": "ok",
+  "steps": [
+    {
+      "action": {
+        "action": "tap",
+        "match": {
+          "primitive": "button",
+          "props": {
+            "label": "Toggle"
+          }
+        }
+      },
+      "patch": {
+        "abi_version": 1,
+        "base_revision": 1,
+        "operations": [
+          {
+            "node": "9466217284967085049",
+            "op": "remove"
+          }
+        ],
+        "session_id": 1,
+        "status": "ok",
+        "target_revision": 2,
+        "type": "patch"
+      },
+      "status": "ok"
+    },
+    {
+      "action": {
+        "action": "tap",
+        "match": {
+          "primitive": "button",
+          "props": {
+            "label": "Toggle"
+          }
+        }
+      },
+      "patch": {
+        "abi_version": 1,
+        "base_revision": 2,
+        "operations": [
+          {
+            "index": 2,
+            "node": {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "id": "14682661900763066513",
+                      "kind": "text",
+                      "text": "Write spec"
+                    }
+                  ],
+                  "handlers": {},
+                  "id": "5433878495018904113",
+                  "kind": "element",
+                  "primitive": "label",
+                  "props": {}
+                },
+                {
+                  "children": [
+                    {
+                      "id": "6991342860131427971",
+                      "kind": "text",
+                      "text": "Build engine"
+                    }
+                  ],
+                  "handlers": {},
+                  "id": "7025129464849618455",
+                  "kind": "element",
+                  "primitive": "label",
+                  "props": {}
+                },
+                {
+                  "children": [
+                    {
+                      "id": "12555137147693405849",
+                      "kind": "text",
+                      "text": "Ship renderers"
+                    }
+                  ],
+                  "handlers": {},
+                  "id": "12344184534777218697",
+                  "kind": "element",
+                  "primitive": "label",
+                  "props": {}
+                }
+              ],
+              "handlers": {},
+              "id": "9466217284967085049",
+              "kind": "element",
+              "primitive": "scroll",
+              "props": {
+                "axis": {
+                  "case": "vertical",
+                  "enum": "Axis",
+                  "type": "enum"
+                }
+              }
+            },
+            "op": "insert",
+            "parent": "3198898072492570261"
+          }
+        ],
+        "session_id": 1,
+        "status": "ok",
+        "target_revision": 3,
+        "type": "patch"
+      },
+      "status": "ok"
+    }
+  ]
+}

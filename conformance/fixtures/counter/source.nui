@@ -1,0 +1,26 @@
+# Counter conformance fixture.
+# Exercises state mutation, text interpolation, conditional visibility, and
+# handler binding/unbinding across a mount and three taps.
+screen Counter start
+  state count : Number get 0
+
+  when increment(evt: TapEvent) start
+    count get count add 1
+  end
+
+  when reset(evt: TapEvent) start
+    count get 0
+  end
+
+  view start
+    stack(axis: Axis.vertical, spacing: 8px) start
+      label start
+        text "Count: {count}"
+      end
+      button(label: "Increment", onTap: @increment) /
+      show count pass 0 start
+        button(label: "Reset", onTap: @reset) /
+      end
+    end
+  end
+end

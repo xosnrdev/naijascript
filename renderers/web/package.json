@@ -1,0 +1,16 @@
+{
+  "name": "@naijascript/web-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web (TypeScript) reference renderer for the NaijaScript renderer-neutral UI engine.",
+  "type": "module",
+  "scripts": {
+    "conformance": "tsx src/conformance.ts",
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
