@@ -1,3 +1,5 @@
+
+
 # NaijaScript
 
 ![platform](https://img.shields.io/badge/platform-linux%20%7C%20macOS%20%7C%20windows-lightgrey)
@@ -70,7 +72,7 @@ naija --version
 Expected output example:
 
 ```text
-naijascript 0.11.5
+naijascript 1.0.31
 ```
 
 See the [Installation Guide](./docs/INSTALLATION.md) for more.
